@@ -10,6 +10,7 @@ export default function ProjectPage() {
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -28,9 +29,10 @@ export default function ProjectPage() {
     const formData = new FormData();
     formData.append('file', file);
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('bilnov_token') : null;
       await fetch(`/api/projects/${id}/files`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('bilnov_token')}` },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       const r = await api.get<{ data: { files: any[] } }>(`/api/projects/${id}/files`);
@@ -44,23 +46,48 @@ export default function ProjectPage() {
   };
 
   const openFile = async (fileId: string) => {
-    const token = localStorage.getItem('bilnov_token');
-    const res = await fetch(`/api/files/${fileId}/url?purpose=view`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (data.data?.url) window.open(data.data.url, '_blank');
+    if (openingId) return;
+    setOpeningId(fileId);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('bilnov_token') : null;
+      const res = await fetch(`/api/files/${fileId}/url?purpose=view`, {
+        headers: { Authorization: `Bearer ${token ?? ''}` },
+      });
+      const data = await res.json();
+      if (data?.data?.url) {
+        window.open(data.data.url, '_blank');
+      } else {
+        alert('Impossible d\'obtenir le lien du fichier');
+      }
+    } catch (err) {
+      alert('Erreur lors de l\'ouverture du fichier');
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
+  const getFileIcon = (fileType: string) => {
+    switch (fileType) {
+      case 'IMAGE': return '🖼️';
+      case 'IMAGE_360': return '🌐';
+      case 'PDF': return '📄';
+      case 'VIDEO': return '🎥';
+      case 'GLB': case 'GLTF': case 'OBJ': return '🧊';
+      default: return '📁';
+    }
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center text-gray-500">Chargement...</div>
+    <div className="min-h-screen flex items-center justify-center text-gray-500">
+      Chargement...
+    </div>
   );
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="text-gray-400 hover:text-gray-600">←</Link>
+          <Link href="/dashboard" className="text-gray-400 hover:text-gray-600 text-lg">←</Link>
           <div className="w-8 h-8 bg-primary-700 rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-sm">B</span>
           </div>
@@ -71,7 +98,7 @@ export default function ProjectPage() {
             </span>
           )}
         </div>
-        <label className={`bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer hover:bg-primary-800 transition-colors ${uploading ? 'opacity-60' : ''}`}>
+        <label className={`bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer hover:bg-primary-800 transition-colors ${uploading ? 'opacity-60 cursor-not-allowed' : ''}`}>
           {uploading ? 'Upload en cours...' : '+ Ajouter fichier'}
           <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
         </label>
@@ -80,6 +107,7 @@ export default function ProjectPage() {
       <main className="flex-1 p-6 max-w-6xl mx-auto w-full">
         <p className="text-sm text-gray-500 mb-4">
           {files.length} fichier{files.length !== 1 ? 's' : ''}
+          {files.length > 0 && ' — cliquez pour visualiser'}
         </p>
 
         {files.length === 0 ? (
@@ -90,18 +118,14 @@ export default function ProjectPage() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {files.map(file => (
-              <div
+              <button
                 key={file.id}
                 onClick={() => openFile(file.id)}
-                className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
+                disabled={openingId === file.id}
+                className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-primary-300 transition-all text-left disabled:opacity-60"
               >
                 <div className="text-3xl mb-3 text-center">
-                  {file.fileType === 'PDF' ? '📄'
-                    : file.fileType === 'IMAGE_360' ? '🌐'
-                    : file.fileType === 'IMAGE' ? '🖼️'
-                    : file.fileType === 'VIDEO' ? '🎥'
-                    : file.fileType === 'GLB' || file.fileType === 'OBJ' ? '🧊'
-                    : '📁'}
+                  {openingId === file.id ? '⏳' : getFileIcon(file.fileType)}
                 </div>
                 <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
                 <p className="text-xs text-gray-400 mt-1">
@@ -110,7 +134,7 @@ export default function ProjectPage() {
                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full mt-1 inline-block">
                   {file.fileType}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         )}
