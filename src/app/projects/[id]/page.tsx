@@ -29,7 +29,7 @@ export default function ProjectPage() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('bilnov_token') : null;
+      const token = localStorage.getItem('bilnov_token');
       await fetch(`/api/projects/${id}/files`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -49,17 +49,28 @@ export default function ProjectPage() {
     if (openingId) return;
     setOpeningId(fileId);
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('bilnov_token') : null;
+      const token = localStorage.getItem('bilnov_token');
+      console.log('Token:', token ? 'présent' : 'absent');
+
       const res = await fetch(`/api/files/${fileId}/url?purpose=view`, {
-        headers: { Authorization: `Bearer ${token ?? ''}` },
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          Authorization: `Bearer ${token ?? ''}`,
+          'Content-Type': 'application/json',
+        },
       });
+
       const data = await res.json();
+      console.log('Response:', JSON.stringify(data));
+
       if (data?.data?.url) {
         window.open(data.data.url, '_blank');
       } else {
-        alert('Impossible d\'obtenir le lien du fichier');
+        alert(`Erreur: ${data?.error?.message ?? 'Lien introuvable'}`);
       }
     } catch (err) {
+      console.error('openFile error:', err);
       alert('Erreur lors de l\'ouverture du fichier');
     } finally {
       setOpeningId(null);
