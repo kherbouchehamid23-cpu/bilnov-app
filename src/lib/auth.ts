@@ -54,5 +54,11 @@ export function apiError(message: string, code: string, status: number) {
 }
 
 export function apiSuccess(data: unknown, status = 200) {
-  return Response.json({ success: true, data }, { status });
+  const json = JSON.stringify({ success: true, data }, (_key, value) =>
+    typeof value === 'bigint' ? Number(value) : value
+  );
+  return new Response(json, {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
