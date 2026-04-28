@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const file = await prisma.file.findUnique({ where: { id: params.id } });
     if (!file) return apiError('Fichier introuvable', 'NOT_FOUND', 404);
 
-    const purpose = req.nextUrl.searchParams.get('purpose') as 'view' | 'download' ?? 'view';
+    const purpose = (req.nextUrl.searchParams.get('purpose') ?? 'view') as 'view' | 'download';
     const { url, expiresAt } = await getSignedFileUrl(file.storageKey, purpose, file.name);
 
     return apiSuccess({ url, expiresAt });
