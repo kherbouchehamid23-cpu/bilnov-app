@@ -1,3 +1,4 @@
+import React from 'react';
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -13,7 +14,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
