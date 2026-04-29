@@ -19,11 +19,11 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post('/api/auth/login', { email, password });
+      const res = await api.post<{data:{accessToken:string;user:any}}>('/api/auth/login', { email, password });
       setAuth(res.data.user, res.data.accessToken);
       router.push('/dashboard');
-    } catch (err) {
-      setError(err.message ?? 'Email ou mot de passe incorrect');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : (err as any)?.message ?? 'Email ou mot de passe incorrect';
     } finally { setLoading(false); }
   };
 

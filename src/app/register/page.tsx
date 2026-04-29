@@ -18,11 +18,11 @@ export default function RegisterPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post('/api/auth/register', form);
+      const res = await api.post<{data:{accessToken:string;user:any}}>('/api/auth/register', form);
       setAuth(res.data.user, res.data.accessToken);
       router.push('/dashboard');
-    } catch (err) {
-      setError(err.message ?? 'Erreur inscription');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : (err as any)?.message ?? 'Erreur inscription');
     } finally { setLoading(false); }
   };
 
