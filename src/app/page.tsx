@@ -1,38 +1,42 @@
 import Link from 'next/link';
-
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-primary-50 to-white flex flex-col items-center justify-center p-8">
-      <div className="max-w-3xl text-center">
-        <div className="w-16 h-16 bg-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-6">
-          <span className="text-white text-2xl font-bold">B</span>
+    <main className="min-h-screen" style={{ background: 'var(--surface)' }}>
+      <nav className="flex items-center justify-between px-8 py-5 glass sticky top-0 z-50 border-b" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--violet)' }}>
+            <span className="text-white font-bold text-sm">B</span>
+          </div>
+          <span className="text-lg font-bold" style={{ color: 'var(--text)', fontFamily: 'Syne, sans-serif' }}>Bilnov</span>
         </div>
-        <h1 className="text-5xl font-bold text-primary-700 mb-4">Bilnov</h1>
-        <p className="text-xl text-gray-600 max-w-xl mx-auto mb-10">
-          Gestion, visualisation 3D/360° et collaboration sur vos projets visuels.
+        <div className="flex items-center gap-3">
+          <Link href="/login" className="btn-secondary text-sm">Se connecter</Link>
+          <Link href="/register" className="btn-primary text-sm">Essai gratuit</Link>
+        </div>
+      </nav>
+      <section className="px-8 pt-24 pb-20 max-w-5xl mx-auto text-center">
+        <h1 className="text-6xl font-bold leading-tight mb-6" style={{ color: 'var(--text)', fontFamily: 'Syne, sans-serif' }}>
+          Gérez vos projets<br /><span className="gradient-text">en toute clarté</span>
+        </h1>
+        <p className="text-lg mb-10 max-w-xl mx-auto" style={{ color: 'var(--text-muted)' }}>
+          Bilnov centralise vos fichiers, visites 360° et collaboration.
         </p>
-        <div className="flex gap-4 justify-center mb-16">
-          <Link href="/register" className="bg-primary-700 text-white px-8 py-3 rounded-lg font-medium hover:bg-primary-800 transition-colors">
-            Démarrer gratuitement
-          </Link>
-          <Link href="/login" className="border border-primary-700 text-primary-700 px-8 py-3 rounded-lg font-medium hover:bg-primary-50 transition-colors">
-            Se connecter
-          </Link>
+        <div className="flex items-center justify-center gap-4">
+          <Link href="/register" className="btn-primary px-6 py-3 text-base">Démarrer gratuitement</Link>
+          <Link href="/login" className="btn-secondary px-6 py-3 text-base">Se connecter</Link>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-          {[
-            { icon: '🏗️', title: 'Gestion de projet', desc: 'Structure flexible adaptée à tous les secteurs.' },
-            { icon: '🌐', title: 'Visites 360°', desc: 'Créez des visites virtuelles immersives.' },
-            { icon: '🔗', title: 'Partage sécurisé', desc: 'Codes d\'accès granulaires et sécurisés.' },
-          ].map((f) => (
-            <div key={f.title} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <div className="text-3xl mb-3">{f.icon}</div>
-              <h3 className="font-semibold text-gray-900 mb-2">{f.title}</h3>
-              <p className="text-gray-500 text-sm">{f.desc}</p>
+      </section>
+      <section className="px-8 pb-24 max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {[{icon:'🏗️',title:'Gestion de projet',desc:'Structure flexible par étages et pièces.',color:'#EDE9FE'},{icon:'🌐',title:'Visites 360°',desc:'Créez des visites virtuelles immersives.',color:'#ECFDF5'},{icon:'🔗',title:'Partage sécurisé',desc:'Codes accès avec permissions granulaires.',color:'#FEF3C7'}].map((f)=>(
+            <div key={f.title} className="card-hover rounded-2xl p-6 border" style={{ background: 'white', borderColor: 'var(--border)' }}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-4" style={{ background: f.color }}>{f.icon}</div>
+              <h3 className="font-bold text-lg mb-2" style={{ color: 'var(--text)', fontFamily: 'Syne, sans-serif' }}>{f.title}</h3>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{f.desc}</p>
             </div>
           ))}
         </div>
-      </div>
+      </section>
     </main>
   );
 }

@@ -13,55 +13,56 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const res = await api.post<{ data: { accessToken: string; user: any } }>(
-        '/api/auth/login', { email, password }
-      );
+      const res = await api.post('/api/auth/login', { email, password });
       setAuth(res.data.user, res.data.accessToken);
       router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.message ?? 'Erreur de connexion');
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) {
+      setError(err.message ?? 'Email ou mot de passe incorrect');
+    } finally { setLoading(false); }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-white flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-primary-700 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <span className="text-white font-bold text-lg">B</span>
+    <div className="min-h-screen flex" style={{ background: 'var(--surface)' }}>
+      <div className="flex-1 flex flex-col items-center justify-center p-8 max-w-md mx-auto w-full">
+        <div className="w-full">
+          <div className="flex items-center gap-2 mb-10">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet)' }}>
+              <span className="text-white font-bold">B</span>
+            </div>
+            <span className="font-bold text-lg" style={{ fontFamily: 'Syne, sans-serif' }}>Bilnov</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Se connecter</h1>
+          <h1 className="text-3xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Bon retour 👋</h1>
+          <p className="text-sm mb-8" style={{ color: 'var(--text-muted)' }}>Connectez-vous à votre espace Bilnov</p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="input" placeholder="vous@exemple.com" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Mot de passe</label>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="input" placeholder="••••••••" />
+            </div>
+            {error && <div className="p-3 rounded-xl text-sm" style={{ background: '#FEF2F2', color: '#EF4444' }}>{error}</div>}
+            <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-3 text-base">
+              {loading ? 'Connexion...' : 'Se connecter →'}
+            </button>
+          </form>
+          <p className="text-center text-sm mt-6" style={{ color: 'var(--text-muted)' }}>
+            Pas encore de compte ? <Link href="/register" style={{ color: 'var(--violet)' }}>Créer un compte</Link>
+          </p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="vous@exemple.com" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Mot de passe</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="••••••••" />
-          </div>
-          {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
-          <button type="submit" disabled={loading}
-            className="w-full bg-primary-700 text-white py-3 rounded-lg font-medium hover:bg-primary-800 transition-colors disabled:opacity-60">
-            {loading ? 'Connexion...' : 'Se connecter'}
-          </button>
-        </form>
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Pas encore de compte ?{' '}
-          <Link href="/register" className="text-primary-700 font-medium hover:underline">Créer un compte</Link>
-        </p>
+      </div>
+      <div className="hidden lg:flex flex-1 items-center justify-center" style={{ background: 'var(--violet-dark)' }}>
+        <div className="text-center text-white">
+          <div className="text-8xl mb-6">🌐</div>
+          <h2 className="text-3xl font-bold mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>Visites 360°</h2>
+          <p style={{ color: '#C4B5FD', maxWidth: '240px', fontSize: '14px' }}>Créez des expériences immersives pour vos clients.</p>
+        </div>
       </div>
     </div>
   );
