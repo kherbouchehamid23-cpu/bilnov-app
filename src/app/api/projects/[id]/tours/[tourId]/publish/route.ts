@@ -2,7 +2,10 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 
-export async function POST(req: NextRequest, { params }: { params: Record<string, string> }) {
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { id: string; tourId: string } }
+) {
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);

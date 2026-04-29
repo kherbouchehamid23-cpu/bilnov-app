@@ -4,13 +4,34 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api-client';
 
+interface Project {
+  id: string;
+  name: string;
+  sector: string | null;
+  structureType: string;
+}
+
+interface FileItem {
+  id: string;
+  name: string;
+  fileType: string;
+  sizeBytes: string | number | bigint;
+}
+
+interface Tour {
+  id: string;
+  name: string;
+  status: string;
+  _count?: { scenes: number };
+}
+
 export default function ProjectPage() {
   const params = useParams();
   const id = params.id as string;
-  const [project, setProject] = useState<any>(null);
-  const [files, setFiles] = useState<any[]>([]);
-  const [tours, setTours] = useState<any[]>([]);
-  const [tab, setTab] = useState('files');
+  const [project, setProject] = useState<Project | null>(null);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [tours, setTours] = useState<Tour[]>([]);
+  const [tab, setTab] = useState<'files' | 'tours'>('files');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -20,9 +41,9 @@ export default function ProjectPage() {
 
   useEffect(() => {
     Promise.all([
-      api.get<{data:any}>('/api/projects/' + id),
-      api.get<{data:any}>('/api/projects/' + id + '/files'),
-      api.get<{data:any}>('/api/projects/' + id + '/tours'),
+      api.get<{ data: Project }>('/api/projects/' + id),
+      api.get<{ data: { files: FileItem[] } }>('/api/projects/' + id + '/files'),
+      api.get<{ data: { tours: Tour[] } }>('/api/projects/' + id + '/tours'),
     ]).then(([p, f, t]) => {
       setProject(p.data);
       setFiles(f.data?.files ?? []);
@@ -40,13 +61,14 @@ export default function ProjectPage() {
       const token = localStorage.getItem('bilnov_token');
       await fetch('/api/projects/' + id + '/files', {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + token },
+        headers: { Authorization: 'Bearer ' + (token ?? '') },
         body: formData,
       });
-      const r = await api.get<{data:any}>('/api/projects/' + id + '/files');
+      const r = await api.get<{ data: { files: FileItem[] } }>('/api/projects/' + id + '/files');
       setFiles(r.data?.files ?? []);
-    } catch (err: any) {
-      alert(err.message ?? 'Erreur upload');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur upload';
+      alert(msg);
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -61,9 +83,12 @@ export default function ProjectPage() {
       const res = await fetch('/api/file-url/' + fileId + '?purpose=view', {
         headers: { Authorization: 'Bearer ' + (token ?? '') },
       });
-      const data = await res.json();
-      if (data?.data?.url) window.open(data.data.url, '_blank');
-      else alert('Impossible obtenir le lien');
+      const data = await res.json() as { data?: { url?: string }; error?: { message?: string } };
+      if (data?.data?.url) {
+        window.open(data.data.url, '_blank');
+      } else {
+        alert('Impossible d\'obtenir le lien');
+      }
     } catch {
       alert('Erreur');
     } finally {
@@ -78,17 +103,17 @@ export default function ProjectPage() {
       const token = localStorage.getItem('bilnov_token');
       const res = await fetch('/api/projects/' + id + '/tours', {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        headers: { Authorization: 'Bearer ' + (token ?? ''), 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: tourName }),
       });
-      const data = await res.json();
+      const data = await res.json() as { data?: Tour };
       if (data.data) {
-        setTours(prev => [data.data, ...prev]);
+        setTours(prev => [data.data as Tour, ...prev]);
         setTourName('');
         setShowTourForm(false);
       }
     } catch {
-      alert('Erreur');
+      alert('Erreur création visite');
     } finally {
       setCreatingTour(false);
     }
@@ -101,7 +126,8 @@ export default function ProjectPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--surface)' }}>
+      <div className="min-h-screen flex items-center justify-center"
+        style={{ background: 'var(--surface)' }}>
         <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Chargement...</div>
       </div>
     );
@@ -109,16 +135,24 @@ export default function ProjectPage() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--surface)' }}>
-      <header className="sticky top-0 z-40 glass border-b px-6 py-4" style={{ borderColor: 'var(--border)' }}>
+      <header className="sticky top-0 z-40 glass border-b px-6 py-4"
+        style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-stone-100 transition-colors" style={{ color: 'var(--text-muted)' }}>←</Link>
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--violet)' }}>
+            <Link href="/dashboard"
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-stone-100 transition-colors"
+              style={{ color: 'var(--text-muted)' }}>←</Link>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: 'var(--violet)' }}>
               <span className="text-white font-bold text-sm">B</span>
             </div>
-            <span className="font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{project?.name}</span>
+            <span className="font-bold"
+              style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+              {project?.name}
+            </span>
             {project?.sector && (
-              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>
+              <span className="text-xs px-2 py-0.5 rounded-full"
+                style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>
                 {project.sector}
               </span>
             )}
@@ -141,10 +175,10 @@ export default function ProjectPage() {
 
       <div className="border-b" style={{ background: 'white', borderColor: 'var(--border)' }}>
         <div className="max-w-6xl mx-auto px-6 flex gap-1">
-          {[
-            { key: 'files', label: 'Fichiers', count: files.length },
-            { key: 'tours', label: 'Visites 360°', count: tours.length },
-          ].map(t => (
+          {([
+            { key: 'files' as const, label: 'Fichiers', count: files.length },
+            { key: 'tours' as const, label: 'Visites 360°', count: tours.length },
+          ]).map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors"
               style={{
@@ -170,7 +204,9 @@ export default function ProjectPage() {
             {files.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <div className="text-4xl mb-3">📂</div>
-                <p style={{ color: 'var(--text-muted)' }}>Aucun fichier. Uploadez votre premier fichier.</p>
+                <p style={{ color: 'var(--text-muted)' }}>
+                  Aucun fichier. Uploadez votre premier fichier.
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -200,16 +236,23 @@ export default function ProjectPage() {
         {tab === 'tours' && (
           <>
             {showTourForm && (
-              <div className="mb-6 p-5 rounded-2xl border" style={{ background: 'white', borderColor: 'var(--violet-light)' }}>
-                <h3 className="font-bold mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>Nouvelle visite 360°</h3>
+              <div className="mb-6 p-5 rounded-2xl border"
+                style={{ background: 'white', borderColor: 'var(--violet-light)' }}>
+                <h3 className="font-bold mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>
+                  Nouvelle visite 360°
+                </h3>
                 <div className="flex gap-3">
                   <input className="input flex-1" placeholder="Nom de la visite"
                     value={tourName} onChange={e => setTourName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && createTour()} autoFocus />
-                  <button onClick={createTour} disabled={creatingTour || !tourName.trim()} className="btn-primary">
+                    onKeyDown={e => { if (e.key === 'Enter') { void createTour(); } }}
+                    autoFocus />
+                  <button onClick={() => { void createTour(); }}
+                    disabled={creatingTour || !tourName.trim()} className="btn-primary">
                     {creatingTour ? 'Création...' : 'Créer'}
                   </button>
-                  <button onClick={() => setShowTourForm(false)} className="btn-secondary">Annuler</button>
+                  <button onClick={() => setShowTourForm(false)} className="btn-secondary">
+                    Annuler
+                  </button>
                 </div>
               </div>
             )}
@@ -217,7 +260,8 @@ export default function ProjectPage() {
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-5"
                   style={{ background: 'var(--violet-light)' }}>🌐</div>
-                <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+                <h3 className="text-xl font-bold mb-2"
+                  style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
                   Aucune visite 360°
                 </h3>
                 <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
