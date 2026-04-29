@@ -12,7 +12,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/api/projects').then(r => setProjects(r.data.projects ?? [])).catch(() => {}).finally(() => setLoading(false));
+    api.get<{data:{projects:any[]}}>('/api/projects').then(r => setProjects(r.data.projects ?? [])).catch(() => {}).finally(() => setLoading(false));
   }, [isAuthenticated, router]);
 
   const handleLogout = async () => {
