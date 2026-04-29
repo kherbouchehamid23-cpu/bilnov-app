@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 import { getSignedFileUrl } from '@/lib/storage';
 
-export async function GET(req: import("next/server").NextRequest, { params }) {
+export async function GET(req: import("next/server").NextRequest, { params }: { params: Record<string, string> }) {
   try {
     const user = await getCurrentUser(req);
     const scenes = await prisma.tourScene.findMany({
@@ -23,7 +23,7 @@ export async function GET(req: import("next/server").NextRequest, { params }) {
   }
 }
 
-export async function POST(req: import("next/server").NextRequest, { params }) {
+export async function POST(req: import("next/server").NextRequest, { params }: { params: Record<string, string> }) {
   try {
     const user = await getCurrentUser(req);
     const { fileId, name } = await req.json();

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 
-export async function GET(req: import("next/server").NextRequest, { params }) {
+export async function GET(req: import("next/server").NextRequest, { params }: { params: Record<string, string> }) {
   try {
     const user = await getCurrentUser(req);
     const tours = await prisma.virtualTour.findMany({
@@ -16,7 +16,7 @@ export async function GET(req: import("next/server").NextRequest, { params }) {
   }
 }
 
-export async function POST(req: import("next/server").NextRequest, { params }) {
+export async function POST(req: import("next/server").NextRequest, { params }: { params: Record<string, string> }) {
   try {
     const user = await getCurrentUser(req);
     const { name, nodeId } = await req.json();
