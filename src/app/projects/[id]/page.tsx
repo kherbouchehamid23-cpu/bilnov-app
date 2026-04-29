@@ -50,9 +50,8 @@ export default function ProjectPage() {
     setOpeningId(fileId);
     try {
       const token = localStorage.getItem('bilnov_token');
-      console.log('Token:', token ? 'présent' : 'absent');
 
-      const res = await fetch(`/api/files/${fileId}/url?purpose=view`, {
+      const res = await fetch(`/api/file-url/${fileId}?purpose=view`, {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -62,7 +61,6 @@ export default function ProjectPage() {
       });
 
       const data = await res.json();
-      console.log('Response:', JSON.stringify(data));
 
       if (data?.data?.url) {
         window.open(data.data.url, '_blank');
@@ -70,7 +68,6 @@ export default function ProjectPage() {
         alert(`Erreur: ${data?.error?.message ?? 'Lien introuvable'}`);
       }
     } catch (err) {
-      console.error('openFile error:', err);
       alert('Erreur lors de l\'ouverture du fichier');
     } finally {
       setOpeningId(null);
