@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 
-export async function GET(req, { params }) {
+export async function GET(req: import("next/server").NextRequest, { params }) {
   try {
     const user = await getCurrentUser(req);
     const tour = await prisma.virtualTour.findFirst({
