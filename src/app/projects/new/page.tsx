@@ -1,59 +1,119 @@
 'use client';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api-client';
 
+interface CreateProjectResponse {
+  data: {
+    id: string;
+    name: string;
+  };
+}
+
+interface FormState {
+  name: string;
+  description: string;
+  structureType: string;
+  sector: string;
+}
+
 export default function NewProjectPage() {
   const router = useRouter();
-  const [form, setForm] = useState({ name: '', description: '', structureType: 'BUILDING', sector: '' });
+  const [form, setForm] = useState<FormState>({
+    name: '',
+    description: '',
+    structureType: 'BUILDING',
+    sector: '',
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const res = await api.post<{ data: { id: string } }>('/api/projects', form);
-      router.push(`/projects/${res.data.id}`);
-    } catch (err: any) {
-      setError(err.message ?? 'Erreur lors de la création');
+      const res = await api.post<CreateProjectResponse>('/api/projects', form);
+      router.push('/projects/' + res.data.id);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erreur lors de la création';
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-lg">
+    <div className="min-h-screen flex items-center justify-center p-4"
+      style={{ background: 'var(--surface)' }}>
+      <div className="bg-white rounded-3xl border p-8 w-full max-w-lg"
+        style={{ borderColor: 'var(--border)' }}>
         <div className="mb-6">
-          <Link href="/dashboard" className="text-sm text-gray-500 hover:text-gray-700">← Retour</Link>
-          <h1 className="text-2xl font-bold text-gray-900 mt-3">Nouveau projet</h1>
+          <Link href="/dashboard" className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            ← Retour
+          </Link>
+          <h1 className="text-2xl font-bold mt-3"
+            style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+            Nouveau projet
+          </h1>
         </div>
+
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nom du projet *</label>
-            <input value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))} required
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="Ex: Appartement T4 - Paris" />
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>
+              Nom du projet *
+            </label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setForm(prev => ({ ...prev, name: e.target.value }))}
+              required
+              maxLength={100}
+              className="input"
+              placeholder="Ex: Appartement T4 - Paris 11e"
+            />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Type de structure</label>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text)' }}>
+              Type de structure
+            </label>
             <div className="grid grid-cols-2 gap-3">
-              {[{ value: 'BUILDING', label: '🏠 Bâtiment' }, { value: 'FREE', label: '🔧 Structure libre' }].map(opt => (
-                <button key={opt.value} type="button"
-                  onClick={() => setForm(p => ({ ...p, structureType: opt.value }))}
-                  className={`p-4 rounded-lg border-2 text-left transition-colors ${form.structureType === opt.value ? 'border-primary-600 bg-primary-50' : 'border-gray-200'}`}>
-                  <div className="font-medium">{opt.label}</div>
+              {[
+                { value: 'BUILDING', label: '🏠 Bâtiment', desc: 'Étages et pièces' },
+                { value: 'FREE', label: '🔧 Structure libre', desc: 'Multi-industrie' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setForm(prev => ({ ...prev, structureType: opt.value }))}
+                  className="p-4 rounded-xl border-2 text-left transition-colors"
+                  style={{
+                    borderColor: form.structureType === opt.value ? 'var(--violet)' : 'var(--border)',
+                    background: form.structureType === opt.value ? 'var(--violet-light)' : 'white',
+                  }}>
+                  <div className="font-medium text-sm" style={{ color: 'var(--text)' }}>
+                    {opt.label}
+                  </div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {opt.desc}
+                  </div>
                 </button>
               ))}
             </div>
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Secteur</label>
-            <select value={form.sector} onChange={(e) => setForm(p => ({ ...p, sector: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500">
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>
+              Secteur
+            </label>
+            <select
+              value={form.sector}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                setForm(prev => ({ ...prev, sector: e.target.value }))}
+              className="input">
               <option value="">Sélectionner (optionnel)</option>
               <option value="Immobilier">Immobilier</option>
               <option value="Architecture">Architecture</option>
@@ -62,9 +122,15 @@ export default function NewProjectPage() {
               <option value="Autre">Autre</option>
             </select>
           </div>
-          {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
-          <button type="submit" disabled={loading}
-            className="w-full bg-primary-700 text-white py-3 rounded-lg font-medium hover:bg-primary-800 transition-colors disabled:opacity-60">
+
+          {error && (
+            <div className="p-3 rounded-xl text-sm"
+              style={{ background: '#FEF2F2', color: '#EF4444', border: '1px solid #FECACA' }}>
+              {error}
+            </div>
+          )}
+
+          <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-3">
             {loading ? 'Création...' : 'Créer le projet'}
           </button>
         </form>
