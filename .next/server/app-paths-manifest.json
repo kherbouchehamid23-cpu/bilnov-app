@@ -8,12 +8,17 @@
   "/api/projects/[id]/files/route": "app/api/projects/[id]/files/route.js",
   "/api/files/[id]/url/route": "app/api/files/[id]/url/route.js",
   "/api/projects/[id]/route": "app/api/projects/[id]/route.js",
+  "/api/projects/[id]/tours/[tourId]/publish/route": "app/api/projects/[id]/tours/[tourId]/publish/route.js",
+  "/api/projects/[id]/tours/[tourId]/route": "app/api/projects/[id]/tours/[tourId]/route.js",
+  "/api/projects/[id]/tours/[tourId]/scenes/route": "app/api/projects/[id]/tours/[tourId]/scenes/route.js",
+  "/api/projects/[id]/tours/route": "app/api/projects/[id]/tours/route.js",
   "/api/projects/route": "app/api/projects/route.js",
   "/api/test-r2/route": "app/api/test-r2/route.js",
   "/dashboard/page": "app/dashboard/page.js",
   "/login/page": "app/login/page.js",
   "/page": "app/page.js",
   "/projects/[id]/page": "app/projects/[id]/page.js",
+  "/projects/[id]/tours/[tourId]/page": "app/projects/[id]/tours/[tourId]/page.js",
   "/projects/new/page": "app/projects/new/page.js",
   "/register/page": "app/register/page.js"
 }
