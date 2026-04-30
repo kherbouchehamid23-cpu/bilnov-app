@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api-client';
-
+import { fetchWithAuth } from '@/lib/auth-client';
 interface Project {
   id: string;
   name: string;
@@ -92,7 +92,7 @@ export default function ProjectPage() {
     );
     for (const file of imageFiles) {
       try {
-        const res = await fetch(`/api/file-url/${file.id}?purpose=view`, {
+        const res = await fetchWithAuth(`/api/file-url/${file.id}?purpose=view`, {
           headers: { Authorization: `Bearer ${getToken()}` },
         });
         const data = await res.json() as ThumbnailApiResponse;
@@ -128,7 +128,7 @@ export default function ProjectPage() {
     formData.append('file', file);
     if (selectedNodeId) formData.append('nodeId', selectedNodeId);
     try {
-      await fetch(`/api/projects/${id}/files`, {
+      await fetchWithAuth(`/api/projects/${id}/files`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}` },
         body: formData,
@@ -146,7 +146,7 @@ export default function ProjectPage() {
     if (openingId) return;
     setOpeningId(fileId);
     try {
-      const res = await fetch(`/api/file-url/${fileId}?purpose=view`, {
+      const res = await fetchWithAuth(`/api/file-url/${fileId}?purpose=view`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json() as ThumbnailApiResponse;
@@ -168,7 +168,7 @@ export default function ProjectPage() {
     if (!tourName.trim()) return;
     setCreatingTour(true);
     try {
-      const res = await fetch(`/api/projects/${id}/tours`, {
+      const res = await fetchWithAuth(`/api/projects/${id}/tours`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: tourName }),
@@ -187,7 +187,7 @@ export default function ProjectPage() {
     if (!nodeName.trim()) return;
     setCreatingNode(true);
     try {
-      const res = await fetch(`/api/projects/${id}/nodes`, {
+      const res = await fetchWithAuth(`/api/projects/${id}/nodes`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: nodeName, nodeType, parentId: nodeParentId }),
@@ -207,7 +207,7 @@ export default function ProjectPage() {
   const deleteNode = async (nodeId: string): Promise<void> => {
     if (!confirm('Supprimer cet espace ? Les fichiers associés ne seront pas supprimés.')) return;
     try {
-      await fetch(`/api/projects/${id}/nodes/${nodeId}`, {
+      await fetchWithAuth(`/api/projects/${id}/nodes/${nodeId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${getToken()}` },
       });
