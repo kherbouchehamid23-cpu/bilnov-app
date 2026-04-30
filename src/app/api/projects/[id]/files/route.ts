@@ -8,8 +8,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
 
+    const nodeId = req.nextUrl.searchParams.get('nodeId');
+    const where: any = {
+      projectId: params.id,
+      status: 'ACTIVE',
+      deletedAt: null,
+    };
+
+    if (nodeId) {
+      where.nodeId = nodeId;
+    }
+
     const files = await prisma.file.findMany({
-      where: { projectId: params.id, status: 'ACTIVE', deletedAt: null },
+      where,
       orderBy: { createdAt: 'desc' },
     });
 

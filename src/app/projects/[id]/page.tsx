@@ -63,6 +63,9 @@ export default function ProjectPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [editingFileId, setEditingFileId] = useState<string | null>(null);
+  const [editingFileName, setEditingFileName] = useState('');
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [showTourForm, setShowTourForm] = useState(false);
   const [tourName, setTourName] = useState('');
@@ -152,6 +155,57 @@ export default function ProjectPage() {
       alert('Erreur ouverture fichier');
     } finally {
       setOpeningId(null);
+    }
+  };
+
+  const startEditFile = (fileId: string, name: string): void => {
+    setEditingFileId(fileId);
+    setEditingFileName(name);
+  };
+
+  const saveFileName = async (fileId: string): Promise<void> => {
+    if (!editingFileName.trim()) {
+      alert('Le nom du fichier ne peut pas être vide');
+      return;
+    }
+    setActionLoadingId(fileId);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${id}/files/${fileId}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingFileName.trim() }),
+      });
+      if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.error?.message ?? 'Erreur modification fichier');
+      }
+      await loadFiles(selectedNodeId);
+      setEditingFileId(null);
+      setEditingFileName('');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur modification fichier');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const deleteFile = async (fileId: string): Promise<void> => {
+    if (!confirm('Supprimer ce fichier ? Cette opération est définitive.')) return;
+    setActionLoadingId(fileId);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${id}/files/${fileId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.error?.message ?? 'Erreur suppression fichier');
+      }
+      await loadFiles(selectedNodeId);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur suppression fichier');
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
@@ -429,33 +483,81 @@ export default function ProjectPage() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                   {files.map(file => (
-                    <button
-                      key={file.id}
-                      onClick={() => { void openFile(file.id); }}
-                      disabled={!!openingId}
-                      className="file-card">
-                      {/* Thumbnail or icon */}
-                      <div className="w-full h-24 rounded-xl mb-3 flex items-center justify-center overflow-hidden"
-                        style={{ background: 'var(--surface-2)' }}>
-                        {thumbnails[file.id] ? (
-                          <img
-                            src={thumbnails[file.id]}
-                            alt={file.name}
-                            className="w-full h-full object-cover"
+                    <div key={file.id} className="file-card relative">
+                      <button
+                        type="button"
+                        onClick={() => { void openFile(file.id); }}
+                        disabled={!!openingId}
+                        className="w-full text-left"
+                        style={{ background: 'transparent' }}>
+                        <div className="w-full h-24 rounded-xl mb-3 flex items-center justify-center overflow-hidden"
+                          style={{ background: 'var(--surface-2)' }}>
+                          {thumbnails[file.id] ? (
+                            <img
+                              src={thumbnails[file.id]}
+                              alt={file.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-3xl">
+                              {openingId === file.id ? '⏳' : (icons[file.fileType] ?? '📁')}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-medium truncate mb-1" style={{ color: 'var(--text)' }}>
+                          {file.name}
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--text-light)' }}>
+                          {Math.round(Number(file.sizeBytes) / 1024)} Ko
+                        </p>
+                      </button>
+
+                      {editingFileId === file.id ? (
+                        <div className="mt-3 space-y-2">
+                          <input
+                            value={editingFileName}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingFileName(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') { void saveFileName(file.id); } }}
+                            className="input text-sm"
+                            placeholder="Nouveau nom du fichier"
+                            disabled={actionLoadingId === file.id}
                           />
-                        ) : (
-                          <span className="text-3xl">
-                            {openingId === file.id ? '⏳' : (icons[file.fileType] ?? '📁')}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm font-medium truncate mb-1" style={{ color: 'var(--text)' }}>
-                        {file.name}
-                      </p>
-                      <p className="text-xs" style={{ color: 'var(--text-light)' }}>
-                        {Math.round(Number(file.sizeBytes) / 1024)} Ko
-                      </p>
-                    </button>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => { void saveFileName(file.id); }}
+                              disabled={actionLoadingId === file.id}
+                              className="btn-primary text-xs py-1.5 flex-1">
+                              {actionLoadingId === file.id ? '...' : 'Enregistrer'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingFileId(null); setEditingFileName(''); }}
+                              disabled={actionLoadingId === file.id}
+                              className="btn-secondary text-xs py-1.5">
+                              Annuler
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); startEditFile(file.id, file.name); }}
+                            disabled={!!openingId || actionLoadingId === file.id}
+                            className="btn-secondary text-xs py-1.5 flex-1">
+                            ✎ Renommer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); void deleteFile(file.id); }}
+                            disabled={actionLoadingId === file.id}
+                            className="btn-secondary text-xs py-1.5 text-red-500 border-red-200 hover:bg-red-50">
+                            🗑 Supprimer
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
