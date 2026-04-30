@@ -52,8 +52,8 @@ export default function DashboardPage() {
         <nav className="flex-1 p-3 space-y-1">
           {[
             { icon: '⊞', label: 'Projets', href: '/dashboard', active: true },
-            { icon: '🌐', label: 'Visites 360°', href: '/tours' },
-            { icon: '📁', label: 'Fichiers', href: '/files' },
+            { icon: '🌐', label: 'Visites 360°', href: '/dashboard' },
+            { icon: '📁', label: 'Fichiers', href: '/dashboard' },
           ].map(item => (
             <Link key={item.label} href={item.href}
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
