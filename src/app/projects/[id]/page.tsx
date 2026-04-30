@@ -25,13 +25,16 @@ interface Tour {
   _count?: { scenes: number };
 }
 
+type Tab = 'files' | 'tours' | 'team' | 'access';
+
 export default function ProjectPage() {
   const params = useParams();
   const id = params.id as string;
+
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [tours, setTours] = useState<Tour[]>([]);
-  const [tab, setTab] = useState<'files' | 'tours'>('files');
+  const [tab, setTab] = useState<Tab>('files');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -39,11 +42,16 @@ export default function ProjectPage() {
   const [tourName, setTourName] = useState('');
   const [creatingTour, setCreatingTour] = useState(false);
 
+  const getToken = (): string => {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('bilnov_token') ?? '';
+  };
+
   useEffect(() => {
-    Promise.all([
-      api.get<{ data: Project }>('/api/projects/' + id),
-      api.get<{ data: { files: FileItem[] } }>('/api/projects/' + id + '/files'),
-      api.get<{ data: { tours: Tour[] } }>('/api/projects/' + id + '/tours'),
+    void Promise.all([
+      api.get<{ data: Project }>(`/api/projects/${id}`),
+      api.get<{ data: { files: FileItem[] } }>(`/api/projects/${id}/files`),
+      api.get<{ data: { tours: Tour[] } }>(`/api/projects/${id}/tours`),
     ]).then(([p, f, t]) => {
       setProject(p.data);
       setFiles(f.data?.files ?? []);
@@ -51,39 +59,36 @@ export default function ProjectPage() {
     }).catch(() => {}).finally(() => setLoading(false));
   }, [id]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const token = localStorage.getItem('bilnov_token');
-      await fetch('/api/projects/' + id + '/files', {
+      await fetch(`/api/projects/${id}/files`, {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + (token ?? '') },
+        headers: { Authorization: `Bearer ${getToken()}` },
         body: formData,
       });
-      const r = await api.get<{ data: { files: FileItem[] } }>('/api/projects/' + id + '/files');
+      const r = await api.get<{ data: { files: FileItem[] } }>(`/api/projects/${id}/files`);
       setFiles(r.data?.files ?? []);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erreur upload';
-      alert(msg);
+      alert(err instanceof Error ? err.message : 'Erreur upload');
     } finally {
       setUploading(false);
       e.target.value = '';
     }
   };
 
-  const openFile = async (fileId: string) => {
+  const openFile = async (fileId: string): Promise<void> => {
     if (openingId) return;
     setOpeningId(fileId);
     try {
-      const token = localStorage.getItem('bilnov_token');
-      const res = await fetch('/api/file-url/' + fileId + '?purpose=view', {
-        headers: { Authorization: 'Bearer ' + (token ?? '') },
+      const res = await fetch(`/api/file-url/${fileId}?purpose=view`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
       });
-      const data = await res.json() as { data?: { url?: string }; error?: { message?: string } };
+      const data = await res.json() as { data?: { url?: string } };
       if (data?.data?.url) {
         window.open(data.data.url, '_blank');
       } else {
@@ -96,14 +101,13 @@ export default function ProjectPage() {
     }
   };
 
-  const createTour = async () => {
+  const createTour = async (): Promise<void> => {
     if (!tourName.trim()) return;
     setCreatingTour(true);
     try {
-      const token = localStorage.getItem('bilnov_token');
-      const res = await fetch('/api/projects/' + id + '/tours', {
+      const res = await fetch(`/api/projects/${id}/tours`, {
         method: 'POST',
-        headers: { Authorization: 'Bearer ' + (token ?? ''), 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: tourName }),
       });
       const data = await res.json() as { data?: Tour };
@@ -124,6 +128,13 @@ export default function ProjectPage() {
     VIDEO: '🎥', GLB: '🧊', GLTF: '🧊', OBJ: '🧊',
   };
 
+  const tabs: { key: Tab; label: string; count?: number }[] = [
+    { key: 'files', label: 'Fichiers', count: files.length },
+    { key: 'tours', label: 'Visites 360°', count: tours.length },
+    { key: 'team', label: 'Intervenants' },
+    { key: 'access', label: 'Partage' },
+  ];
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center"
@@ -135,13 +146,16 @@ export default function ProjectPage() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--surface)' }}>
+      {/* Header */}
       <header className="sticky top-0 z-40 glass border-b px-6 py-4"
         style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/dashboard"
               className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-stone-100 transition-colors"
-              style={{ color: 'var(--text-muted)' }}>←</Link>
+              style={{ color: 'var(--text-muted)' }}>
+              ←
+            </Link>
             <div className="w-8 h-8 rounded-lg flex items-center justify-center"
               style={{ background: 'var(--violet)' }}>
               <span className="text-white font-bold text-sm">B</span>
@@ -159,9 +173,9 @@ export default function ProjectPage() {
           </div>
           <div>
             {tab === 'files' && (
-              <label className={'btn-primary text-sm cursor-pointer ' + (uploading ? 'opacity-60' : '')}>
+              <label className={`btn-primary text-sm cursor-pointer ${uploading ? 'opacity-60' : ''}`}>
                 {uploading ? 'Upload...' : '+ Ajouter fichier'}
-                <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
+                <input type="file" className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
               </label>
             )}
             {tab === 'tours' && (
@@ -169,49 +183,58 @@ export default function ProjectPage() {
                 + Nouvelle visite 360°
               </button>
             )}
+            {tab === 'team' && (
+              <Link href={`/projects/${id}/team`} className="btn-primary text-sm">
+                + Inviter un intervenant
+              </Link>
+            )}
+            {tab === 'access' && (
+              <Link href={`/projects/${id}/access`} className="btn-primary text-sm">
+                + Créer un code
+              </Link>
+            )}
           </div>
         </div>
       </header>
 
+      {/* Tabs */}
       <div className="border-b" style={{ background: 'white', borderColor: 'var(--border)' }}>
-        <div className="max-w-6xl mx-auto px-6 flex gap-1">
-          {([
-            { key: 'files' as const, label: 'Fichiers', count: files.length },
-            { key: 'tours' as const, label: 'Visites 360°', count: tours.length },
-          ]).map(t => (
+        <div className="max-w-6xl mx-auto px-6 flex gap-1 overflow-x-auto">
+          {tabs.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors"
+              className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap"
               style={{
                 borderColor: tab === t.key ? 'var(--violet)' : 'transparent',
                 color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)',
               }}>
               {t.label}
-              <span className="px-1.5 py-0.5 rounded-full text-xs"
-                style={{
-                  background: tab === t.key ? 'var(--violet-light)' : 'var(--surface-2)',
-                  color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)',
-                }}>
-                {t.count}
-              </span>
+              {t.count !== undefined && (
+                <span className="px-1.5 py-0.5 rounded-full text-xs"
+                  style={{
+                    background: tab === t.key ? 'var(--violet-light)' : 'var(--surface-2)',
+                    color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)',
+                  }}>
+                  {t.count}
+                </span>
+              )}
             </button>
           ))}
         </div>
       </div>
 
       <main className="max-w-6xl mx-auto px-6 py-8 w-full">
+        {/* Files tab */}
         {tab === 'files' && (
           <>
             {files.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <div className="text-4xl mb-3">📂</div>
-                <p style={{ color: 'var(--text-muted)' }}>
-                  Aucun fichier. Uploadez votre premier fichier.
-                </p>
+                <p style={{ color: 'var(--text-muted)' }}>Aucun fichier. Uploadez votre premier fichier.</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {files.map(file => (
-                  <button key={file.id} onClick={() => openFile(file.id)}
+                  <button key={file.id} onClick={() => { void openFile(file.id); }}
                     disabled={!!openingId} className="file-card">
                     <div className="text-3xl mb-3 text-center">
                       {openingId === file.id ? '⏳' : (icons[file.fileType] ?? '📁')}
@@ -233,6 +256,7 @@ export default function ProjectPage() {
           </>
         )}
 
+        {/* Tours tab */}
         {tab === 'tours' && (
           <>
             {showTourForm && (
@@ -274,7 +298,7 @@ export default function ProjectPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {tours.map(tour => (
-                  <Link key={tour.id} href={'/projects/' + id + '/tours/' + tour.id}>
+                  <Link key={tour.id} href={`/projects/${id}/tours/${tour.id}`}>
                     <div className="file-card rounded-2xl p-5">
                       <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-4"
                         style={{ background: 'var(--violet-light)' }}>🌐</div>
@@ -295,6 +319,42 @@ export default function ProjectPage() {
               </div>
             )}
           </>
+        )}
+
+        {/* Team tab */}
+        {tab === 'team' && (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4"
+              style={{ background: 'var(--violet-light)' }}>👥</div>
+            <h3 className="font-bold text-lg mb-2"
+              style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+              Gérer les intervenants
+            </h3>
+            <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+              Invitez des collaborateurs et gérez leurs permissions.
+            </p>
+            <Link href={`/projects/${id}/team`} className="btn-primary">
+              Gérer les intervenants
+            </Link>
+          </div>
+        )}
+
+        {/* Access tab */}
+        {tab === 'access' && (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4"
+              style={{ background: 'var(--violet-light)' }}>🔗</div>
+            <h3 className="font-bold text-lg mb-2"
+              style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+              Codes de partage
+            </h3>
+            <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+              Créez des codes d&apos;accès sécurisés pour partager ce projet.
+            </p>
+            <Link href={`/projects/${id}/access`} className="btn-primary">
+              Gérer les codes
+            </Link>
+          </div>
         )}
       </main>
     </div>
