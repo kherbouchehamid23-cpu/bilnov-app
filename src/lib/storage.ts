@@ -16,7 +16,7 @@ function getClient(): S3Client {
       accessKeyId: process.env.STORAGE_ACCESS_KEY ?? '',
       secretAccessKey: process.env.STORAGE_SECRET_KEY ?? '',
     },
-    forcePathStyle: false,
+    forcePathStyle: true,
   });
 }
 
