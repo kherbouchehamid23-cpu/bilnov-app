@@ -146,22 +146,13 @@ export default function ProjectPage() {
     if (openingId) return;
     setOpeningId(fileId);
     try {
-      const res = await fetchWithAuth(`/api/file-url/${fileId}?purpose=view`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const data = await res.json() as ThumbnailApiResponse;
-      if (data.data?.url) {
-      const a = document.createElement('a');
-      a.href = data.data.url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const token = getToken();
+      window.open('/api/file-proxy/' + fileId + '?token=' + encodeURIComponent(token), '_blank');
+    } catch {
+      alert('Erreur ouverture fichier');
+    } finally {
+      setOpeningId(null);
     }
-      else alert('Impossible d\'obtenir le lien');
-    } catch { alert('Erreur'); }
-    finally { setOpeningId(null); }
   };
 
   const createTour = async (): Promise<void> => {
