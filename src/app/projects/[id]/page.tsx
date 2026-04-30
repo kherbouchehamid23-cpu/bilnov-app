@@ -150,7 +150,15 @@ export default function ProjectPage() {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json() as ThumbnailApiResponse;
-      if (data.data?.url) window.open(data.data.url, '_blank');
+      if (data.data?.url) {
+      const a = document.createElement('a');
+      a.href = data.data.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
       else alert('Impossible d\'obtenir le lien');
     } catch { alert('Erreur'); }
     finally { setOpeningId(null); }
