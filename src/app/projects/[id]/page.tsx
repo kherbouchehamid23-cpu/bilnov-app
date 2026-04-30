@@ -522,37 +522,37 @@ export default function ProjectPage() {
                             placeholder="Nouveau nom du fichier"
                             disabled={actionLoadingId === file.id}
                           />
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
                               onClick={() => { void saveFileName(file.id); }}
                               disabled={actionLoadingId === file.id}
-                              className="btn-primary text-xs py-1.5 flex-1">
+                              className="btn-primary text-xs py-1 px-2 flex-1 min-w-0">
                               {actionLoadingId === file.id ? '...' : 'Enregistrer'}
                             </button>
                             <button
                               type="button"
                               onClick={() => { setEditingFileId(null); setEditingFileName(''); }}
                               disabled={actionLoadingId === file.id}
-                              className="btn-secondary text-xs py-1.5">
+                              className="btn-secondary text-xs py-1 px-2 min-w-0">
                               Annuler
                             </button>
                           </div>
                         </div>
                       ) : (
-                        <div className="mt-3 flex gap-2">
+                        <div className="mt-3 flex flex-wrap gap-2">
                           <button
                             type="button"
                             onClick={e => { e.stopPropagation(); startEditFile(file.id, file.name); }}
                             disabled={!!openingId || actionLoadingId === file.id}
-                            className="btn-secondary text-xs py-1.5 flex-1">
+                            className="btn-secondary text-xs py-1 px-2 flex-1 min-w-0">
                             ✎ Renommer
                           </button>
                           <button
                             type="button"
                             onClick={e => { e.stopPropagation(); void deleteFile(file.id); }}
                             disabled={actionLoadingId === file.id}
-                            className="btn-secondary text-xs py-1.5 text-red-500 border-red-200 hover:bg-red-50">
+                            className="btn-secondary text-xs py-1 px-2 min-w-0 text-red-500 border-red-200 hover:bg-red-50">
                             🗑 Supprimer
                           </button>
                         </div>
