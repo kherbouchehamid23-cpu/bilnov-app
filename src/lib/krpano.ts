@@ -9,15 +9,12 @@ import AdmZip from 'adm-zip';
 
 // ---------------------------------------------------------------------------
 // Client S3 / R2 (mêmes variables d'env que lib/storage.ts)
-// Singleton : un SEUL client réutilisé pour toutes les opérations. Recréer un
-// client par fichier provoquait des milliers de résolutions DNS simultanées
-// lors de l'extraction (getaddrinfo EBUSY).
 // ---------------------------------------------------------------------------
-let _client: S3Client | null = null;
+let _krpanoClient: S3Client | null = null;
 
 export function krpanoClient(): S3Client {
-  if (_client) return _client;
-  _client = new S3Client({
+  if (_krpanoClient) return _krpanoClient;
+  _krpanoClient = new S3Client({
     endpoint: process.env.STORAGE_ENDPOINT,
     region: process.env.STORAGE_REGION ?? 'auto',
     credentials: {
@@ -27,7 +24,7 @@ export function krpanoClient(): S3Client {
     forcePathStyle: true,
     maxAttempts: 5,
   });
-  return _client;
+  return _krpanoClient;
 }
 
 export function krpanoBucket(): string {
@@ -157,13 +154,13 @@ export async function deletePrefix(prefix: string): Promise<number> {
 // Extraction du ZIP vers R2
 // ---------------------------------------------------------------------------
 export interface ExtractResult {
-  entryKey: string; // chemin relatif du HTML d'entrée (ex: "tour.html")
-  thumbKey: string | null; // chemin relatif d'une vignette (ex: "panos/1.tiles/thumb.jpg")
-  fileCount: number; // nombre total de fichiers du tour
-  totalSize: number; // taille totale décompressée (octets)
+  entryKey: string;
+  thumbKey: string | null;
+  fileCount: number;
+  totalSize: number;
   sceneCount: number;
-  uploaded: number; // nombre de fichiers déjà présents sur R2
-  done: boolean; // true quand tous les fichiers sont sur R2
+  uploaded: number;
+  done: boolean;
 }
 
 // Concurrence simple pour accélérer les PUT R2
@@ -188,32 +185,25 @@ async function runPool<T>(
  * Lit le ZIP stocké à `zipKey`, le décompresse et republie chaque fichier sous
  * `storagePrefix` sur R2. Détecte automatiquement le HTML d'entrée (tour.html /
  * index.html) et la base interne du ZIP (au cas où tout serait dans un sous-dossier).
- *
- * REPRENABLE : pour les archives volumineuses (plusieurs milliers de fichiers),
- * une seule invocation serverless ne suffit pas. Cette fonction :
- *  - liste ce qui est DÉJÀ sur R2 et saute ces fichiers (idempotent) ;
- *  - s'arrête proprement avant `deadlineMs` et renvoie `done:false` ;
- *  - l'appelant (route /process) la relance tant que `done` est faux.
  */
 export async function extractZipToStorage(
   zipKey: string,
   storagePrefix: string,
   deadlineMs = 45_000,
 ): Promise<ExtractResult> {
-  const start = Date.now();
+  const startTime = Date.now();
   const zipBuffer = await getObjectBuffer(zipKey);
   const zip = new AdmZip(zipBuffer);
   const entries = zip.getEntries().filter((e) => !e.isDirectory);
 
-  // 1) Trouver le HTML d'entrée et la base interne
   const htmlCandidates = entries
     .map((e) => e.entryName.replace(/\\/g, '/'))
     .filter((n) => /(^|\/)(tour|index)\.html?$/i.test(n))
-    .sort((a, b) => a.split('/').length - b.split('/').length); // le moins profond d'abord
+    .sort((a, b) => a.split('/').length - b.split('/').length);
 
   if (htmlCandidates.length === 0) {
     throw new Error(
-      "Archive invalide : aucun fichier d'entrée tour.html ou index.html trouvé",
+      "Archive invalide : aucun fichier d'entree tour.html ou index.html trouve",
     );
   }
   const entryFull = htmlCandidates[0];
@@ -228,7 +218,57 @@ export async function extractZipToStorage(
     return true;
   });
 
-  // Métadonnées (vignette + nb scènes) : calculées sur le ZIP, peu coûteux
   let thumbKey: string | null = null;
   let sceneCount = 0;
-  let totalSiz
+  let totalSize = 0;
+  for (const e of toUpload) {
+    const fullName = e.entryName.replace(/\\/g, '/');
+    const relative = internalBase ? fullName.slice(internalBase.length) : fullName;
+    if (!relative) continue;
+    totalSize += e.header.size;
+    if (!thumbKey && /thumb\.jpe?g$/i.test(relative)) thumbKey = relative;
+    if (/tour\.xml$/i.test(relative)) {
+      const xml = e.getData().toString('utf-8');
+      sceneCount = (xml.match(/<scene\b/gi) ?? []).length;
+    }
+  }
+
+  const existing = new Set(await listKeys(storagePrefix));
+
+  const remaining = toUpload.filter((e) => {
+    const fullName = e.entryName.replace(/\\/g, '/');
+    const relative = internalBase ? fullName.slice(internalBase.length) : fullName;
+    return relative && !existing.has(storagePrefix + relative);
+  });
+
+  let timedOut = false;
+  await runPool(remaining, async (e) => {
+    if (Date.now() - startTime > deadlineMs) {
+      timedOut = true;
+      return;
+    }
+    const fullName = e.entryName.replace(/\\/g, '/');
+    const relative = internalBase ? fullName.slice(internalBase.length) : fullName;
+    if (!relative) return;
+    const data = e.getData();
+    await putObject(storagePrefix + relative, data, contentTypeFor(relative));
+    existing.add(storagePrefix + relative);
+  });
+
+  const entryRelative = internalBase
+    ? entryFull.slice(internalBase.length)
+    : entryFull;
+
+  const uploaded = existing.size;
+  const done = !timedOut && uploaded >= toUpload.length;
+
+  return {
+    entryKey: entryRelative || 'tour.html',
+    thumbKey,
+    fileCount: toUpload.length,
+    totalSize,
+    sceneCount,
+    uploaded,
+    done,
+  };
+}

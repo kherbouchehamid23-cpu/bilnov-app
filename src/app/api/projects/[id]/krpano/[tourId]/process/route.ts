@@ -25,8 +25,6 @@ export async function POST(
       return apiError('Archive source manquante', 'VALIDATION_ERROR', 400);
     }
 
-    // Traitement repreneable : ne dépasse pas ~45s par appel. Tant que `done`
-    // est faux, le tour reste en PROCESSING et l'UI relance cette route.
     const result = await extractZipToStorage(meta.zipKey, tour.storagePrefix);
 
     const wasReady = tour.status === 'READY';
@@ -43,7 +41,6 @@ export async function POST(
       },
     });
 
-    // Comptabilise l'espace utilisé une seule fois, au passage en READY
     if (result.done && !wasReady) {
       await prisma.organization.update({
         where: { id: user.organizationId },
@@ -68,4 +65,24 @@ export async function POST(
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    // Marque le tour en ERROR pour permettre une nouvelle
+    // Marque le tour en ERROR pour permettre une nouvelle tentative côté UI
+    try {
+      await prisma.krpanoTour.update({
+        where: { id: tourId },
+        data: {
+          status: 'ERROR',
+          metadata: {
+            error: error instanceof Error ? error.message : 'Erreur inconnue',
+          },
+        },
+      });
+    } catch {
+      /* ignore */
+    }
+    return apiError(
+      error instanceof Error ? error.message : 'Erreur de traitement',
+      'PROCESSING_ERROR',
+      500,
+    );
+  }
+}

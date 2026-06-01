@@ -106,7 +106,7 @@ export default function KrpanoToursPage() {
       const { data: tour } = (await regRes.json()) as { data: KrpanoTour };
       await loadTours();
 
-      // 4) Extraction / traitement (repreneable : on relance jusqu'à done)
+      // 4) Extraction / traitement (repreneable : on relance jusqu'a done)
       setPhase('Décompression et traitement de la visite…');
       await runProcessLoop(tour.id);
       await loadTours();
@@ -119,9 +119,6 @@ export default function KrpanoToursPage() {
     }
   }
 
-  // Relance /process tant que le traitement n'est pas terminé (done=false).
-  // Chaque appel envoie un lot de fichiers (≈45s max côté serveur) ; on boucle
-  // jusqu'à ce que tous les fichiers du tour soient sur R2.
   async function runProcessLoop(tourId: string): Promise<void> {
     for (let i = 0; i < 60; i++) {
       const res = await fetchWithAuth(
@@ -138,8 +135,13 @@ export default function KrpanoToursPage() {
         data: { done?: boolean; uploaded?: number; fileCount?: number };
       };
       if (data.fileCount) {
-        const pct = Math.min(100, Math.round(((data.uploaded ?? 0) / data.fileCount) * 100));
-        setPhase(`Traitement de la visite… ${pct}% (${data.uploaded}/${data.fileCount} fichiers)`);
+        const pct = Math.min(
+          100,
+          Math.round(((data.uploaded ?? 0) / data.fileCount) * 100),
+        );
+        setPhase(
+          `Traitement de la visite… ${pct}% (${data.uploaded}/${data.fileCount} fichiers)`,
+        );
       }
       if (data.done) return;
       await loadTours();
@@ -302,4 +304,26 @@ export default function KrpanoToursPage() {
             </button>
           </div>
           <iframe
-            title={vi
+            title={viewing.name}
+            src={`/api/krpano/${viewing.id}/${viewing.entryKey}?t=${encodeURIComponent(getToken())}`}
+            className="flex-1 border-0"
+            allow="accelerometer; gyroscope; fullscreen; xr-spatial-tracking"
+            allowFullScreen
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: KrpanoTour['status'] }) {
+  const map: Record<KrpanoTour['status'], { label: string; cls: string }> = {
+    READY: { label: 'Prête', cls: 'bg-emerald-100 text-emerald-700' },
+    PROCESSING: { label: 'Traitement', cls: 'bg-amber-100 text-amber-700' },
+    ERROR: { label: 'Erreur', cls: 'bg-red-100 text-red-700' },
+  };
+  const s = map[status];
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${s.cls}`}>{s.label}</span>
+  );
+}
