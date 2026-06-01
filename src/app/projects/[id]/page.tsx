@@ -4,6 +4,10 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api-client';
 import { fetchWithAuth } from '@/lib/auth-client';
+import dynamic from 'next/dynamic';
+import { isCadFile } from '@/lib/cad';
+
+const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
 interface Project {
   id: string;
   name: string;
@@ -63,6 +67,7 @@ export default function ProjectPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [cadFile, setCadFile] = useState<{ id: string; name: string } | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editingFileName, setEditingFileName] = useState('');
@@ -147,6 +152,11 @@ export default function ProjectPage() {
 
   const openFile = async (fileId: string): Promise<void> => {
     if (openingId) return;
+    const target = files.find(f => f.id === fileId);
+    if (target && isCadFile(target.name, target.fileType)) {
+      setCadFile({ id: fileId, name: target.name });
+      return;
+    }
     setOpeningId(fileId);
     try {
       const token = getToken();
@@ -671,6 +681,15 @@ export default function ProjectPage() {
           )}
         </main>
       </div>
+
+      {cadFile && (
+        <CadViewer
+          fileId={cadFile.id}
+          fileName={cadFile.name}
+          token={getToken()}
+          onClose={() => setCadFile(null)}
+        />
+      )}
     </div>
   );
 }
