@@ -10,6 +10,9 @@ function detectFileType(mimeType: string, filename: string): string {
   if (ext === 'glb') return 'GLB';
   if (ext === 'gltf') return 'GLTF';
   if (ext === 'obj') return 'OBJ';
+  if (ext === 'dwg') return 'DWG';
+  if (ext === 'dxf') return 'DXF';
+  if (ext === 'ifc') return 'IFC';
   return 'OTHER';
 }
 

@@ -6,6 +6,7 @@ import { api } from '@/lib/api-client';
 import { fetchWithAuth } from '@/lib/auth-client';
 import dynamic from 'next/dynamic';
 import { isCadFile } from '@/lib/cad';
+import { uploadFileDirect } from '@/lib/upload';
 
 const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
 interface Project {
@@ -132,15 +133,10 @@ export default function ProjectPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    if (selectedNodeId) formData.append('nodeId', selectedNodeId);
     try {
-      await fetchWithAuth(`/api/projects/${id}/files`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
-        body: formData,
-      });
+      // Upload direct vers R2 via URL pre-signee (contourne la limite de body
+      // des fonctions Vercel ~4,5 Mo). Meme mecanisme que les visites krpano.
+      await uploadFileDirect(file, id, getToken(), selectedNodeId ?? null);
       await loadFiles(selectedNodeId);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Erreur upload');
