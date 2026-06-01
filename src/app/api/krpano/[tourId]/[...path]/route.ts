@@ -72,7 +72,7 @@ export async function GET(
       );
     }
 
-    return new Response(buffer, { status: 200, headers });
+    return new Response(new Uint8Array(buffer), { status: 200, headers });
   } catch (error) {
     return new Response(
       error instanceof Error ? error.message : 'Erreur',
