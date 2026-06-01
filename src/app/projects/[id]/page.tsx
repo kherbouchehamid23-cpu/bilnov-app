@@ -10,6 +10,7 @@ import { uploadFileDirect } from '@/lib/upload';
 import { makeThumb, getCachedThumb } from '@/lib/thumbs';
 
 const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
+const VisitesPanel = dynamic(() => import('@/components/VisitesPanel'), { ssr: false });
 
 interface ProjectAccess { role: 'owner' | 'member'; canView: boolean; canUpload: boolean; canDownload: boolean; canShare: boolean; canManage: boolean; }
 interface Project { id: string; name: string; sector: string | null; structureType: string; access?: ProjectAccess; }
@@ -21,7 +22,6 @@ interface FileItem {
   id: string; name: string; fileType: string; mimeType: string;
   sizeBytes: string | number | bigint; nodeId: string | null;
 }
-interface Tour { id: string; name: string; status: string; }
 interface NodesApiResponse { data: { nodes: StructureNode[] }; }
 interface FilesApiResponse { data: { files: FileItem[] }; }
 interface ThumbnailApiResponse { data: { url: string }; }
@@ -50,7 +50,6 @@ export default function ProjectPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [nodes, setNodes] = useState<StructureNode[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
-  const [tours, setTours] = useState<Tour[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('files');
   const [loading, setLoading] = useState(true);
@@ -62,9 +61,6 @@ export default function ProjectPage() {
   const [editingFileName, setEditingFileName] = useState('');
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [menuFileId, setMenuFileId] = useState<string | null>(null);
-  const [showTourForm, setShowTourForm] = useState(false);
-  const [tourName, setTourName] = useState('');
-  const [creatingTour, setCreatingTour] = useState(false);
   // Ajout de nœud express : on garde l'id parent ciblé + le type déduit
   const [addingUnder, setAddingUnder] = useState<{ parentId: string | null; type: string } | null>(null);
   const [nodeName, setNodeName] = useState('');
@@ -123,11 +119,9 @@ export default function ProjectPage() {
     void Promise.all([
       api.get<{ data: Project }>(`/api/projects/${id}`),
       api.get<NodesApiResponse>(`/api/projects/${id}/nodes`),
-      api.get<{ data: { tours: Tour[] } }>(`/api/projects/${id}/tours`),
-    ]).then(([p, n, t]) => {
+    ]).then(([p, n]) => {
       setProject(p.data);
       setNodes(n.data?.nodes ?? []);
-      setTours(t.data?.tours ?? []);
     }).catch(() => {}).finally(() => setLoading(false));
     void loadFiles(null);
   }, [id, loadFiles]);
@@ -194,19 +188,6 @@ export default function ProjectPage() {
     } finally { setActionLoadingId(null); setMenuFileId(null); }
   }
 
-  async function createTour(): Promise<void> {
-    if (!tourName.trim()) return;
-    setCreatingTour(true);
-    try {
-      const res = await fetchWithAuth(`/api/projects/${id}/tours`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: tourName }),
-      });
-      const data = (await res.json()) as { data?: Tour };
-      if (data.data) { setTours(prev => [data.data as Tour, ...prev]); setTourName(''); setShowTourForm(false); }
-    } catch { alert('Erreur'); }
-    finally { setCreatingTour(false); }
-  }
 
   // Ajout express : type déjà déduit, un seul champ (nom)
   function startAdd(parentId: string | null, parentType?: string) {
@@ -340,7 +321,7 @@ export default function ProjectPage() {
 
   const tabs: { key: Tab; label: string; icon: string; count?: number }[] = [
     { key: 'files', label: 'Fichiers', icon: '📁', count: files.length },
-    { key: 'tours', label: 'Visites', icon: '🌐', count: tours.length },
+    { key: 'tours', label: 'Visites', icon: '🌐' },
     { key: 'team', label: 'Équipe', icon: '👥' },
     { key: 'access', label: 'Partage', icon: '🔗' },
   ];
@@ -383,9 +364,7 @@ export default function ProjectPage() {
               <input type="file" multiple className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
             </label>
           )}
-          {tab === 'tours' && (
-            <button className="btn-primary text-sm" style={{ minHeight: 40 }} onClick={() => setShowTourForm(true)}>＋ Visite</button>
-          )}
+
         </div>
       </header>
 
@@ -517,57 +496,9 @@ export default function ProjectPage() {
             </>
           )}
 
-          {/* TOURS */}
+          {/* TOURS — visites 360 + krpano unifiees */}
           {tab === 'tours' && (
-            <>
-              <Link href={`/projects/${id}/krpano`}
-                className="flex items-center gap-3 mb-5 p-4 rounded-2xl"
-                style={{ background: 'var(--violet-light)' }}>
-                <span style={{ fontSize: 28 }}>🏛️</span>
-                <span className="flex-1">
-                  <span className="block font-semibold" style={{ color: 'var(--violet)' }}>Visites krpano / Pano2VR</span>
-                  <span className="block text-xs" style={{ color: 'var(--violet)' }}>Uploader et lire vos archives .zip (tours tuilés)</span>
-                </span>
-                <span style={{ color: 'var(--violet)' }}>→</span>
-              </Link>
-              {showTourForm && (
-                <div className="mb-6 p-4 rounded-2xl border" style={{ background: 'white', borderColor: 'var(--violet-light)' }}>
-                  <h3 className="font-bold mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>Nouvelle visite 360°</h3>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input className="input flex-1" placeholder="Nom de la visite" value={tourName}
-                      onChange={e => setTourName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') void createTour(); }} autoFocus />
-                    <button onClick={() => { void createTour(); }} disabled={creatingTour || !tourName.trim()} className="btn-primary">
-                      {creatingTour ? '...' : 'Créer'}
-                    </button>
-                    <button onClick={() => setShowTourForm(false)} className="btn-secondary">Annuler</button>
-                  </div>
-                </div>
-              )}
-              {tours.length === 0 && !showTourForm ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-5" style={{ background: 'var(--violet-light)' }}>🌐</div>
-                  <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Aucune visite 360°</h3>
-                  <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Créez votre première visite virtuelle.</p>
-                  <button className="btn-primary" onClick={() => setShowTourForm(true)}>＋ Créer une visite 360°</button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {tours.map(tour => (
-                    <Link key={tour.id} href={`/projects/${id}/tours/${tour.id}`}>
-                      <div className="file-card rounded-2xl p-5">
-                        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-4" style={{ background: 'var(--violet-light)' }}>🌐</div>
-                        <h3 className="font-bold text-base mb-1" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{tour.name}</h3>
-                        <span className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ background: tour.status === 'PUBLISHED' ? '#ECFDF5' : 'var(--surface-2)', color: tour.status === 'PUBLISHED' ? '#10B981' : 'var(--text-muted)' }}>
-                          {tour.status === 'PUBLISHED' ? '● Publié' : '○ Brouillon'}
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </>
+            <VisitesPanel projectId={id} canManage={canManage} getToken={getToken} />
           )}
 
           {/* TEAM */}
