@@ -661,4 +661,16 @@ export default function ProjectPage() {
                 style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
                 Codes de partage
               </h3>
-              <p className="text-sm mb-6" style={{ color: 'v
+              <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+                Créez des codes d&apos;accès sécurisés.
+              </p>
+              <Link href={`/projects/${id}/access`} className="btn-primary">
+                Gérer les codes
+              </Link>
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
