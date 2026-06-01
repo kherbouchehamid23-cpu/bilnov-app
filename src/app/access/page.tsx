@@ -1,6 +1,6 @@
 'use client';
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 interface AccessData {
   project: {
@@ -22,13 +22,15 @@ interface ApiResponse {
   error?: { message: string };
 }
 
-export default function AccessPage() {
+function AccessInner() {
   const router = useRouter();
   const [digits, setDigits] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const validate = async (code: string): Promise<void> => {
+  const searchParams = useSearchParams();
+
+  const validate = useCallback(async (code: string): Promise<void> => {
     setLoading(true);
     setError('');
     try {
@@ -50,7 +52,16 @@ export default function AccessPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  // Lien partageable : /access?code=123456 -> validation automatique
+  useEffect(() => {
+    const c = searchParams.get('code');
+    if (c && /^\d{6}$/.test(c)) {
+      setDigits(c.split(''));
+      void validate(c);
+    }
+  }, [searchParams, validate]);
 
   const handleDigit = (n: string): void => {
     if (loading) return;
@@ -174,5 +185,13 @@ export default function AccessPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AccessPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh' }} />}>
+      <AccessInner />
+    </Suspense>
   );
 }

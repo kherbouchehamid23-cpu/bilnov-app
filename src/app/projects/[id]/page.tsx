@@ -511,6 +511,16 @@ export default function ProjectPage() {
           {/* TOURS */}
           {tab === 'tours' && (
             <>
+              <Link href={`/projects/${id}/krpano`}
+                className="flex items-center gap-3 mb-5 p-4 rounded-2xl"
+                style={{ background: 'var(--violet-light)' }}>
+                <span style={{ fontSize: 28 }}>🏛️</span>
+                <span className="flex-1">
+                  <span className="block font-semibold" style={{ color: 'var(--violet)' }}>Visites krpano / Pano2VR</span>
+                  <span className="block text-xs" style={{ color: 'var(--violet)' }}>Uploader et lire vos archives .zip (tours tuilés)</span>
+                </span>
+                <span style={{ color: 'var(--violet)' }}>→</span>
+              </Link>
               {showTourForm && (
                 <div className="mb-6 p-4 rounded-2xl border" style={{ background: 'white', borderColor: 'var(--violet-light)' }}>
                   <h3 className="font-bold mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>Nouvelle visite 360°</h3>
@@ -548,11 +558,6 @@ export default function ProjectPage() {
                   ))}
                 </div>
               )}
-              <div className="mt-6">
-                <Link href={`/projects/${id}/krpano`} className="text-sm" style={{ color: 'var(--violet)' }}>
-                  → Visites krpano / Pano2VR (archives .zip)
-                </Link>
-              </div>
             </>
           )}
 

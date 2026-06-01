@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import QRCode from 'qrcode';
 
 interface AccessCode {
   id: string;
@@ -42,6 +43,9 @@ export default function AccessCodesPage() {
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newCode, setNewCode] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [shareUrl, setShareUrl] = useState<string>('');
+  const [copied, setCopied] = useState<string>('');
   const [error, setError] = useState('');
   const [form, setForm] = useState<CreateCodeForm>({
     canView: true,
@@ -98,7 +102,14 @@ export default function AccessCodesPage() {
         const errData = data as unknown as { error?: { message?: string } };
         setError(errData.error?.message ?? 'Erreur lors de la création');
       } else {
-        setNewCode(data.data.displayCode);
+        const code = data.data.displayCode;
+        setNewCode(code);
+        const url = `${window.location.origin}/access?code=${code}`;
+        setShareUrl(url);
+        try {
+          const qr = await QRCode.toDataURL(url, { width: 240, margin: 1 });
+          setQrDataUrl(qr);
+        } catch { /* QR optionnel */ }
         setShowForm(false);
         void fetchCodes();
       }
@@ -124,6 +135,28 @@ export default function AccessCodesPage() {
 
   const copyCode = (code: string): void => {
     void navigator.clipboard.writeText(code);
+    setCopied('code');
+    setTimeout(() => setCopied(''), 1500);
+  };
+
+  const copyLink = (): void => {
+    void navigator.clipboard.writeText(shareUrl);
+    setCopied('link');
+    setTimeout(() => setCopied(''), 1500);
+  };
+
+  const shareLink = async (): Promise<void> => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Accès partagé — BILNOV',
+          text: `Accédez aux fichiers du projet avec ce lien (code ${newCode}) :`,
+          url: shareUrl,
+        });
+      } catch { /* annulé */ }
+    } else {
+      copyLink();
+    }
   };
 
   const formatDate = (dateStr: string | null): string => {
@@ -166,22 +199,64 @@ export default function AccessCodesPage() {
         {newCode && (
           <div className="mb-8 p-6 rounded-2xl border animate-fade-up"
             style={{ background: '#ECFDF5', borderColor: '#A7F3D0' }}>
-            <h3 className="font-bold text-base mb-2" style={{ color: '#10B981' }}>
+            <h3 className="font-bold text-base mb-1" style={{ color: '#10B981' }}>
               ✓ Code créé avec succès !
             </h3>
             <p className="text-sm mb-4" style={{ color: '#065F46' }}>
-              Partagez ce code avec vos intervenants. Il ne sera plus affiché après cette page.
+              Envoyez le lien (ou le QR code) à votre intervenant : il accède directement aux fichiers, sans compte.
             </p>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 px-6 py-4 rounded-xl text-center font-mono text-3xl font-bold tracking-[0.3em]"
-                style={{ background: 'white', color: 'var(--violet)', border: '2px solid var(--violet-light)' }}>
-                {newCode}
+
+            <div className="flex flex-col md:flex-row gap-5 items-stretch">
+              {/* QR code */}
+              {qrDataUrl && (
+                <div className="flex flex-col items-center justify-center bg-white rounded-xl p-3"
+                  style={{ border: '1px solid #A7F3D0' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={qrDataUrl} alt="QR code d'accès" width={150} height={150} />
+                  <span className="text-xs mt-1" style={{ color: '#065F46' }}>Scanner pour ouvrir</span>
+                </div>
+              )}
+
+              <div className="flex-1 flex flex-col gap-3">
+                {/* Code 6 chiffres */}
+                <div>
+                  <p className="text-xs mb-1" style={{ color: '#065F46' }}>Code à 6 chiffres</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 px-4 py-3 rounded-xl text-center font-mono text-2xl font-bold tracking-[0.3em]"
+                      style={{ background: 'white', color: 'var(--violet)', border: '2px solid var(--violet-light)' }}>
+                      {newCode}
+                    </div>
+                    <button onClick={() => copyCode(newCode)} className="btn-secondary" style={{ minHeight: 44 }}>
+                      {copied === 'code' ? '✓' : '📋'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Lien partageable */}
+                <div>
+                  <p className="text-xs mb-1" style={{ color: '#065F46' }}>Lien direct</p>
+                  <div className="flex items-center gap-2">
+                    <input readOnly value={shareUrl}
+                      onFocus={e => e.currentTarget.select()}
+                      className="flex-1 px-3 py-2 rounded-xl text-sm font-mono"
+                      style={{ background: 'white', border: '1px solid #A7F3D0', color: 'var(--text)' }} />
+                    <button onClick={copyLink} className="btn-secondary" style={{ minHeight: 44 }}>
+                      {copied === 'link' ? '✓' : '🔗'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 mt-1">
+                  <button onClick={() => { void shareLink(); }} className="btn-primary flex-1" style={{ minHeight: 44 }}>
+                    📤 Partager
+                  </button>
+                  <a href={shareUrl} target="_blank" rel="noopener noreferrer"
+                    className="btn-secondary flex items-center justify-center px-4" style={{ minHeight: 44 }}>
+                    Tester
+                  </a>
+                </div>
               </div>
-              <button
-                onClick={() => copyCode(newCode)}
-                className="btn-primary px-4 py-4">
-                📋 Copier
-              </button>
             </div>
           </div>
         )}
