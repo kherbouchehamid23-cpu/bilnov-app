@@ -9,12 +9,15 @@ import AdmZip from 'adm-zip';
 
 // ---------------------------------------------------------------------------
 // Client S3 / R2 (mêmes variables d'env que lib/storage.ts)
+// Singleton : un SEUL client réutilisé pour toutes les opérations. Recréer un
+// client par fichier provoquait des milliers de résolutions DNS simultanées
+// lors de l'extraction (getaddrinfo EBUSY).
 // ---------------------------------------------------------------------------
-let _krpanoClient: S3Client | null = null;
+let _client: S3Client | null = null;
 
 export function krpanoClient(): S3Client {
-  if (_krpanoClient) return _krpanoClient;
-  _krpanoClient = new S3Client({
+  if (_client) return _client;
+  _client = new S3Client({
     endpoint: process.env.STORAGE_ENDPOINT,
     region: process.env.STORAGE_REGION ?? 'auto',
     credentials: {
@@ -24,7 +27,7 @@ export function krpanoClient(): S3Client {
     forcePathStyle: true,
     maxAttempts: 5,
   });
-  return _krpanoClient;
+  return _client;
 }
 
 export function krpanoBucket(): string {
@@ -156,9 +159,11 @@ export async function deletePrefix(prefix: string): Promise<number> {
 export interface ExtractResult {
   entryKey: string; // chemin relatif du HTML d'entrée (ex: "tour.html")
   thumbKey: string | null; // chemin relatif d'une vignette (ex: "panos/1.tiles/thumb.jpg")
-  fileCount: number;
-  totalSize: number;
+  fileCount: number; // nombre total de fichiers du tour
+  totalSize: number; // taille totale décompressée (octets)
   sceneCount: number;
+  uploaded: number; // nombre de fichiers déjà présents sur R2
+  done: boolean; // true quand tous les fichiers sont sur R2
 }
 
 // Concurrence simple pour accélérer les PUT R2
@@ -183,11 +188,19 @@ async function runPool<T>(
  * Lit le ZIP stocké à `zipKey`, le décompresse et republie chaque fichier sous
  * `storagePrefix` sur R2. Détecte automatiquement le HTML d'entrée (tour.html /
  * index.html) et la base interne du ZIP (au cas où tout serait dans un sous-dossier).
+ *
+ * REPRENABLE : pour les archives volumineuses (plusieurs milliers de fichiers),
+ * une seule invocation serverless ne suffit pas. Cette fonction :
+ *  - liste ce qui est DÉJÀ sur R2 et saute ces fichiers (idempotent) ;
+ *  - s'arrête proprement avant `deadlineMs` et renvoie `done:false` ;
+ *  - l'appelant (route /process) la relance tant que `done` est faux.
  */
 export async function extractZipToStorage(
   zipKey: string,
   storagePrefix: string,
+  deadlineMs = 45_000,
 ): Promise<ExtractResult> {
+  const start = Date.now();
   const zipBuffer = await getObjectBuffer(zipKey);
   const zip = new AdmZip(zipBuffer);
   const entries = zip.getEntries().filter((e) => !e.isDirectory);
@@ -208,12 +221,6 @@ export async function extractZipToStorage(
     ? entryFull.slice(0, entryFull.lastIndexOf('/') + 1)
     : '';
 
-  // 2) Republier chaque entrée sous le préfixe (relative à internalBase)
-  let fileCount = 0;
-  let totalSize = 0;
-  let thumbKey: string | null = null;
-  let sceneCount = 0;
-
   const toUpload = entries.filter((e) => {
     const name = e.entryName.replace(/\\/g, '/');
     if (internalBase && !name.startsWith(internalBase)) return false;
@@ -221,35 +228,7 @@ export async function extractZipToStorage(
     return true;
   });
 
-  await runPool(toUpload, async (e) => {
-    const fullName = e.entryName.replace(/\\/g, '/');
-    const relative = internalBase ? fullName.slice(internalBase.length) : fullName;
-    if (!relative) return;
-    const data = e.getData();
-    await putObject(storagePrefix + relative, data, contentTypeFor(relative));
-    fileCount += 1;
-    totalSize += data.length;
-
-    // Première vignette rencontrée
-    if (!thumbKey && /thumb\.jpe?g$/i.test(relative)) {
-      thumbKey = relative;
-    }
-    // Comptage des scènes dans le XML krpano
-    if (/tour\.xml$/i.test(relative)) {
-      const xml = data.toString('utf-8');
-      sceneCount = (xml.match(/<scene\b/gi) ?? []).length;
-    }
-  });
-
-  const entryRelative = internalBase
-    ? entryFull.slice(internalBase.length)
-    : entryFull;
-
-  return {
-    entryKey: entryRelative || 'tour.html',
-    thumbKey,
-    fileCount,
-    totalSize,
-    sceneCount,
-  };
-}
+  // Métadonnées (vignette + nb scènes) : calculées sur le ZIP, peu coûteux
+  let thumbKey: string | null = null;
+  let sceneCount = 0;
+  let totalSiz
