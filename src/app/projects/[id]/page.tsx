@@ -11,7 +11,8 @@ import { makeThumb, getCachedThumb } from '@/lib/thumbs';
 
 const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
 
-interface Project { id: string; name: string; sector: string | null; structureType: string; }
+interface ProjectAccess { role: 'owner' | 'member'; canView: boolean; canUpload: boolean; canDownload: boolean; canShare: boolean; canManage: boolean; }
+interface Project { id: string; name: string; sector: string | null; structureType: string; access?: ProjectAccess; }
 interface StructureNode {
   id: string; name: string; nodeType: string; position: number;
   parentId: string | null; children: StructureNode[]; _count: { files: number };
@@ -69,6 +70,11 @@ export default function ProjectPage() {
   const [nodeName, setNodeName] = useState('');
   const [creatingNode, setCreatingNode] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false); // arbre mobile
+
+  const access = project?.access;
+  const canUpload = access ? access.canUpload : true;
+  const canManage = access ? access.canManage : true;
+  const isGuest = access ? access.role === 'member' : false;
 
   const getToken = (): string =>
     typeof window === 'undefined' ? '' : localStorage.getItem('bilnov_token') ?? '';
@@ -367,8 +373,11 @@ export default function ProjectPage() {
             <span className="text-xs px-2 py-0.5 rounded-full hidden sm:inline"
               style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>{project.sector}</span>
           )}
+          {isGuest && (
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#FEF3C7', color: '#92400E' }} title="Vous êtes invité sur ce projet">Invité</span>
+          )}
           <div className="flex-1" />
-          {tab === 'files' && (
+          {tab === 'files' && canUpload && (
             <label className={`btn-primary text-sm cursor-pointer ${uploading ? 'opacity-60' : ''}`} style={{ minHeight: 40 }}>
               {uploading ? 'Upload...' : '＋ Fichier'}
               <input type="file" multiple className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
@@ -562,7 +571,15 @@ export default function ProjectPage() {
           )}
 
           {/* TEAM */}
-          {tab === 'team' && (
+          {tab === 'team' && !canManage && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--surface-2)' }}>👥</div>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                Seul le propriétaire du projet peut gérer les intervenants.
+              </p>
+            </div>
+          )}
+          {tab === 'team' && canManage && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--violet-light)' }}>👥</div>
               <h3 className="font-bold text-lg mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Gérer les intervenants</h3>

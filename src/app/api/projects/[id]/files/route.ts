@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getProjectAccess } from '@/lib/access';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 import { uploadFile } from '@/lib/storage';
 
@@ -7,6 +8,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     const nodeId = req.nextUrl.searchParams.get('nodeId');
     const where: any = {

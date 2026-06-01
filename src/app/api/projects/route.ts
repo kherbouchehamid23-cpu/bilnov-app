@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { accessibleProjectIds } from '@/lib/access';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
@@ -11,7 +12,14 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get('page') ?? '1');
     const limit = parseInt(searchParams.get('limit') ?? '20');
 
-    const where = { organizationId: user.organizationId, deletedAt: null };
+    const { ownProjectsOrgId, memberProjectIds } = await accessibleProjectIds(user);
+    const where = {
+      deletedAt: null,
+      OR: [
+        { organizationId: ownProjectsOrgId },
+        ...(memberProjectIds.length ? [{ id: { in: memberProjectIds } }] : []),
+      ],
+    };
 
     const [projects, total] = await Promise.all([
       prisma.project.findMany({

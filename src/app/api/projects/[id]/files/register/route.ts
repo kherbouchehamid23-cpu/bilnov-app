@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError } from '@/lib/auth';
+import { getProjectAccess } from '@/lib/access';
 
 function detectFileType(mimeType: string, filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
@@ -20,6 +21,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canUpload) return apiError('Vous n\'avez pas le droit d\'ajouter des fichiers', 'FORBIDDEN', 403);
+
     const body = await req.json() as { storageKey?: string; filename?: string; mimeType?: string; sizeBytes?: number; nodeId?: string | null };
     const { storageKey, filename, mimeType, sizeBytes, nodeId } = body;
     if (!storageKey || !filename || !mimeType || sizeBytes === undefined) return apiError('Champs requis manquants', 'VALIDATION_ERROR', 400);

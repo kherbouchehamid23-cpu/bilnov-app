@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyToken, apiError } from '@/lib/auth';
 import { getSignedFileUrl } from '@/lib/storage';
+import { getProjectAccess } from '@/lib/access';
 
 export async function GET(
   req: NextRequest,
@@ -17,6 +18,10 @@ export async function GET(
 
     const file = await prisma.file.findUnique({ where: { id: params.fileId } });
     if (!file) return apiError('Fichier introuvable', 'NOT_FOUND', 404);
+
+    // Contrôle d'accès : owner ou membre du projet (canView minimum)
+    const access = await getProjectAccess(user, file.projectId);
+    if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     const { url } = await getSignedFileUrl(file.storageKey, 'view', file.name);
     const r2Res = await fetch(url);

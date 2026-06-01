@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { getProjectAccess } from '@/lib/access';
 
 export async function GET(
   req: NextRequest,
@@ -46,6 +47,9 @@ export async function POST(
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canManage) return apiError('Seul le propriétaire du projet peut inviter des intervenants', 'FORBIDDEN', 403);
 
     const body = await req.json() as {
       email?: string;
