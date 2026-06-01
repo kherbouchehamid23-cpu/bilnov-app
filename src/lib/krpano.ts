@@ -10,8 +10,11 @@ import AdmZip from 'adm-zip';
 // ---------------------------------------------------------------------------
 // Client S3 / R2 (mêmes variables d'env que lib/storage.ts)
 // ---------------------------------------------------------------------------
+let _krpanoClient: S3Client | null = null;
+
 export function krpanoClient(): S3Client {
-  return new S3Client({
+  if (_krpanoClient) return _krpanoClient;
+  _krpanoClient = new S3Client({
     endpoint: process.env.STORAGE_ENDPOINT,
     region: process.env.STORAGE_REGION ?? 'auto',
     credentials: {
@@ -19,7 +22,9 @@ export function krpanoClient(): S3Client {
       secretAccessKey: process.env.STORAGE_SECRET_KEY ?? '',
     },
     forcePathStyle: true,
+    maxAttempts: 5,
   });
+  return _krpanoClient;
 }
 
 export function krpanoBucket(): string {
@@ -160,7 +165,7 @@ export interface ExtractResult {
 async function runPool<T>(
   items: T[],
   worker: (item: T) => Promise<void>,
-  concurrency = 16,
+  concurrency = 6,
 ): Promise<void> {
   let idx = 0;
   const runners = new Array(Math.min(concurrency, items.length))
