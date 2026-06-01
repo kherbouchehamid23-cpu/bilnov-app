@@ -6,10 +6,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
 
 interface Project {
-  id: string;
-  name: string;
-  sector: string | null;
-  structureType: string;
+  id: string; name: string; sector: string | null; structureType: string;
   _count: { files: number; tours: number; members: number };
 }
 
@@ -37,102 +34,66 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--surface)' }}>
-      <aside className="fixed left-0 top-0 h-full w-60 border-r flex flex-col z-40"
-        style={{ background: 'white', borderColor: 'var(--border)' }}>
-        <div className="px-5 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ background: 'var(--violet)' }}>
-              <span className="text-white font-bold text-sm">B</span>
+      {/* Barre supérieure (responsive, remplace la sidebar fixe) */}
+      <header className="sticky top-0 z-40 glass border-b" style={{ borderColor: 'var(--border)' }}>
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+          <div className="rounded-lg flex items-center justify-center" style={{ width: 32, height: 32, background: 'var(--violet)' }}>
+            <span className="text-white font-bold text-sm">B</span>
+          </div>
+          <span className="font-bold text-base" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Bilnov</span>
+          <div className="flex-1" />
+          <Link href="/projects/new" className="btn-primary text-sm" style={{ minHeight: 40 }}>＋ Nouveau projet</Link>
+          <div className="flex items-center gap-2 pl-2 ml-1 border-l" style={{ borderColor: 'var(--border)' }}>
+            <div className="rounded-full flex items-center justify-center text-xs font-bold text-white"
+              style={{ width: 32, height: 32, background: 'var(--violet)' }} title={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`}>
+              {initials}
             </div>
-            <span className="font-bold text-base"
-              style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Bilnov</span>
+            <button onClick={handleLogout} className="rounded-lg flex items-center justify-center"
+              style={{ width: 40, height: 40, color: 'var(--text-muted)' }} title="Déconnexion">↪</button>
           </div>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
-          {[
-            { icon: '⊞', label: 'Projets', href: '/dashboard', active: true },
-            { icon: '🌐', label: 'Visites 360°', href: '/dashboard' },
-            { icon: '📁', label: 'Fichiers', href: '/dashboard' },
-          ].map(item => (
-            <Link key={item.label} href={item.href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
-              style={{
-                background: item.active ? 'var(--violet-light)' : 'transparent',
-                color: item.active ? 'var(--violet)' : 'var(--text-muted)',
-              }}>
-              <span>{item.icon}</span>{item.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="p-3 border-t" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-            style={{ background: 'var(--surface)' }}>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-              style={{ background: 'var(--violet)' }}>{initials}</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
-                {user?.firstName} {user?.lastName}
-              </p>
-              <p className="text-xs" style={{ color: 'var(--text-light)' }}>{user?.plan}</p>
-            </div>
-            <button onClick={handleLogout} style={{ color: 'var(--text-light)', fontSize: '16px' }}
-              title="Déconnexion">↪</button>
-          </div>
-        </div>
-      </aside>
+      </header>
 
-      <main className="ml-60 p-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold mb-1"
-              style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Mes projets</h1>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              {projects.length} projet{projects.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          <Link href="/projects/new" className="btn-primary">+ Nouveau projet</Link>
+      <main className="max-w-6xl mx-auto px-4 py-6">
+        <div className="mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-1" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+            Mes projets
+          </h1>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            {projects.length} projet{projects.length !== 1 ? 's' : ''}
+          </p>
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[1, 2, 3].map(i => (
-              <div key={i} className="rounded-2xl border p-6 h-40 skeleton"
-                style={{ borderColor: 'var(--border)' }} />
+              <div key={i} className="rounded-2xl border p-6 h-40 skeleton" style={{ borderColor: 'var(--border)' }} />
             ))}
           </div>
         ) : projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-5"
-              style={{ background: 'var(--violet-light)' }}>🏗️</div>
-            <h3 className="text-xl font-bold mb-2"
-              style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Aucun projet</h3>
-            <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-              Créez votre premier projet pour commencer.
-            </p>
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-5" style={{ background: 'var(--violet-light)' }}>🏗️</div>
+            <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Aucun projet</h3>
+            <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Créez votre premier projet pour commencer.</p>
             <Link href="/projects/new" className="btn-primary">Créer mon premier projet</Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {projects.map(project => (
               <Link key={project.id} href={'/projects/' + project.id}>
                 <div className="file-card rounded-2xl p-6">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg mb-4"
-                    style={{ background: 'var(--violet-light)' }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg mb-4" style={{ background: 'var(--violet-light)' }}>
                     {project.structureType === 'BUILDING' ? '🏠' : '🔧'}
                   </div>
-                  <h3 className="font-bold text-base mb-1 truncate"
-                    style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+                  <h3 className="font-bold text-base mb-1 truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
                     {project.name}
                   </h3>
                   {project.sector && (
-                    <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium"
-                      style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>
+                    <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>
                       {project.sector}
                     </span>
                   )}
-                  <div className="flex gap-4 mt-3 pt-3 border-t text-xs"
-                    style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+                  <div className="flex gap-4 mt-3 pt-3 border-t text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
                     <span>📁 {project._count?.files ?? 0}</span>
                     <span>🌐 {project._count?.tours ?? 0}</span>
                   </div>

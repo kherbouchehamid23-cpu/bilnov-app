@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api-client';
@@ -7,53 +7,40 @@ import { fetchWithAuth } from '@/lib/auth-client';
 import dynamic from 'next/dynamic';
 import { isCadFile } from '@/lib/cad';
 import { uploadFileDirect } from '@/lib/upload';
+import { makeThumb, getCachedThumb } from '@/lib/thumbs';
 
 const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
-interface Project {
-  id: string;
-  name: string;
-  sector: string | null;
-  structureType: string;
-}
 
+interface Project { id: string; name: string; sector: string | null; structureType: string; }
 interface StructureNode {
-  id: string;
-  name: string;
-  nodeType: string;
-  position: number;
-  parentId: string | null;
-  children: StructureNode[];
-  _count: { files: number };
+  id: string; name: string; nodeType: string; position: number;
+  parentId: string | null; children: StructureNode[]; _count: { files: number };
 }
-
 interface FileItem {
-  id: string;
-  name: string;
-  fileType: string;
-  mimeType: string;
-  sizeBytes: string | number | bigint;
-  nodeId: string | null;
+  id: string; name: string; fileType: string; mimeType: string;
+  sizeBytes: string | number | bigint; nodeId: string | null;
 }
-
-interface Tour {
-  id: string;
-  name: string;
-  status: string;
-}
-
-interface NodesApiResponse {
-  data: { nodes: StructureNode[] };
-}
-
-interface FilesApiResponse {
-  data: { files: FileItem[] };
-}
-
-interface ThumbnailApiResponse {
-  data: { url: string };
-}
+interface Tour { id: string; name: string; status: string; }
+interface NodesApiResponse { data: { nodes: StructureNode[] }; }
+interface FilesApiResponse { data: { files: FileItem[] }; }
+interface ThumbnailApiResponse { data: { url: string }; }
 
 type Tab = 'files' | 'tours' | 'team' | 'access';
+
+// Type d'enfant déduit du type parent (ex: étage -> pièce)
+const childTypeOf: Record<string, string> = {
+  floor: 'room', room: 'zone', zone: 'custom', custom: 'custom',
+};
+const nodeTypeLabel: Record<string, string> = {
+  floor: 'Étage', room: 'Pièce', zone: 'Zone', custom: 'Espace',
+};
+const nodeTypeIcon: Record<string, string> = {
+  floor: '🏢', room: '🚪', zone: '📦', custom: '📌',
+};
+const icons: Record<string, string> = {
+  IMAGE: '🖼️', IMAGE_360: '🌐', PDF: '📄', VIDEO: '🎥',
+  GLB: '🧊', GLTF: '🧊', OBJ: '🧊', DWG: '📐', DXF: '📐', IFC: '🏗️',
+};
 
 export default function ProjectPage() {
   const params = useParams();
@@ -73,44 +60,58 @@ export default function ProjectPage() {
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editingFileName, setEditingFileName] = useState('');
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const [menuFileId, setMenuFileId] = useState<string | null>(null);
   const [showTourForm, setShowTourForm] = useState(false);
   const [tourName, setTourName] = useState('');
   const [creatingTour, setCreatingTour] = useState(false);
-  const [showNodeForm, setShowNodeForm] = useState(false);
+  // Ajout de nœud express : on garde l'id parent ciblé + le type déduit
+  const [addingUnder, setAddingUnder] = useState<{ parentId: string | null; type: string } | null>(null);
   const [nodeName, setNodeName] = useState('');
-  const [nodeType, setNodeType] = useState('floor');
-  const [nodeParentId, setNodeParentId] = useState<string | null>(null);
   const [creatingNode, setCreatingNode] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false); // arbre mobile
 
-  const getToken = (): string => {
-    if (typeof window === 'undefined') return '';
-    return localStorage.getItem('bilnov_token') ?? '';
-  };
+  const getToken = (): string =>
+    typeof window === 'undefined' ? '' : localStorage.getItem('bilnov_token') ?? '';
 
-  const loadFiles = async (nodeId: string | null): Promise<void> => {
+  const loadThumbnails = useCallback(async (fileList: FileItem[]): Promise<void> => {
+    // 1) Images : URL signée directe
+    const imageFiles = fileList.filter(
+      f => f.fileType === 'IMAGE' || f.mimeType?.startsWith('image/'),
+    );
+    for (const file of imageFiles) {
+      try {
+        const res = await fetchWithAuth(`/api/file-url/${file.id}?purpose=view`);
+        const data = (await res.json()) as ThumbnailApiResponse;
+        if (data.data?.url) setThumbnails(prev => ({ ...prev, [file.id]: data.data.url }));
+      } catch { /* skip */ }
+    }
+    // 2) PDF / DWG : vignette générée à la volée (cache session)
+    const previewable = fileList.filter(f => /\.(pdf|dwg)$/i.test(f.name));
+    for (const file of previewable) {
+      const cached = getCachedThumb(file.id);
+      if (cached) { setThumbnails(prev => ({ ...prev, [file.id]: cached })); continue; }
+      try {
+        const url = await makeThumb(file.id, file.name, async () => {
+          const r = await fetch(`/api/file-proxy/${file.id}?token=${encodeURIComponent(getToken())}`);
+          return r.blob();
+        });
+        if (url) setThumbnails(prev => ({ ...prev, [file.id]: url }));
+      } catch { /* skip */ }
+    }
+  }, []);
+
+  const loadFiles = useCallback(async (nodeId: string | null): Promise<void> => {
     const qs = nodeId ? `?nodeId=${nodeId}` : '';
     const r = await api.get<FilesApiResponse>(`/api/projects/${id}/files${qs}`);
     const fileList = r.data?.files ?? [];
     setFiles(fileList);
     void loadThumbnails(fileList);
-  };
+  }, [id, loadThumbnails]);
 
-  const loadThumbnails = async (fileList: FileItem[]): Promise<void> => {
-    const imageFiles = fileList.filter(f =>
-      f.fileType === 'IMAGE' || f.mimeType?.startsWith('image/')
-    );
-    for (const file of imageFiles) {
-      try {
-        const res = await fetchWithAuth(`/api/file-url/${file.id}?purpose=view`, {
-          headers: { Authorization: `Bearer ${getToken()}` },
-        });
-        const data = await res.json() as ThumbnailApiResponse;
-        if (data.data?.url) {
-          setThumbnails(prev => ({ ...prev, [file.id]: data.data.url }));
-        }
-      } catch { /* skip */ }
-    }
-  };
+  const reloadNodes = useCallback(async () => {
+    const r = await api.get<NodesApiResponse>(`/api/projects/${id}/nodes`);
+    setNodes(r.data?.nodes ?? []);
+  }, [id]);
 
   useEffect(() => {
     void Promise.all([
@@ -123,20 +124,18 @@ export default function ProjectPage() {
       setTours(t.data?.tours ?? []);
     }).catch(() => {}).finally(() => setLoading(false));
     void loadFiles(null);
-  }, [id]);
+  }, [id, loadFiles]);
 
-  useEffect(() => {
-    void loadFiles(selectedNodeId);
-  }, [selectedNodeId]);
+  useEffect(() => { void loadFiles(selectedNodeId); }, [selectedNodeId, loadFiles]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>): Promise<void> {
+    const list = e.target.files;
+    if (!list || list.length === 0) return;
     setUploading(true);
     try {
-      // Upload direct vers R2 via URL pre-signee (contourne la limite de body
-      // des fonctions Vercel ~4,5 Mo). Meme mecanisme que les visites krpano.
-      await uploadFileDirect(file, id, getToken(), selectedNodeId ?? null);
+      for (const file of Array.from(list)) {
+        await uploadFileDirect(file, id, getToken(), selectedNodeId ?? null);
+      }
       await loadFiles(selectedNodeId);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Erreur upload');
@@ -144,9 +143,9 @@ export default function ProjectPage() {
       setUploading(false);
       e.target.value = '';
     }
-  };
+  }
 
-  const openFile = async (fileId: string): Promise<void> => {
+  async function openFile(fileId: string): Promise<void> {
     if (openingId) return;
     const target = files.find(f => f.id === fileId);
     if (target && isCadFile(target.name, target.fileType)) {
@@ -155,139 +154,102 @@ export default function ProjectPage() {
     }
     setOpeningId(fileId);
     try {
-      const token = getToken();
-      window.open('/api/file-proxy/' + fileId + '?token=' + encodeURIComponent(token), '_blank');
-    } catch {
-      alert('Erreur ouverture fichier');
-    } finally {
-      setOpeningId(null);
-    }
-  };
+      window.open(`/api/file-proxy/${fileId}?token=${encodeURIComponent(getToken())}`, '_blank');
+    } catch { alert('Erreur ouverture fichier'); }
+    finally { setOpeningId(null); }
+  }
 
-  const startEditFile = (fileId: string, name: string): void => {
-    setEditingFileId(fileId);
-    setEditingFileName(name);
-  };
-
-  const saveFileName = async (fileId: string): Promise<void> => {
-    if (!editingFileName.trim()) {
-      alert('Le nom du fichier ne peut pas être vide');
-      return;
-    }
+  async function saveFileName(fileId: string): Promise<void> {
+    if (!editingFileName.trim()) return;
     setActionLoadingId(fileId);
     try {
       const res = await fetchWithAuth(`/api/projects/${id}/files/${fileId}`, {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: editingFileName.trim() }),
       });
-      if (!res.ok) {
-        const json = await res.json();
-        throw new Error(json.error?.message ?? 'Erreur modification fichier');
-      }
+      if (!res.ok) throw new Error('Erreur modification');
       await loadFiles(selectedNodeId);
-      setEditingFileId(null);
-      setEditingFileName('');
+      setEditingFileId(null); setEditingFileName('');
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Erreur modification fichier');
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
+      alert(err instanceof Error ? err.message : 'Erreur');
+    } finally { setActionLoadingId(null); }
+  }
 
-  const deleteFile = async (fileId: string): Promise<void> => {
+  async function deleteFile(fileId: string): Promise<void> {
     if (!confirm('Supprimer ce fichier ? Cette opération est définitive.')) return;
     setActionLoadingId(fileId);
     try {
-      const res = await fetchWithAuth(`/api/projects/${id}/files/${fileId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (!res.ok) {
-        const json = await res.json();
-        throw new Error(json.error?.message ?? 'Erreur suppression fichier');
-      }
+      const res = await fetchWithAuth(`/api/projects/${id}/files/${fileId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Erreur suppression');
       await loadFiles(selectedNodeId);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Erreur suppression fichier');
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
+      alert(err instanceof Error ? err.message : 'Erreur');
+    } finally { setActionLoadingId(null); setMenuFileId(null); }
+  }
 
-  const createTour = async (): Promise<void> => {
+  async function createTour(): Promise<void> {
     if (!tourName.trim()) return;
     setCreatingTour(true);
     try {
       const res = await fetchWithAuth(`/api/projects/${id}/tours`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: tourName }),
       });
-      const data = await res.json() as { data?: Tour };
-      if (data.data) {
-        setTours(prev => [data.data as Tour, ...prev]);
-        setTourName('');
-        setShowTourForm(false);
-      }
+      const data = (await res.json()) as { data?: Tour };
+      if (data.data) { setTours(prev => [data.data as Tour, ...prev]); setTourName(''); setShowTourForm(false); }
     } catch { alert('Erreur'); }
     finally { setCreatingTour(false); }
-  };
+  }
 
-  const createNode = async (): Promise<void> => {
-    if (!nodeName.trim()) return;
+  // Ajout express : type déjà déduit, un seul champ (nom)
+  function startAdd(parentId: string | null, parentType?: string) {
+    const type = parentId === null ? 'floor' : childTypeOf[parentType ?? 'floor'] ?? 'room';
+    setAddingUnder({ parentId, type });
+    setNodeName('');
+    setDrawerOpen(true);
+  }
+
+  async function createNode(): Promise<void> {
+    if (!addingUnder || !nodeName.trim()) return;
     setCreatingNode(true);
     try {
       const res = await fetchWithAuth(`/api/projects/${id}/nodes`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nodeName, nodeType, parentId: nodeParentId }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nodeName.trim(), nodeType: addingUnder.type, parentId: addingUnder.parentId }),
       });
-      const data = await res.json() as { data?: StructureNode };
-      if (data.data) {
-        const r = await api.get<NodesApiResponse>(`/api/projects/${id}/nodes`);
-        setNodes(r.data?.nodes ?? []);
-        setNodeName('');
-        setShowNodeForm(false);
-        setNodeParentId(null);
-      }
+      const data = (await res.json()) as { data?: StructureNode };
+      if (data.data) { await reloadNodes(); setNodeName(''); setAddingUnder(null); }
     } catch { alert('Erreur création'); }
     finally { setCreatingNode(false); }
-  };
+  }
 
-  const deleteNode = async (nodeId: string): Promise<void> => {
+  async function deleteNode(nodeId: string): Promise<void> {
     if (!confirm('Supprimer cet espace ? Les fichiers associés ne seront pas supprimés.')) return;
     try {
-      await fetchWithAuth(`/api/projects/${id}/nodes/${nodeId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const r = await api.get<NodesApiResponse>(`/api/projects/${id}/nodes`);
-      setNodes(r.data?.nodes ?? []);
+      await fetchWithAuth(`/api/projects/${id}/nodes/${nodeId}`, { method: 'DELETE' });
+      await reloadNodes();
       if (selectedNodeId === nodeId) setSelectedNodeId(null);
     } catch { alert('Erreur suppression'); }
-  };
+  }
 
-  const icons: Record<string, string> = {
-    IMAGE: '🖼️', IMAGE_360: '🌐', PDF: '📄',
-    VIDEO: '🎥', GLB: '🧊', GLTF: '🧊', OBJ: '🧊',
-  };
+  function selectNode(nodeId: string | null) {
+    setSelectedNodeId(nodeId);
+    setDrawerOpen(false); // referme le tiroir mobile après sélection
+  }
 
-  const nodeTypeIcon: Record<string, string> = {
-    floor: '🏠', room: '🚪', zone: '📦', custom: '📌',
-  };
-
-  const renderNodes = (nodeList: StructureNode[], depth = 0): React.ReactNode =>
-    nodeList.map(node => (
+  // ---- Arbre récursif : actions TOUJOURS visibles (tactile) ----
+  const renderNodes = (list: StructureNode[], depth = 0): React.ReactNode =>
+    list.map(node => (
       <div key={node.id}>
-        <div className="flex items-center gap-1 group"
-          style={{ paddingLeft: `${depth * 12}px` }}>
+        <div className="flex items-center gap-1" style={{ paddingLeft: `${depth * 14}px` }}>
           <button
-            onClick={() => setSelectedNodeId(node.id === selectedNodeId ? null : node.id)}
-            className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-all text-left"
+            onClick={() => selectNode(node.id === selectedNodeId ? null : node.id)}
+            className="flex-1 flex items-center gap-2 px-3 rounded-xl text-sm text-left"
             style={{
+              minHeight: 44,
               background: selectedNodeId === node.id ? 'var(--violet-light)' : 'transparent',
-              color: selectedNodeId === node.id ? 'var(--violet)' : 'var(--text-muted)',
+              color: selectedNodeId === node.id ? 'var(--violet)' : 'var(--text)',
               fontWeight: selectedNodeId === node.id ? 600 : 400,
             }}>
             <span>{nodeTypeIcon[node.nodeType] ?? '📌'}</span>
@@ -295,35 +257,94 @@ export default function ProjectPage() {
             <span className="text-xs opacity-60">{node._count.files}</span>
           </button>
           <button
-            onClick={() => { setNodeParentId(node.id); setShowNodeForm(true); }}
-            className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded-lg flex items-center justify-center text-xs transition-all"
-            style={{ color: 'var(--text-light)' }}
-            title="Ajouter un sous-espace">
+            onClick={() => startAdd(node.id, node.nodeType)}
+            className="rounded-lg flex items-center justify-center text-base"
+            style={{ width: 40, height: 40, color: 'var(--violet)', background: 'var(--surface-2)' }}
+            title={`Ajouter ${nodeTypeLabel[childTypeOf[node.nodeType] ?? 'room'] ?? 'un espace'}`}>
             +
           </button>
           <button
             onClick={() => { void deleteNode(node.id); }}
-            className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded-lg flex items-center justify-center text-xs transition-all"
-            style={{ color: '#EF4444' }}
+            className="rounded-lg flex items-center justify-center text-base"
+            style={{ width: 40, height: 40, color: '#EF4444', background: 'var(--surface-2)' }}
             title="Supprimer">
             ×
           </button>
         </div>
+        {/* form d'ajout express, juste sous le parent ciblé */}
+        {addingUnder && addingUnder.parentId === node.id && renderAddForm()}
         {node.children.length > 0 && renderNodes(node.children, depth + 1)}
       </div>
     ));
 
-  const tabs: { key: Tab; label: string; count?: number }[] = [
-    { key: 'files', label: 'Fichiers', count: files.length },
-    { key: 'tours', label: 'Visites 360°', count: tours.length },
-    { key: 'team', label: 'Intervenants' },
-    { key: 'access', label: 'Partage' },
+  const renderAddForm = (): React.ReactNode => (
+    <div className="my-1 mx-1 p-2 rounded-xl" style={{ background: 'var(--violet-light)' }}>
+      <p className="text-xs font-semibold mb-1" style={{ color: 'var(--violet)' }}>
+        Nouveau : {nodeTypeLabel[addingUnder?.type ?? 'floor']}
+      </p>
+      <input
+        className="input text-sm mb-2" autoFocus
+        placeholder={`Nom (ex: ${nodeTypeLabel[addingUnder?.type ?? 'floor']} 1)`}
+        value={nodeName}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNodeName(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') void createNode(); if (e.key === 'Escape') setAddingUnder(null); }}
+      />
+      <div className="flex gap-1">
+        <button onClick={() => { void createNode(); }} disabled={creatingNode || !nodeName.trim()}
+          className="btn-primary text-xs flex-1" style={{ minHeight: 40 }}>
+          {creatingNode ? '...' : 'Créer'}
+        </button>
+        <button onClick={() => { setAddingUnder(null); setNodeName(''); }}
+          className="btn-secondary text-xs" style={{ minHeight: 40 }}>✕</button>
+      </div>
+    </div>
+  );
+
+  // ---- Panneau Structure (réutilisé desktop + tiroir mobile) ----
+  const StructurePanel = (
+    <div className="flex flex-col gap-1 p-3">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-light)' }}>
+          Structure
+        </p>
+        <button onClick={() => startAdd(null)}
+          className="rounded-lg flex items-center justify-center"
+          style={{ width: 40, height: 40, color: '#fff', background: 'var(--violet)' }}
+          title="Ajouter un étage">+</button>
+      </div>
+      <button onClick={() => selectNode(null)}
+        className="flex items-center gap-2 px-3 rounded-xl text-sm text-left"
+        style={{
+          minHeight: 44,
+          background: selectedNodeId === null ? 'var(--violet-light)' : 'transparent',
+          color: selectedNodeId === null ? 'var(--violet)' : 'var(--text)',
+          fontWeight: selectedNodeId === null ? 600 : 400,
+        }}>
+        <span>📂</span><span className="flex-1">Tous les fichiers</span>
+      </button>
+      {addingUnder && addingUnder.parentId === null && renderAddForm()}
+      {renderNodes(nodes)}
+      {nodes.length === 0 && !addingUnder && (
+        <p className="text-xs px-3 py-4" style={{ color: 'var(--text-light)' }}>
+          Aucun espace. Touchez + pour créer un étage.
+        </p>
+      )}
+    </div>
+  );
+
+  const tabs: { key: Tab; label: string; icon: string; count?: number }[] = [
+    { key: 'files', label: 'Fichiers', icon: '📁', count: files.length },
+    { key: 'tours', label: 'Visites', icon: '🌐', count: tours.length },
+    { key: 'team', label: 'Équipe', icon: '👥' },
+    { key: 'access', label: 'Partage', icon: '🔗' },
   ];
+
+  const selectedNodeName = selectedNodeId
+    ? findNodeName(nodes, selectedNodeId) : null;
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center"
-        style={{ background: 'var(--surface)' }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--surface)' }}>
         <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Chargement...</div>
       </div>
     );
@@ -332,242 +353,152 @@ export default function ProjectPage() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--surface)' }}>
       {/* Header */}
-      <header className="sticky top-0 z-40 glass border-b px-6 py-4"
-        style={{ borderColor: 'var(--border)' }}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard"
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-stone-100 transition-colors"
-              style={{ color: 'var(--text-muted)' }}>←</Link>
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ background: 'var(--violet)' }}>
-              <span className="text-white font-bold text-sm">B</span>
-            </div>
-            <span className="font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
-              {project?.name}
-            </span>
-            {project?.sector && (
-              <span className="text-xs px-2 py-0.5 rounded-full"
-                style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>
-                {project.sector}
-              </span>
-            )}
+      <header className="sticky top-0 z-40 glass border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+        <div className="max-w-7xl mx-auto flex items-center gap-2">
+          <Link href="/dashboard" className="rounded-lg flex items-center justify-center"
+            style={{ width: 40, height: 40, color: 'var(--text-muted)' }}>←</Link>
+          <div className="rounded-lg flex items-center justify-center" style={{ width: 32, height: 32, background: 'var(--violet)' }}>
+            <span className="text-white font-bold text-sm">B</span>
           </div>
-          <div className="flex items-center gap-2">
-            {tab === 'files' && (
-              <label className={`btn-primary text-sm cursor-pointer ${uploading ? 'opacity-60' : ''}`}>
-                {uploading ? 'Upload...' : '+ Ajouter fichier'}
-                <input type="file" className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
-              </label>
-            )}
-            {tab === 'tours' && (
-              <button className="btn-primary text-sm" onClick={() => setShowTourForm(true)}>
-                + Nouvelle visite
-              </button>
-            )}
-          </div>
+          <span className="font-bold truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+            {project?.name}
+          </span>
+          {project?.sector && (
+            <span className="text-xs px-2 py-0.5 rounded-full hidden sm:inline"
+              style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>{project.sector}</span>
+          )}
+          <div className="flex-1" />
+          {tab === 'files' && (
+            <label className={`btn-primary text-sm cursor-pointer ${uploading ? 'opacity-60' : ''}`} style={{ minHeight: 40 }}>
+              {uploading ? 'Upload...' : '＋ Fichier'}
+              <input type="file" multiple className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
+            </label>
+          )}
+          {tab === 'tours' && (
+            <button className="btn-primary text-sm" style={{ minHeight: 40 }} onClick={() => setShowTourForm(true)}>＋ Visite</button>
+          )}
         </div>
       </header>
 
-      {/* Tabs */}
-      <div className="border-b" style={{ background: 'white', borderColor: 'var(--border)' }}>
-        <div className="max-w-7xl mx-auto px-6 flex gap-1 overflow-x-auto">
+      {/* Tabs (desktop) */}
+      <div className="border-b hidden md:block" style={{ background: 'white', borderColor: 'var(--border)' }}>
+        <div className="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto">
           {tabs.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap"
-              style={{
-                borderColor: tab === t.key ? 'var(--violet)' : 'transparent',
-                color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)',
-              }}>
-              {t.label}
+              className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap"
+              style={{ borderColor: tab === t.key ? 'var(--violet)' : 'transparent', color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)' }}>
+              <span>{t.icon}</span>{t.label}
               {t.count !== undefined && (
                 <span className="px-1.5 py-0.5 rounded-full text-xs"
-                  style={{
-                    background: tab === t.key ? 'var(--violet-light)' : 'var(--surface-2)',
-                    color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)',
-                  }}>
-                  {t.count}
-                </span>
+                  style={{ background: tab === t.key ? 'var(--violet-light)' : 'var(--surface-2)', color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)' }}>{t.count}</span>
               )}
             </button>
           ))}
-          <Link
-            href={`/projects/${id}/krpano`}
-            className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            Visites krpano
-          </Link>
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex flex-1 max-w-7xl mx-auto w-full">
-
-        {/* Sidebar structure — only on files tab */}
+      <div className="flex flex-1 max-w-7xl mx-auto w-full relative">
+        {/* Sidebar desktop (toujours visible, persistante) */}
         {tab === 'files' && (
-          <aside className="w-56 flex-shrink-0 border-r p-4 flex flex-col gap-2"
+          <aside className="hidden md:block w-64 flex-shrink-0 border-r overflow-auto"
             style={{ background: 'white', borderColor: 'var(--border)' }}>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: 'var(--text-light)' }}>Structure</p>
-              <button
-                onClick={() => { setNodeParentId(null); setShowNodeForm(true); }}
-                className="w-6 h-6 rounded-lg flex items-center justify-center text-sm transition-colors hover:bg-violet-50"
-                style={{ color: 'var(--violet)' }}
-                title="Ajouter un espace">
-                +
-              </button>
-            </div>
-
-            {/* All files */}
-            <button
-              onClick={() => setSelectedNodeId(null)}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-all text-left"
-              style={{
-                background: selectedNodeId === null ? 'var(--violet-light)' : 'transparent',
-                color: selectedNodeId === null ? 'var(--violet)' : 'var(--text-muted)',
-                fontWeight: selectedNodeId === null ? 600 : 400,
-              }}>
-              <span>📁</span>
-              <span>Tous les fichiers</span>
-            </button>
-
-            {/* Node tree */}
-            {renderNodes(nodes)}
-
-            {/* Node creation form */}
-            {showNodeForm && (
-              <div className="mt-2 p-3 rounded-xl border animate-fade-up"
-                style={{ borderColor: 'var(--violet-light)', background: 'var(--violet-light)' }}>
-                <input
-                  className="input text-sm mb-2"
-                  placeholder="Nom (ex: Étage 1)"
-                  value={nodeName}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNodeName(e.target.value)}
-                  autoFocus
-                />
-                <select
-                  className="input text-sm mb-2"
-                  value={nodeType}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNodeType(e.target.value)}>
-                  <option value="floor">🏠 Étage</option>
-                  <option value="room">🚪 Pièce</option>
-                  <option value="zone">📦 Zone</option>
-                  <option value="custom">📌 Personnalisé</option>
-                </select>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => { void createNode(); }}
-                    disabled={creatingNode || !nodeName.trim()}
-                    className="btn-primary text-xs py-1.5 px-3 flex-1">
-                    {creatingNode ? '...' : 'Créer'}
-                  </button>
-                  <button
-                    onClick={() => { setShowNodeForm(false); setNodeName(''); setNodeParentId(null); }}
-                    className="btn-secondary text-xs py-1.5 px-3">
-                    ✕
-                  </button>
-                </div>
-              </div>
-            )}
+            {StructurePanel}
           </aside>
         )}
 
-        {/* Main content */}
-        <main className="flex-1 px-6 py-6 overflow-auto">
+        {/* Tiroir mobile */}
+        {tab === 'files' && drawerOpen && (
+          <>
+            <div className="md:hidden fixed inset-0 z-40" style={{ background: 'rgba(28,25,23,.45)' }}
+              onClick={() => setDrawerOpen(false)} />
+            <aside className="md:hidden fixed left-0 top-0 bottom-0 z-50 w-4/5 max-w-xs overflow-auto shadow-xl"
+              style={{ background: 'white' }}>
+              <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: 'var(--border)' }}>
+                <span className="font-semibold">Structure</span>
+                <button onClick={() => setDrawerOpen(false)} style={{ width: 40, height: 40 }}>✕</button>
+              </div>
+              {StructurePanel}
+            </aside>
+          </>
+        )}
 
-          {/* Files tab */}
+        <main className="flex-1 px-4 py-4 overflow-auto pb-24 md:pb-6">
+          {/* FILES */}
           {tab === 'files' && (
             <>
-              <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-                {files.length} fichier{files.length !== 1 ? 's' : ''}
-                {selectedNodeId ? ' dans cet espace' : ' au total'}
-              </p>
+              <div className="flex items-center gap-2 mb-4">
+                <button onClick={() => setDrawerOpen(true)}
+                  className="md:hidden btn-secondary text-sm" style={{ minHeight: 40 }}>🗂️ Structure</button>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  {selectedNodeName ? <><b style={{ color: 'var(--text)' }}>{selectedNodeName}</b> · </> : null}
+                  {files.length} fichier{files.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+
               {files.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="text-4xl mb-3">📂</div>
+                  <div className="text-5xl mb-3">📂</div>
                   <p style={{ color: 'var(--text-muted)' }}>
-                    {selectedNodeId
-                      ? 'Aucun fichier dans cet espace.'
-                      : 'Aucun fichier. Uploadez votre premier fichier.'}
+                    {selectedNodeId ? 'Aucun fichier dans cet espace.' : 'Aucun fichier. Touchez ＋ Fichier pour commencer.'}
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                   {files.map(file => (
-                    <div key={file.id} className="file-card relative">
-                      <button
-                        type="button"
-                        onClick={() => { void openFile(file.id); }}
-                        disabled={!!openingId}
-                        className="w-full text-left"
-                        style={{ background: 'transparent' }}>
-                        <div className="w-full h-24 rounded-xl mb-3 flex items-center justify-center overflow-hidden"
-                          style={{ background: 'var(--surface-2)' }}>
+                    <div key={file.id} className="file-card relative" style={{ padding: 10 }}>
+                      <button type="button" onClick={() => { void openFile(file.id); }} disabled={!!openingId}
+                        className="w-full text-left" style={{ background: 'transparent' }}>
+                        <div className="w-full rounded-xl mb-2 flex items-center justify-center overflow-hidden"
+                          style={{ height: 130, background: 'var(--surface-2)' }}>
                           {thumbnails[file.id] ? (
-                            <img
-                              src={thumbnails[file.id]}
-                              alt={file.name}
-                              className="w-full h-full object-cover"
-                            />
+                            <img src={thumbnails[file.id]} alt={file.name} className="w-full h-full object-cover" />
                           ) : (
-                            <span className="text-3xl">
-                              {openingId === file.id ? '⏳' : (icons[file.fileType] ?? '📁')}
-                            </span>
+                            <span style={{ fontSize: 44 }}>{openingId === file.id ? '⏳' : (icons[file.fileType] ?? '📁')}</span>
                           )}
                         </div>
-                        <p className="text-sm font-medium truncate mb-1" style={{ color: 'var(--text)' }}>
-                          {file.name}
-                        </p>
+                        <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{file.name}</p>
                         <p className="text-xs" style={{ color: 'var(--text-light)' }}>
                           {Math.round(Number(file.sizeBytes) / 1024)} Ko
                         </p>
                       </button>
 
-                      {editingFileId === file.id ? (
-                        <div className="mt-3 space-y-2">
-                          <input
-                            value={editingFileName}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingFileName(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') { void saveFileName(file.id); } }}
-                            className="input text-sm"
-                            placeholder="Nouveau nom du fichier"
-                            disabled={actionLoadingId === file.id}
-                          />
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => { void saveFileName(file.id); }}
-                              disabled={actionLoadingId === file.id}
-                              className="btn-primary text-xs py-1 px-2 flex-1 min-w-0">
-                              {actionLoadingId === file.id ? '...' : 'Enregistrer'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setEditingFileId(null); setEditingFileName(''); }}
-                              disabled={actionLoadingId === file.id}
-                              className="btn-secondary text-xs py-1 px-2 min-w-0">
-                              Annuler
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); startEditFile(file.id, file.name); }}
-                            disabled={!!openingId || actionLoadingId === file.id}
-                            className="btn-secondary text-xs py-1 px-2 flex-1 min-w-0">
+                      {/* menu ... */}
+                      <button type="button"
+                        onClick={e => { e.stopPropagation(); setMenuFileId(menuFileId === file.id ? null : file.id); }}
+                        className="absolute rounded-lg flex items-center justify-center"
+                        style={{ top: 14, right: 14, width: 34, height: 34, background: 'rgba(255,255,255,.92)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                        ⋯
+                      </button>
+
+                      {menuFileId === file.id && editingFileId !== file.id && (
+                        <div className="absolute z-10 rounded-xl shadow-lg overflow-hidden"
+                          style={{ top: 50, right: 14, background: '#fff', border: '1px solid var(--border)', minWidth: 150 }}>
+                          <button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44 }}
+                            onClick={() => { setEditingFileId(file.id); setEditingFileName(file.name); setMenuFileId(null); }}>
                             ✎ Renommer
                           </button>
-                          <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); void deleteFile(file.id); }}
-                            disabled={actionLoadingId === file.id}
-                            className="btn-secondary text-xs py-1 px-2 min-w-0 text-red-500 border-red-200 hover:bg-red-50">
+                          <button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44, color: '#EF4444' }}
+                            onClick={() => { void deleteFile(file.id); }}>
                             🗑 Supprimer
                           </button>
+                        </div>
+                      )}
+
+                      {editingFileId === file.id && (
+                        <div className="mt-2 space-y-2">
+                          <input value={editingFileName} autoFocus
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingFileName(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') void saveFileName(file.id); }}
+                            className="input text-sm" placeholder="Nouveau nom" disabled={actionLoadingId === file.id} />
+                          <div className="flex gap-2">
+                            <button onClick={() => { void saveFileName(file.id); }} disabled={actionLoadingId === file.id}
+                              className="btn-primary text-xs flex-1" style={{ minHeight: 38 }}>
+                              {actionLoadingId === file.id ? '...' : 'OK'}
+                            </button>
+                            <button onClick={() => { setEditingFileId(null); setEditingFileName(''); }}
+                              className="btn-secondary text-xs" style={{ minHeight: 38 }}>Annuler</button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -577,22 +508,17 @@ export default function ProjectPage() {
             </>
           )}
 
-          {/* Tours tab */}
+          {/* TOURS */}
           {tab === 'tours' && (
             <>
               {showTourForm && (
-                <div className="mb-6 p-5 rounded-2xl border"
-                  style={{ background: 'white', borderColor: 'var(--violet-light)' }}>
-                  <h3 className="font-bold mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>
-                    Nouvelle visite 360°
-                  </h3>
-                  <div className="flex gap-3">
-                    <input className="input flex-1" placeholder="Nom de la visite"
-                      value={tourName} onChange={e => setTourName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { void createTour(); } }}
-                      autoFocus />
-                    <button onClick={() => { void createTour(); }}
-                      disabled={creatingTour || !tourName.trim()} className="btn-primary">
+                <div className="mb-6 p-4 rounded-2xl border" style={{ background: 'white', borderColor: 'var(--violet-light)' }}>
+                  <h3 className="font-bold mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>Nouvelle visite 360°</h3>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input className="input flex-1" placeholder="Nom de la visite" value={tourName}
+                      onChange={e => setTourName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') void createTour(); }} autoFocus />
+                    <button onClick={() => { void createTour(); }} disabled={creatingTour || !tourName.trim()} className="btn-primary">
                       {creatingTour ? '...' : 'Créer'}
                     </button>
                     <button onClick={() => setShowTourForm(false)} className="btn-secondary">Annuler</button>
@@ -601,35 +527,20 @@ export default function ProjectPage() {
               )}
               {tours.length === 0 && !showTourForm ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-5"
-                    style={{ background: 'var(--violet-light)' }}>🌐</div>
-                  <h3 className="text-xl font-bold mb-2"
-                    style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
-                    Aucune visite 360°
-                  </h3>
-                  <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                    Créez votre première visite virtuelle.
-                  </p>
-                  <button className="btn-primary" onClick={() => setShowTourForm(true)}>
-                    + Créer une visite 360°
-                  </button>
+                  <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-5" style={{ background: 'var(--violet-light)' }}>🌐</div>
+                  <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Aucune visite 360°</h3>
+                  <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Créez votre première visite virtuelle.</p>
+                  <button className="btn-primary" onClick={() => setShowTourForm(true)}>＋ Créer une visite 360°</button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {tours.map(tour => (
                     <Link key={tour.id} href={`/projects/${id}/tours/${tour.id}`}>
                       <div className="file-card rounded-2xl p-5">
-                        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-4"
-                          style={{ background: 'var(--violet-light)' }}>🌐</div>
-                        <h3 className="font-bold text-base mb-1"
-                          style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
-                          {tour.name}
-                        </h3>
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-4" style={{ background: 'var(--violet-light)' }}>🌐</div>
+                        <h3 className="font-bold text-base mb-1" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{tour.name}</h3>
                         <span className="text-xs px-2 py-0.5 rounded-full"
-                          style={{
-                            background: tour.status === 'PUBLISHED' ? '#ECFDF5' : 'var(--surface-2)',
-                            color: tour.status === 'PUBLISHED' ? '#10B981' : 'var(--text-muted)',
-                          }}>
+                          style={{ background: tour.status === 'PUBLISHED' ? '#ECFDF5' : 'var(--surface-2)', color: tour.status === 'PUBLISHED' ? '#10B981' : 'var(--text-muted)' }}>
                           {tour.status === 'PUBLISHED' ? '● Publié' : '○ Brouillon'}
                         </span>
                       </div>
@@ -637,55 +548,61 @@ export default function ProjectPage() {
                   ))}
                 </div>
               )}
+              <div className="mt-6">
+                <Link href={`/projects/${id}/krpano`} className="text-sm" style={{ color: 'var(--violet)' }}>
+                  → Visites krpano / Pano2VR (archives .zip)
+                </Link>
+              </div>
             </>
           )}
 
-          {/* Team tab */}
+          {/* TEAM */}
           {tab === 'team' && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4"
-                style={{ background: 'var(--violet-light)' }}>👥</div>
-              <h3 className="font-bold text-lg mb-2"
-                style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
-                Gérer les intervenants
-              </h3>
-              <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                Invitez des collaborateurs et gérez leurs permissions.
-              </p>
-              <Link href={`/projects/${id}/team`} className="btn-primary">
-                Gérer les intervenants
-              </Link>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--violet-light)' }}>👥</div>
+              <h3 className="font-bold text-lg mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Gérer les intervenants</h3>
+              <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Invitez des collaborateurs et gérez leurs permissions.</p>
+              <Link href={`/projects/${id}/team`} className="btn-primary">Gérer les intervenants</Link>
             </div>
           )}
 
-          {/* Access tab */}
+          {/* ACCESS */}
           {tab === 'access' && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4"
-                style={{ background: 'var(--violet-light)' }}>🔗</div>
-              <h3 className="font-bold text-lg mb-2"
-                style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
-                Codes de partage
-              </h3>
-              <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                Créez des codes d&apos;accès sécurisés.
-              </p>
-              <Link href={`/projects/${id}/access`} className="btn-primary">
-                Gérer les codes
-              </Link>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--violet-light)' }}>🔗</div>
+              <h3 className="font-bold text-lg mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Codes de partage</h3>
+              <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Créez des codes d&apos;accès sécurisés.</p>
+              <Link href={`/projects/${id}/access`} className="btn-primary">Gérer les codes</Link>
             </div>
           )}
         </main>
       </div>
 
+      {/* Bottom nav mobile */}
+      <nav className="md:hidden fixed left-0 right-0 bottom-0 z-30 flex justify-around border-t"
+        style={{ background: 'white', borderColor: 'var(--border)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className="flex flex-col items-center justify-center gap-0.5"
+            style={{ minWidth: 64, minHeight: 56, color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)', fontWeight: tab === t.key ? 600 : 400 }}>
+            <span style={{ fontSize: 20 }}>{t.icon}</span>
+            <span style={{ fontSize: 10 }}>{t.label}</span>
+          </button>
+        ))}
+      </nav>
+
       {cadFile && (
-        <CadViewer
-          fileId={cadFile.id}
-          fileName={cadFile.name}
-          token={getToken()}
-          onClose={() => setCadFile(null)}
-        />
+        <CadViewer fileId={cadFile.id} fileName={cadFile.name} token={getToken()} onClose={() => setCadFile(null)} />
       )}
     </div>
   );
+}
+
+function findNodeName(list: StructureNode[], targetId: string): string | null {
+  for (const n of list) {
+    if (n.id === targetId) return n.name;
+    const c = findNodeName(n.children, targetId);
+    if (c) return c;
+  }
+  return null;
 }
