@@ -7,13 +7,14 @@ import { fetchWithAuth } from '@/lib/auth-client';
 import dynamic from 'next/dynamic';
 import { isCadFile } from '@/lib/cad';
 import { uploadFileDirect } from '@/lib/upload';
+import { acceptAttr, uploadHint, type UploadRulesConfig } from '@/lib/uploadRules';
 import { makeThumb, getCachedThumb } from '@/lib/thumbs';
 
 const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
 const VisitesPanel = dynamic(() => import('@/components/VisitesPanel'), { ssr: false });
 
 interface ProjectAccess { role: 'owner' | 'member'; canView: boolean; canUpload: boolean; canDownload: boolean; canShare: boolean; canManage: boolean; }
-interface Project { id: string; name: string; sector: string | null; structureType: string; access?: ProjectAccess; }
+interface Project { id: string; name: string; sector: string | null; structureType: string; access?: ProjectAccess; uploadRules?: UploadRulesConfig | null; }
 interface StructureNode {
   id: string; name: string; nodeType: string; position: number;
   parentId: string | null; children: StructureNode[]; _count: { files: number };
@@ -328,6 +329,11 @@ export default function ProjectPage() {
 
   const selectedNodeName = selectedNodeId
     ? findNodeName(nodes, selectedNodeId) : null;
+  const selectedNodeType = selectedNodeId
+    ? findNodeType(nodes, selectedNodeId) : null;
+  const uploadRules = project?.uploadRules ?? null;
+  const uploadAccept = acceptAttr(selectedNodeType, uploadRules);
+  const uploadMsg = uploadHint(selectedNodeType, uploadRules);
 
   if (loading) {
     return (
@@ -361,7 +367,7 @@ export default function ProjectPage() {
           {tab === 'files' && canUpload && (
             <label className={`btn-primary text-sm cursor-pointer ${uploading ? 'opacity-60' : ''}`} style={{ minHeight: 40 }}>
               {uploading ? 'Upload...' : '＋ Fichier'}
-              <input type="file" multiple className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
+              <input type="file" multiple accept={uploadAccept} title={uploadMsg} className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
             </label>
           )}
 
@@ -423,6 +429,12 @@ export default function ProjectPage() {
                   {files.length} fichier{files.length !== 1 ? 's' : ''}
                 </p>
               </div>
+              {canUpload && uploadAccept && (
+                <p className="text-xs mb-3 inline-flex items-center gap-1 px-2 py-1 rounded-lg"
+                  style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>
+                  ℹ️ {uploadMsg}
+                </p>
+              )}
 
               {files.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -549,6 +561,15 @@ export default function ProjectPage() {
       )}
     </div>
   );
+}
+
+function findNodeType(list: StructureNode[], targetId: string): string | null {
+  for (const n of list) {
+    if (n.id === targetId) return n.nodeType;
+    const c = findNodeType(n.children, targetId);
+    if (c) return c;
+  }
+  return null;
 }
 
 function findNodeName(list: StructureNode[], targetId: string): string | null {

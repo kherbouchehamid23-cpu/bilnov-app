@@ -86,6 +86,7 @@ model Project {
   structureType  StructureType @default(BUILDING) @map("structure_type")
   sector         String?
   coverUrl       String?       @map("cover_url")
+  uploadRules    Json?         @map("upload_rules")
   status         ProjectStatus @default(ACTIVE)
   createdById    String        @map("created_by_id")
   createdAt      DateTime      @default(now()) @map("created_at")
