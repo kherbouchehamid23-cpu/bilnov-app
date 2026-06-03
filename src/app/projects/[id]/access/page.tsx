@@ -3,6 +3,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import QRCode from 'qrcode';
+import dynamic from 'next/dynamic';
+import type { TreeNode } from '@/components/NodeTreeSelect';
+const NodeTreeSelect = dynamic(() => import('@/components/NodeTreeSelect'), { ssr: false });
 
 interface AccessCode {
   id: string;
@@ -41,6 +44,9 @@ export default function AccessCodesPage() {
   const [codes, setCodes] = useState<AccessCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [nodes, setNodes] = useState<TreeNode[]>([]);
+  const [rootCount, setRootCount] = useState(0);
+  const [scope, setScope] = useState<string[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [newCode, setNewCode] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -76,6 +82,18 @@ export default function AccessCodesPage() {
 
   useEffect(() => {
     void fetchCodes();
+    void (async () => {
+      try {
+        const r = await fetch(`/api/projects/${id}/nodes`, { headers: { Authorization: `Bearer ${getToken()}` } });
+        const d = await r.json() as { data?: { nodes?: TreeNode[] } };
+        setNodes(d.data?.nodes ?? []);
+      } catch { /* ignore */ }
+      try {
+        const rf = await fetch(`/api/projects/${id}/files`, { headers: { Authorization: `Bearer ${getToken()}` } });
+        const df = await rf.json() as { data?: { files?: { nodeId: string | null }[] } };
+        setRootCount((df.data?.files ?? []).filter(x => !x.nodeId).length);
+      } catch { /* ignore */ }
+    })();
   }, [id]);
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
@@ -95,6 +113,7 @@ export default function AccessCodesPage() {
           canUpload: form.canUpload,
           canShare: form.canShare,
           expiresInDays: form.expiresInDays ? parseInt(form.expiresInDays, 10) : null,
+          allowedNodeIds: scope ?? [],
         }),
       });
       const data = await res.json() as ApiResponse<{ displayCode: string }>;
@@ -317,6 +336,13 @@ export default function AccessCodesPage() {
                   <option value="365">1 an</option>
                   <option value="">Jamais</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>
+                  Contenu partagé
+                </label>
+                <NodeTreeSelect nodes={nodes} value={scope} onChange={setScope} rootFilesCount={rootCount} />
               </div>
 
               {error && (

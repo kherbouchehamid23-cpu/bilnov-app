@@ -2,6 +2,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
+import type { TreeNode } from '@/components/NodeTreeSelect';
+const NodeTreeSelect = dynamic(() => import('@/components/NodeTreeSelect'), { ssr: false });
 
 interface Member {
   id: string;
@@ -43,6 +46,9 @@ export default function TeamPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInviteForm, setShowInviteForm] = useState(false);
+  const [nodes, setNodes] = useState<TreeNode[]>([]);
+  const [rootCount, setRootCount] = useState(0);
+  const [scope, setScope] = useState<string[] | null>(null);
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -75,6 +81,18 @@ export default function TeamPage() {
 
   useEffect(() => {
     void fetchMembers();
+    void (async () => {
+      try {
+        const r = await fetch(`/api/projects/${id}/nodes`, { headers: { Authorization: `Bearer ${getToken()}` } });
+        const d = await r.json() as { data?: { nodes?: TreeNode[] } };
+        setNodes(d.data?.nodes ?? []);
+      } catch { /* ignore */ }
+      try {
+        const rf = await fetch(`/api/projects/${id}/files`, { headers: { Authorization: `Bearer ${getToken()}` } });
+        const df = await rf.json() as { data?: { files?: { nodeId: string | null }[] } };
+        setRootCount((df.data?.files ?? []).filter(x => !x.nodeId).length);
+      } catch { /* ignore */ }
+    })();
   }, [id]);
 
   const handleInvite = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
@@ -89,7 +107,7 @@ export default function TeamPage() {
           Authorization: `Bearer ${getToken()}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, allowedNodeIds: scope ?? [] }),
       });
       const data = await res.json() as ApiResponse<Member>;
       if (!res.ok) {
@@ -98,6 +116,7 @@ export default function TeamPage() {
       } else {
         setSuccess(`${form.email} a été invité avec succès.`);
         setForm({ email: '', canView: true, canUpload: false, canDownload: true, canShare: false });
+        setScope(null);
         setShowInviteForm(false);
         void fetchMembers();
       }
@@ -222,6 +241,13 @@ export default function TeamPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>
+                  Contenu accessible
+                </label>
+                <NodeTreeSelect nodes={nodes} value={scope} onChange={setScope} rootFilesCount={rootCount} />
               </div>
 
               {error && (

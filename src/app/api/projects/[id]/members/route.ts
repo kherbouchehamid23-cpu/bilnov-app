@@ -57,9 +57,10 @@ export async function POST(
       canUpload?: boolean;
       canDownload?: boolean;
       canShare?: boolean;
+      allowedNodeIds?: string[] | null;
     };
 
-    const { email, canView, canUpload, canDownload, canShare } = body;
+    const { email, canView, canUpload, canDownload, canShare, allowedNodeIds } = body;
 
     if (!email) {
       return apiError('Email requis', 'VALIDATION_ERROR', 400);
@@ -103,6 +104,7 @@ export async function POST(
         canUpload: canUpload ?? false,
         canDownload: canDownload ?? true,
         canShare: canShare ?? false,
+        allowedNodeIds: allowedNodeIds ?? [],
       },
       include: {
         user: {

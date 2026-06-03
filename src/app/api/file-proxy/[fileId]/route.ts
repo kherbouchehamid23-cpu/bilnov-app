@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyToken, apiError } from '@/lib/auth';
 import { getSignedFileUrl } from '@/lib/storage';
 import { getProjectAccess } from '@/lib/access';
+import { resolveScope, fileInScope } from '@/lib/scope';
 
 export async function GET(
   req: NextRequest,
@@ -22,6 +23,8 @@ export async function GET(
     // Contrôle d'accès : owner ou membre du projet (canView minimum)
     const access = await getProjectAccess(user, file.projectId);
     if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
+    const scope = await resolveScope(file.projectId, access.allowedNodeIds);
+    if (!fileInScope(file.nodeId, scope)) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     const { url } = await getSignedFileUrl(file.storageKey, 'view', file.name);
     const r2Res = await fetch(url);

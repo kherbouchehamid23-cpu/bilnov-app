@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { apiError, apiSuccess } from '@/lib/auth';
+import { resolveScope, scopeFileWhere } from '@/lib/scope';
 
 async function validateCode(code: string, projectId: string) {
   const accessCode = await prisma.accessCode.findUnique({
@@ -28,8 +29,10 @@ export async function GET(
     if (!accessCode) return apiError('Code invalide ou expiré', 'INVALID_CODE', 403);
     if (!accessCode.shareRule?.canView) return apiError('Accès non autorisé', 'FORBIDDEN', 403);
 
+    const scope = await resolveScope(params.id, accessCode.shareRule?.allowedNodeIds ?? null);
+
     const files = await prisma.file.findMany({
-      where: { projectId: params.id, status: 'ACTIVE', deletedAt: null },
+      where: { projectId: params.id, status: 'ACTIVE', deletedAt: null, ...scopeFileWhere(scope) },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,

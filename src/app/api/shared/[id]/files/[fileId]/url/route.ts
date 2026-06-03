@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { apiError, apiSuccess } from '@/lib/auth';
 import { getSignedFileUrl } from '@/lib/storage';
+import { resolveScope, fileInScope } from '@/lib/scope';
 
 async function validateCode(code: string, projectId: string) {
   const accessCode = await prisma.accessCode.findUnique({
@@ -31,6 +32,11 @@ export async function GET(
 
     const file = await prisma.file.findUnique({ where: { id: params.fileId } });
     if (!file) return apiError('Fichier introuvable', 'NOT_FOUND', 404);
+    if (file.projectId !== params.id) return apiError('Accès refusé', 'FORBIDDEN', 403);
+
+    // Vérifier que le fichier est dans la portée partagée
+    const scope = await resolveScope(params.id, accessCode.shareRule?.allowedNodeIds ?? null);
+    if (!fileInScope(file.nodeId, scope)) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     const purpose = accessCode.shareRule?.canDownload ? 'download' : 'view';
     const { url, expiresAt } = await getSignedFileUrl(file.storageKey, purpose, file.name);

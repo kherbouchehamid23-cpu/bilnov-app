@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getProjectAccess } from '@/lib/access';
+import { resolveScope, scopeFileWhere } from '@/lib/scope';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 import { uploadFile } from '@/lib/storage';
 
@@ -12,11 +13,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const access = await getProjectAccess(user, params.id);
     if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
+    // Portée intervenant : restreindre aux nœuds autorisés (+ descendance)
+    const scope = await resolveScope(params.id, access.allowedNodeIds);
+
     const nodeId = req.nextUrl.searchParams.get('nodeId');
     const where: any = {
       projectId: params.id,
       status: 'ACTIVE',
       deletedAt: null,
+      ...scopeFileWhere(scope),
     };
 
     if (nodeId) {

@@ -16,6 +16,8 @@ export interface ProjectAccess {
   canShare: boolean;
   // owner : peut gérer (inviter, supprimer espaces, créer codes). member : non.
   canManage: boolean;
+  // null = accès à tout le projet ; sinon liste des nœuds autorisés (member).
+  allowedNodeIds: string[] | null;
 }
 
 /**
@@ -42,6 +44,7 @@ export async function getProjectAccess(
       canDownload: true,
       canShare: true,
       canManage: true,
+      allowedNodeIds: null,
     };
   }
 
@@ -54,6 +57,7 @@ export async function getProjectAccess(
       canDownload: true,
       canShare: true,
       expiresAt: true,
+      allowedNodeIds: true,
     },
   });
   if (!member) return null;
@@ -69,6 +73,9 @@ export async function getProjectAccess(
     canDownload: member.canDownload,
     canShare: member.canShare,
     canManage: false,
+    allowedNodeIds: (member.allowedNodeIds && member.allowedNodeIds.length > 0)
+      ? member.allowedNodeIds
+      : null,
   };
 }
 

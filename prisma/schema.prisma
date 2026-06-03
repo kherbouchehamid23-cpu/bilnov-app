@@ -145,6 +145,7 @@ model ProjectMember {
   canUpload        Boolean   @default(false) @map("can_upload")
   canDownload      Boolean   @default(true) @map("can_download")
   canShare         Boolean   @default(false) @map("can_share")
+  allowedNodeIds   String[]  @map("allowed_node_ids")
   expiresAt        DateTime? @map("expires_at")
   createdAt        DateTime  @default(now()) @map("created_at")
 
