@@ -35,8 +35,8 @@ export async function GET(
     if (file.projectId !== params.id) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     // Vérifier que le fichier est dans la portée partagée
-    const scope = await resolveScope(params.id, accessCode.shareRule?.allowedNodeIds ?? null);
-    if (!fileInScope(file.nodeId, scope)) return apiError('Accès refusé', 'FORBIDDEN', 403);
+    const scope = await resolveScope(params.id, accessCode.shareRule?.allowedNodeIds ?? null, accessCode.shareRule?.allowedFileIds ?? null);
+    if (!fileInScope(file.nodeId, file.id, scope)) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     const purpose = accessCode.shareRule?.canDownload ? 'download' : 'view';
     const { url, expiresAt } = await getSignedFileUrl(file.storageKey, purpose, file.name);

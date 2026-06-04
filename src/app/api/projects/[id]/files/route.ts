@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     // Portée intervenant : restreindre aux nœuds autorisés (+ descendance)
-    const scope = await resolveScope(params.id, access.allowedNodeIds);
+    const scope = await resolveScope(params.id, access.allowedNodeIds, access.allowedFileIds);
 
     const nodeId = req.nextUrl.searchParams.get('nodeId');
     const where: any = {

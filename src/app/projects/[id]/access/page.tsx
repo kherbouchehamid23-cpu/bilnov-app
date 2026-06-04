@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import QRCode from 'qrcode';
 import dynamic from 'next/dynamic';
-import type { TreeNode } from '@/components/NodeTreeSelect';
+import type { TreeNode, ScopeValue } from '@/components/NodeTreeSelect';
 const NodeTreeSelect = dynamic(() => import('@/components/NodeTreeSelect'), { ssr: false });
 
 interface AccessCode {
@@ -46,7 +46,7 @@ export default function AccessCodesPage() {
   const [showForm, setShowForm] = useState(false);
   const [nodes, setNodes] = useState<TreeNode[]>([]);
   const [rootCount, setRootCount] = useState(0);
-  const [scope, setScope] = useState<string[] | null>(null);
+  const [scope, setScope] = useState<ScopeValue | null>(null);
   const [creating, setCreating] = useState(false);
   const [newCode, setNewCode] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -113,7 +113,8 @@ export default function AccessCodesPage() {
           canUpload: form.canUpload,
           canShare: form.canShare,
           expiresInDays: form.expiresInDays ? parseInt(form.expiresInDays, 10) : null,
-          allowedNodeIds: scope ?? [],
+          allowedNodeIds: scope?.nodeIds ?? [],
+          allowedFileIds: scope?.fileIds ?? [],
         }),
       });
       const data = await res.json() as ApiResponse<{ displayCode: string }>;
@@ -342,7 +343,7 @@ export default function AccessCodesPage() {
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>
                   Contenu partagé
                 </label>
-                <NodeTreeSelect nodes={nodes} value={scope} onChange={setScope} rootFilesCount={rootCount} />
+                <NodeTreeSelect projectId={id} nodes={nodes} value={scope} onChange={setScope} getToken={getToken} rootFilesCount={rootCount} />
               </div>
 
               {error && (

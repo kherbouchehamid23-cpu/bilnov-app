@@ -18,6 +18,7 @@ export interface ProjectAccess {
   canManage: boolean;
   // null = accès à tout le projet ; sinon liste des nœuds autorisés (member).
   allowedNodeIds: string[] | null;
+  allowedFileIds: string[] | null;
 }
 
 /**
@@ -45,6 +46,7 @@ export async function getProjectAccess(
       canShare: true,
       canManage: true,
       allowedNodeIds: null,
+      allowedFileIds: null,
     };
   }
 
@@ -58,6 +60,7 @@ export async function getProjectAccess(
       canShare: true,
       expiresAt: true,
       allowedNodeIds: true,
+      allowedFileIds: true,
     },
   });
   if (!member) return null;
@@ -75,6 +78,9 @@ export async function getProjectAccess(
     canManage: false,
     allowedNodeIds: (member.allowedNodeIds && member.allowedNodeIds.length > 0)
       ? member.allowedNodeIds
+      : null,
+    allowedFileIds: (member.allowedFileIds && member.allowedFileIds.length > 0)
+      ? member.allowedFileIds
       : null,
   };
 }

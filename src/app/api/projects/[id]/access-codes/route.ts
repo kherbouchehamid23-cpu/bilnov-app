@@ -50,6 +50,7 @@ export async function POST(
       canShare?: boolean;
       expiresInDays?: number | null;
       allowedNodeIds?: string[] | null;
+      allowedFileIds?: string[] | null;
     };
 
     const {
@@ -59,6 +60,7 @@ export async function POST(
       canShare = false,
       expiresInDays,
       allowedNodeIds = [],
+      allowedFileIds = [],
     } = body;
 
     // Générer un code unique
@@ -88,6 +90,7 @@ export async function POST(
             canUpload,
             canShare,
             allowedNodeIds: allowedNodeIds ?? [],
+            allowedFileIds: allowedFileIds ?? [],
           },
         },
       },

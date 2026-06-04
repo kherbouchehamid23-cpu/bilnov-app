@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import type { TreeNode } from '@/components/NodeTreeSelect';
+import type { TreeNode, ScopeValue } from '@/components/NodeTreeSelect';
 const NodeTreeSelect = dynamic(() => import('@/components/NodeTreeSelect'), { ssr: false });
 
 interface Member {
@@ -48,7 +48,7 @@ export default function TeamPage() {
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [nodes, setNodes] = useState<TreeNode[]>([]);
   const [rootCount, setRootCount] = useState(0);
-  const [scope, setScope] = useState<string[] | null>(null);
+  const [scope, setScope] = useState<ScopeValue | null>(null);
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -107,7 +107,7 @@ export default function TeamPage() {
           Authorization: `Bearer ${getToken()}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ...form, allowedNodeIds: scope ?? [] }),
+        body: JSON.stringify({ ...form, allowedNodeIds: scope?.nodeIds ?? [], allowedFileIds: scope?.fileIds ?? [] }),
       });
       const data = await res.json() as ApiResponse<Member>;
       if (!res.ok) {
@@ -247,7 +247,7 @@ export default function TeamPage() {
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>
                   Contenu accessible
                 </label>
-                <NodeTreeSelect nodes={nodes} value={scope} onChange={setScope} rootFilesCount={rootCount} />
+                <NodeTreeSelect projectId={id} nodes={nodes} value={scope} onChange={setScope} getToken={getToken} rootFilesCount={rootCount} />
               </div>
 
               {error && (

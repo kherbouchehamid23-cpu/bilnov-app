@@ -29,7 +29,7 @@ export async function GET(
     if (!accessCode) return apiError('Code invalide ou expiré', 'INVALID_CODE', 403);
     if (!accessCode.shareRule?.canView) return apiError('Accès non autorisé', 'FORBIDDEN', 403);
 
-    const scope = await resolveScope(params.id, accessCode.shareRule?.allowedNodeIds ?? null);
+    const scope = await resolveScope(params.id, accessCode.shareRule?.allowedNodeIds ?? null, accessCode.shareRule?.allowedFileIds ?? null);
 
     const files = await prisma.file.findMany({
       where: { projectId: params.id, status: 'ACTIVE', deletedAt: null, ...scopeFileWhere(scope) },
