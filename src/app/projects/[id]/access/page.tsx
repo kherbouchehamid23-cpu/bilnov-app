@@ -18,6 +18,8 @@ interface AccessCode {
     canDownload: boolean;
     canUpload: boolean;
     canShare: boolean;
+    allowedNodeIds?: string[];
+    allowedFileIds?: string[];
   } | null;
   _count: {
     accessLogs: number;
@@ -47,6 +49,10 @@ export default function AccessCodesPage() {
   const [nodes, setNodes] = useState<TreeNode[]>([]);
   const [rootCount, setRootCount] = useState(0);
   const [scope, setScope] = useState<ScopeValue | null>(null);
+  const [editingCode, setEditingCode] = useState<AccessCode | null>(null);
+  const [editScope, setEditScope] = useState<ScopeValue | null>(null);
+  const [editPerms, setEditPerms] = useState({ canView: true, canDownload: false, canUpload: false, canShare: false });
+  const [savingEdit, setSavingEdit] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newCode, setNewCode] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -137,6 +143,42 @@ export default function AccessCodesPage() {
       setError('Erreur lors de la création');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const startEdit = (code: AccessCode): void => {
+    setEditingCode(code);
+    const n = code.shareRule?.allowedNodeIds ?? [];
+    const fids = code.shareRule?.allowedFileIds ?? [];
+    setEditScope(n.length === 0 && fids.length === 0 ? null : { nodeIds: n, fileIds: fids });
+    setEditPerms({
+      canView: code.shareRule?.canView ?? true,
+      canDownload: code.shareRule?.canDownload ?? false,
+      canUpload: code.shareRule?.canUpload ?? false,
+      canShare: code.shareRule?.canShare ?? false,
+    });
+  };
+
+  const saveEdit = async (): Promise<void> => {
+    if (!editingCode) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/projects/${id}/access-codes/${editingCode.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...editPerms,
+          allowedNodeIds: editScope?.nodeIds ?? [],
+          allowedFileIds: editScope?.fileIds ?? [],
+        }),
+      });
+      if (!res.ok) throw new Error('Erreur lors de la modification');
+      setEditingCode(null);
+      void fetchCodes();
+    } catch {
+      alert('Impossible de modifier ce partage');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -451,6 +493,13 @@ export default function AccessCodesPage() {
                       </button>
                       {code.isActive && (
                         <button
+                          onClick={() => startEdit(code)}
+                          className="btn-secondary text-xs px-3 py-1.5">
+                          ✎ Modifier
+                        </button>
+                      )}
+                      {code.isActive && (
+                        <button
                           onClick={() => { void handleRevoke(code.id); }}
                           className="text-xs px-3 py-1.5 rounded-lg transition-colors"
                           style={{
@@ -463,6 +512,44 @@ export default function AccessCodesPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Panneau d'édition inline */}
+                  {editingCode?.id === code.id && (
+                    <div className="mt-4 pt-4 border-t space-y-4" style={{ borderColor: 'var(--border)' }}>
+                      <div>
+                        <p className="text-sm font-medium mb-2" style={{ color: 'var(--text)' }}>Permissions</p>
+                        <div className="flex flex-wrap gap-2">
+                          {([
+                            ['canView', '👁️ Voir'],
+                            ['canDownload', '⬇️ Télécharger'],
+                            ['canUpload', '⬆️ Ajouter'],
+                            ['canShare', '🔗 Repartager'],
+                          ] as const).map(([k, label]) => (
+                            <button key={k} type="button"
+                              onClick={() => setEditPerms(p => ({ ...p, [k]: !p[k] }))}
+                              className="text-xs px-3 py-1.5 rounded-lg border"
+                              style={{
+                                background: editPerms[k] ? 'var(--violet-light)' : 'var(--surface-2)',
+                                color: editPerms[k] ? 'var(--violet)' : 'var(--text-muted)',
+                                borderColor: editPerms[k] ? 'var(--violet)' : 'var(--border)',
+                              }}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium mb-2" style={{ color: 'var(--text)' }}>Contenu partagé</p>
+                        <NodeTreeSelect projectId={id} nodes={nodes} value={editScope} onChange={setEditScope} getToken={getToken} rootFilesCount={rootCount} />
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => { void saveEdit(); }} disabled={savingEdit} className="btn-primary text-sm">
+                          {savingEdit ? 'Enregistrement…' : 'Enregistrer'}
+                        </button>
+                        <button onClick={() => setEditingCode(null)} className="btn-secondary text-sm">Annuler</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

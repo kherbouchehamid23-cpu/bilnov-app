@@ -12,6 +12,8 @@ interface Member {
   canUpload: boolean;
   canDownload: boolean;
   canShare: boolean;
+  allowedNodeIds?: string[];
+  allowedFileIds?: string[];
   createdAt: string;
   user: {
     id: string;
@@ -49,6 +51,10 @@ export default function TeamPage() {
   const [nodes, setNodes] = useState<TreeNode[]>([]);
   const [rootCount, setRootCount] = useState(0);
   const [scope, setScope] = useState<ScopeValue | null>(null);
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [editScope, setEditScope] = useState<ScopeValue | null>(null);
+  const [editPerms, setEditPerms] = useState({ canView: true, canUpload: false, canDownload: true, canShare: false });
+  const [savingEdit, setSavingEdit] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -124,6 +130,37 @@ export default function TeamPage() {
       setError('Erreur lors de l\'invitation');
     } finally {
       setInviting(false);
+    }
+  };
+
+  const startEdit = (m: Member): void => {
+    setEditingMember(m);
+    const n = m.allowedNodeIds ?? [];
+    const fids = m.allowedFileIds ?? [];
+    setEditScope(n.length === 0 && fids.length === 0 ? null : { nodeIds: n, fileIds: fids });
+    setEditPerms({ canView: m.canView, canUpload: m.canUpload, canDownload: m.canDownload, canShare: m.canShare });
+  };
+
+  const saveEdit = async (): Promise<void> => {
+    if (!editingMember) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/projects/${id}/members/${editingMember.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...editPerms,
+          allowedNodeIds: editScope?.nodeIds ?? [],
+          allowedFileIds: editScope?.fileIds ?? [],
+        }),
+      });
+      if (!res.ok) throw new Error('Erreur');
+      setEditingMember(null);
+      void fetchMembers();
+    } catch {
+      alert('Impossible de modifier ce partage');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -334,6 +371,15 @@ export default function TeamPage() {
                     {member.role.name}
                   </span>
 
+                  {/* Edit button */}
+                  <button
+                    onClick={() => startEdit(member)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors hover:bg-violet-50"
+                    style={{ color: 'var(--violet)' }}
+                    title="Modifier le partage">
+                    ✎
+                  </button>
+
                   {/* Remove button */}
                   <button
                     onClick={() => { void handleRemove(member.id); }}
@@ -347,6 +393,47 @@ export default function TeamPage() {
             </div>
           )}
         </div>
+
+        {/* Panneau d'édition intervenant */}
+        {editingMember && (
+          <div className="mt-6 p-5 rounded-2xl border bg-white space-y-4" style={{ borderColor: 'var(--violet-light)' }}>
+            <h3 className="font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+              Modifier le partage — {editingMember.user.firstName} {editingMember.user.lastName}
+            </h3>
+            <div>
+              <p className="text-sm font-medium mb-2" style={{ color: 'var(--text)' }}>Permissions</p>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  ['canView', '👁️ Voir'],
+                  ['canDownload', '⬇️ Télécharger'],
+                  ['canUpload', '⬆️ Ajouter'],
+                  ['canShare', '🔗 Repartager'],
+                ] as const).map(([k, label]) => (
+                  <button key={k} type="button"
+                    onClick={() => setEditPerms(p => ({ ...p, [k]: !p[k] }))}
+                    className="text-xs px-3 py-1.5 rounded-lg border"
+                    style={{
+                      background: editPerms[k] ? 'var(--violet-light)' : 'var(--surface-2)',
+                      color: editPerms[k] ? 'var(--violet)' : 'var(--text-muted)',
+                      borderColor: editPerms[k] ? 'var(--violet)' : 'var(--border)',
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-2" style={{ color: 'var(--text)' }}>Contenu accessible</p>
+              <NodeTreeSelect projectId={id} nodes={nodes} value={editScope} onChange={setEditScope} getToken={getToken} rootFilesCount={rootCount} />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { void saveEdit(); }} disabled={savingEdit} className="btn-primary text-sm">
+                {savingEdit ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+              <button onClick={() => setEditingMember(null)} className="btn-secondary text-sm">Annuler</button>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
