@@ -167,7 +167,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
         });
         viewerRef.current = viewer;
 
-        await viewer.Load({ url, fonts: null });
+        await viewer.Load({ url, fonts: ['/cad/fonts/DejaVuSans.ttf'] });
         if (cancelled) return;
 
         const ls: LayerItem[] = [];
