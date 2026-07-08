@@ -557,7 +557,7 @@ export default function ProjectPage() {
       </nav>
 
       {cadFile && (
-        <CadViewer fileId={cadFile.id} fileName={cadFile.name} token={getToken()} onClose={() => setCadFile(null)} />
+        <CadViewer fileId={cadFile.id} fileName={cadFile.name} token={getToken()} canAnnotate={canManage || canUpload} onClose={() => setCadFile(null)} />
       )}
     </div>
   );
