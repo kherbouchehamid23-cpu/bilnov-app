@@ -12,6 +12,10 @@ interface Member {
   canUpload: boolean;
   canDownload: boolean;
   canShare: boolean;
+  canMeasure?: boolean;
+  canComment?: boolean;
+  canReply?: boolean;
+  canValidate?: boolean;
   allowedNodeIds?: string[];
   allowedFileIds?: string[];
   createdAt: string;
@@ -53,7 +57,7 @@ export default function TeamPage() {
   const [scope, setScope] = useState<ScopeValue | null>(null);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [editScope, setEditScope] = useState<ScopeValue | null>(null);
-  const [editPerms, setEditPerms] = useState({ canView: true, canUpload: false, canDownload: true, canShare: false });
+  const [editPerms, setEditPerms] = useState({ canView: true, canUpload: false, canDownload: true, canShare: false, canMeasure: true, canComment: true, canReply: true, canValidate: false });
   const [savingEdit, setSavingEdit] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
@@ -138,7 +142,7 @@ export default function TeamPage() {
     const n = m.allowedNodeIds ?? [];
     const fids = m.allowedFileIds ?? [];
     setEditScope(n.length === 0 && fids.length === 0 ? null : { nodeIds: n, fileIds: fids });
-    setEditPerms({ canView: m.canView, canUpload: m.canUpload, canDownload: m.canDownload, canShare: m.canShare });
+    setEditPerms({ canView: m.canView, canUpload: m.canUpload, canDownload: m.canDownload, canShare: m.canShare, canMeasure: m.canMeasure ?? true, canComment: m.canComment ?? true, canReply: m.canReply ?? true, canValidate: m.canValidate ?? false });
   };
 
   const saveEdit = async (): Promise<void> => {
@@ -408,6 +412,10 @@ export default function TeamPage() {
                   ['canDownload', '⬇️ Télécharger'],
                   ['canUpload', '⬆️ Ajouter'],
                   ['canShare', '🔗 Repartager'],
+                  ['canMeasure', '📏 Mesurer'],
+                  ['canComment', '💬 Commenter'],
+                  ['canReply', '↩️ Répondre'],
+                  ['canValidate', '✅ Valider/Clôturer'],
                 ] as const).map(([k, label]) => (
                   <button key={k} type="button"
                     onClick={() => setEditPerms(p => ({ ...p, [k]: !p[k] }))}

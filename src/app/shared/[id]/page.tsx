@@ -1,6 +1,9 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
+
+const SharedCadViewer = dynamic(() => import('@/components/SharedCadViewer'), { ssr: false });
 
 interface Permissions {
   canView: boolean;
@@ -42,6 +45,7 @@ export default function SharedProjectPage() {
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const [cadFile, setCadFile] = useState<FileItem | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -88,6 +92,9 @@ export default function SharedProjectPage() {
 
   const openFile = async (fileId: string): Promise<void> => {
     if (openingId) return;
+    const file = files.find(f => f.id === fileId);
+    // Les plans DWG/DXF s'ouvrent dans le viewer partagé (lecture seule + commentaires).
+    if (file && (file.fileType === 'DWG' || file.fileType === 'DXF')) { setCadFile(file); return; }
     const code = sessionStorage.getItem('bilnov_access_code') ?? '';
     setOpeningId(fileId);
     try {
@@ -195,6 +202,15 @@ export default function SharedProjectPage() {
           </div>
         )}
       </main>
+      {cadFile && (
+        <SharedCadViewer
+          shareId={projectId}
+          code={typeof window !== 'undefined' ? (sessionStorage.getItem('bilnov_access_code') ?? '') : ''}
+          fileId={cadFile.id}
+          fileName={cadFile.name}
+          onClose={() => setCadFile(null)}
+        />
+      )}
     </div>
   );
 }

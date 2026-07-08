@@ -31,6 +31,7 @@ interface CreateCodeForm {
   canDownload: boolean;
   canUpload: boolean;
   canShare: boolean;
+  commentShareMode: string;
   expiresInDays: string;
 }
 
@@ -64,6 +65,7 @@ export default function AccessCodesPage() {
     canDownload: false,
     canUpload: false,
     canShare: false,
+    commentShareMode: 'NONE',
     expiresInDays: '30',
   });
 
@@ -118,6 +120,7 @@ export default function AccessCodesPage() {
           canDownload: form.canDownload,
           canUpload: form.canUpload,
           canShare: form.canShare,
+          commentShareMode: form.commentShareMode,
           expiresInDays: form.expiresInDays ? parseInt(form.expiresInDays, 10) : null,
           allowedNodeIds: scope?.nodeIds ?? [],
           allowedFileIds: scope?.fileIds ?? [],
@@ -362,6 +365,22 @@ export default function AccessCodesPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>
+                  Commentaires partagés
+                </label>
+                <select
+                  value={form.commentShareMode}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                    setForm(prev => ({ ...prev, commentShareMode: e.target.value }))}
+                  className="input">
+                  <option value="NONE">Aucun (plan seul)</option>
+                  <option value="ALL">Tous les commentaires</option>
+                  <option value="OPEN">Uniquement les commentaires ouverts</option>
+                  <option value="UNRESOLVED">Uniquement les non résolus</option>
+                </select>
               </div>
 
               <div>
