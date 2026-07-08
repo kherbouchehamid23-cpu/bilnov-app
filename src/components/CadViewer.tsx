@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { toDxfObjectUrl } from '@/lib/cad';
+import { SnapIndex } from '@/lib/snap';
 
 interface LayerItem { name: string; displayName: string; color: number; visible: boolean; }
 interface Annotation {
@@ -12,7 +13,12 @@ interface Props {
   canAnnotate?: boolean; onClose: () => void;
 }
 
-type Tool = 'pan' | 'measure' | 'annotate';
+type Tool = 'pan' | 'measure' | 'annotate' | 'area';
+type Pt = { x: number; y: number };
+
+// Rayon d'accrochage à l'écran (px). Correspond à « poser un point à proximité
+// d'un repère » : sous ce rayon, le point s'aligne exactement sur le repère.
+const SNAP_PX = 14;
 
 export default function CadViewer({ fileId, fileName, token, canAnnotate = true, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -22,6 +28,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const objectUrlRef = useRef<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const THREERef = useRef<any>(null);
+  const snapIndexRef = useRef<SnapIndex | null>(null);
 
   const [phase, setPhase] = useState('Initialisation…');
   const [error, setError] = useState<string | null>(null);
@@ -34,14 +41,25 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   useEffect(() => { toolRef.current = tool; }, [tool]);
 
   // Mesure : points cliqués (coords monde), + résultat
-  const [measurePts, setMeasurePts] = useState<{ x: number; y: number }[]>([]);
-  const measurePtsRef = useRef<{ x: number; y: number }[]>([]);
+  const [measurePts, setMeasurePts] = useState<Pt[]>([]);
+  const measurePtsRef = useRef<Pt[]>([]);
   useEffect(() => { measurePtsRef.current = measurePts; }, [measurePts]);
   const [unit, setUnit] = useState('u'); // unité affichée (défaut : unités dessin)
 
+  // Superficie : sommets du polygone (coords monde) + état fermé
+  const [areaPts, setAreaPts] = useState<Pt[]>([]);
+  const areaPtsRef = useRef<Pt[]>([]);
+  useEffect(() => { areaPtsRef.current = areaPts; }, [areaPts]);
+  const [areaClosed, setAreaClosed] = useState(false);
+  const areaClosedRef = useRef(false);
+  useEffect(() => { areaClosedRef.current = areaClosed; }, [areaClosed]);
+
+  // Accrochage : repère survolé (coords monde) pour l'indicateur visuel
+  const [snapHover, setSnapHover] = useState<Pt | null>(null);
+
   // Annotations
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [draftPoint, setDraftPoint] = useState<{ x: number; y: number } | null>(null);
+  const [draftPoint, setDraftPoint] = useState<Pt | null>(null);
   const [draftText, setDraftText] = useState('');
 
   // force le recalcul des overlays au zoom/pan
@@ -53,6 +71,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
       viewerRef.current = null;
     }
     if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
+    snapIndexRef.current = null;
   }, []);
 
   // Convertit une coord monde -> pixel dans l'overlay
@@ -68,6 +87,41 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     } catch { return null; }
   }, []);
 
+  // Convertit un pixel (relatif au conteneur) -> coord monde
+  const screenToWorld = useCallback((px: number, py: number): Pt | null => {
+    const v = viewerRef.current; const THREE = THREERef.current; const cont = containerRef.current;
+    if (!v || !THREE || !cont) return null;
+    try {
+      const origin = v.GetOrigin();
+      const cam = v.GetCamera();
+      const w = cont.clientWidth, h = cont.clientHeight;
+      const ndcX = (px / w) * 2 - 1;
+      const ndcY = -((py / h) * 2 - 1);
+      const vec = new THREE.Vector3(ndcX, ndcY, 0).unproject(cam);
+      return { x: vec.x + origin.x, y: vec.y + origin.y };
+    } catch { return null; }
+  }, []);
+
+  // Unités dessin par pixel (dépend du zoom courant)
+  const worldPerPixel = useCallback((): number | null => {
+    const v = viewerRef.current; const cont = containerRef.current;
+    if (!v || !cont) return null;
+    try {
+      const cam = v.GetCamera();
+      const visW = Math.abs((cam.right - cam.left) / (cam.zoom || 1));
+      const wpp = visW / cont.clientWidth;
+      return Number.isFinite(wpp) && wpp > 0 ? wpp : null;
+    } catch { return null; }
+  }, []);
+
+  // Accroche un point monde au repère le plus proche (si sous le seuil)
+  const snapWorld = useCallback((p: Pt): Pt => {
+    const idx = snapIndexRef.current; if (!idx) return p;
+    const wpp = worldPerPixel(); if (!wpp) return p;
+    const hit = idx.nearest(p.x, p.y, SNAP_PX * wpp);
+    return hit ?? p;
+  }, [worldPerPixel]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -81,9 +135,10 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
 
         const isDwg = /\.dwg$/i.test(fileName);
         setPhase(isDwg ? 'Conversion du DWG (peut prendre un moment sur les gros fichiers)…' : 'Préparation du plan…');
-        const url = await toDxfObjectUrl(blob, fileName);
+        const { url, snapPoints } = await toDxfObjectUrl(blob, fileName);
         if (cancelled) { URL.revokeObjectURL(url); return; }
         objectUrlRef.current = url;
+        snapIndexRef.current = snapPoints.length > 0 ? new SnapIndex(snapPoints) : null;
 
         setPhase('Rendu du plan…');
         const [{ DxfViewer }, THREE] = await Promise.all([
@@ -114,12 +169,12 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
         }
         setLayers(ls);
 
-        // écouter les clics (mesure / annotation) et les changements de vue
+        // écouter les clics (mesure / annotation / superficie) et les changements de vue
         viewer.Subscribe('pointerup', (ev: { detail?: { position?: { x: number; y: number } } }) => {
           const pos = ev?.detail?.position;
           if (!pos) return;
           const origin = viewer.GetOrigin();
-          const world = { x: pos.x + origin.x, y: pos.y + origin.y };
+          const world = snapWorld({ x: pos.x + origin.x, y: pos.y + origin.y });
           const t = toolRef.current;
           if (t === 'measure') {
             const cur = measurePtsRef.current;
@@ -128,6 +183,17 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           } else if (t === 'annotate') {
             setDraftPoint(world);
             setDraftText('');
+          } else if (t === 'area') {
+            if (areaClosedRef.current) return;
+            const cur = areaPtsRef.current;
+            // clic près du 1er sommet -> fermer le polygone
+            if (cur.length >= 3) {
+              const wpp = worldPerPixel();
+              const thr = wpp ? SNAP_PX * wpp : 0;
+              const d = Math.hypot(world.x - cur[0].x, world.y - cur[0].y);
+              if (thr > 0 && d <= thr) { setAreaClosed(true); return; }
+            }
+            setAreaPts([...cur, world]);
           }
         });
         viewer.Subscribe('viewChanged', () => setTick(t => t + 1));
@@ -145,7 +211,40 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
       }
     })();
     return () => { cancelled = true; cleanup(); };
-  }, [fileId, fileName, token, cleanup]);
+  }, [fileId, fileName, token, cleanup, snapWorld, worldPerPixel]);
+
+  // Indicateur d'accrochage au survol (hors mode navigation)
+  useEffect(() => {
+    const cont = containerRef.current; if (!cont) return;
+    let raf = 0; let lastX = 0; let lastY = 0;
+    const process = () => {
+      raf = 0;
+      const t = toolRef.current;
+      if (t === 'pan' || !snapIndexRef.current) { setSnapHover(prev => (prev ? null : prev)); return; }
+      const rect = cont.getBoundingClientRect();
+      const world = screenToWorld(lastX - rect.left, lastY - rect.top);
+      if (!world) return;
+      const wpp = worldPerPixel(); if (!wpp) return;
+      const hit = snapIndexRef.current.nearest(world.x, world.y, SNAP_PX * wpp);
+      setSnapHover(prev => {
+        if (hit && prev && prev.x === hit.x && prev.y === hit.y) return prev;
+        if (!hit && !prev) return prev;
+        return hit;
+      });
+    };
+    const onMove = (e: PointerEvent) => {
+      lastX = e.clientX; lastY = e.clientY;
+      if (!raf) raf = requestAnimationFrame(process);
+    };
+    const onLeave = () => setSnapHover(prev => (prev ? null : prev));
+    cont.addEventListener('pointermove', onMove);
+    cont.addEventListener('pointerleave', onLeave);
+    return () => {
+      cont.removeEventListener('pointermove', onMove);
+      cont.removeEventListener('pointerleave', onLeave);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [screenToWorld, worldPerPixel]);
 
   function toggleLayer(name: string) {
     setLayers(prev => prev.map(l => {
@@ -162,6 +261,8 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     const v = viewerRef.current; if (!v) return;
     const b = v.GetBounds(); if (b) v.FitView(b.minX, b.maxX, b.minY, b.maxY, 0.1);
   }
+
+  function resetTools() { setMeasurePts([]); setDraftPoint(null); setAreaPts([]); setAreaClosed(false); }
 
   async function saveAnnotation() {
     if (!draftPoint || !draftText.trim()) return;
@@ -189,6 +290,18 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     ? Math.hypot(measurePts[1].x - measurePts[0].x, measurePts[1].y - measurePts[0].y)
     : null;
 
+  // superficie (formule des trapèzes / shoelace) sur les sommets
+  const areaValue = areaPts.length >= 3
+    ? Math.abs(areaPts.reduce((acc, p, i) => {
+      const q = areaPts[(i + 1) % areaPts.length];
+      return acc + (p.x * q.y - q.x * p.y);
+    }, 0)) / 2
+    : null;
+  const areaCentroid = areaPts.length > 0
+    ? { x: areaPts.reduce((s, p) => s + p.x, 0) / areaPts.length, y: areaPts.reduce((s, p) => s + p.y, 0) / areaPts.length }
+    : null;
+
+  const fmt = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
   const btn = (active: boolean) =>
     `rounded-md px-3 py-1 text-sm ${active ? 'bg-white text-slate-900' : 'bg-white/10 text-white hover:bg-white/20'}`;
 
@@ -196,12 +309,13 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-900">
       {/* Barre d'outils */}
       <div className="flex items-center justify-between bg-slate-800 px-3 py-2 text-white">
-        <span className="truncate text-sm font-medium max-w-[30%]">{fileName}</span>
+        <span className="truncate text-sm font-medium max-w-[26%]">{fileName}</span>
         <div className="flex items-center gap-1.5 flex-wrap">
-          <button className={btn(tool === 'pan')} onClick={() => { setTool('pan'); setMeasurePts([]); setDraftPoint(null); }}>✋ Naviguer</button>
-          <button className={btn(tool === 'measure')} onClick={() => { setTool('measure'); setMeasurePts([]); setDraftPoint(null); }}>📏 Mesurer</button>
+          <button className={btn(tool === 'pan')} onClick={() => { setTool('pan'); resetTools(); }}>✋ Naviguer</button>
+          <button className={btn(tool === 'measure')} onClick={() => { setTool('measure'); resetTools(); }}>📏 Mesurer</button>
+          <button className={btn(tool === 'area')} onClick={() => { setTool('area'); resetTools(); }}>📐 Superficie</button>
           {canAnnotate && (
-            <button className={btn(tool === 'annotate')} onClick={() => { setTool('annotate'); setMeasurePts([]); }}>📌 Annoter</button>
+            <button className={btn(tool === 'annotate')} onClick={() => { setTool('annotate'); resetTools(); }}>📌 Annoter</button>
           )}
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={fitView}>Ajuster</button>
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={() => setShowLayers(s => !s)}>Calques</button>
@@ -211,15 +325,12 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
 
       {/* Bandeau d'aide selon l'outil */}
       {tool === 'measure' && (
-        <div className="bg-slate-700 px-3 py-1.5 text-xs text-white flex items-center gap-3">
-          <span>Cliquez 2 points pour mesurer.</span>
+        <div className="bg-slate-700 px-3 py-1.5 text-xs text-white flex items-center gap-3 flex-wrap">
+          <span>Cliquez 2 points pour mesurer — l&apos;accrochage aligne le point sur le repère le plus proche.</span>
           {measureDist !== null && (
             <>
-              <span className="font-semibold">
-                Distance : {measureDist.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} {unit}
-              </span>
-              <select value={unit} onChange={e => setUnit(e.target.value)}
-                className="bg-slate-600 rounded px-1 py-0.5 text-xs">
+              <span className="font-semibold">Distance : {fmt(measureDist)} {unit}</span>
+              <select value={unit} onChange={e => setUnit(e.target.value)} className="bg-slate-600 rounded px-1 py-0.5 text-xs">
                 <option value="u">unités</option>
                 <option value="mm">mm</option>
                 <option value="cm">cm</option>
@@ -230,14 +341,36 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           )}
         </div>
       )}
+      {tool === 'area' && (
+        <div className="bg-slate-700 px-3 py-1.5 text-xs text-white flex items-center gap-3 flex-wrap">
+          <span>Cliquez les sommets (≥ 3). Cliquez près du 1er point ou « Terminer » pour fermer.</span>
+          {areaValue !== null && (
+            <>
+              <span className="font-semibold">Superficie : {fmt(areaValue)} {unit}²</span>
+              <select value={unit} onChange={e => setUnit(e.target.value)} className="bg-slate-600 rounded px-1 py-0.5 text-xs">
+                <option value="u">unités</option>
+                <option value="mm">mm</option>
+                <option value="cm">cm</option>
+                <option value="m">m</option>
+              </select>
+            </>
+          )}
+          {areaPts.length >= 3 && !areaClosed && (
+            <button className="underline" onClick={() => setAreaClosed(true)}>Terminer</button>
+          )}
+          {areaPts.length > 0 && (
+            <button className="underline" onClick={() => { setAreaPts([]); setAreaClosed(false); }}>Effacer</button>
+          )}
+        </div>
+      )}
       {tool === 'annotate' && (
-        <div className="bg-slate-700 px-3 py-1.5 text-xs text-white">Cliquez sur le plan pour poser une annotation.</div>
+        <div className="bg-slate-700 px-3 py-1.5 text-xs text-white">Cliquez sur le plan pour poser une annotation (accrochage actif).</div>
       )}
 
       <div className="relative flex flex-1 overflow-hidden">
         <div ref={containerRef} className="flex-1 bg-white" />
 
-        {/* Overlay mesure + annotations (positionné en pixels) */}
+        {/* Overlay mesure + superficie + annotations (positionné en pixels) */}
         <div ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ right: showLayers ? 240 : 0 }}>
           {/* points + ligne de mesure */}
           {measurePts.map((p, i) => {
@@ -257,10 +390,49 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
                 {measureDist !== null && (
                   <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap"
                     style={{ left: midX, top: midY }}>
-                    {measureDist.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} {unit}
+                    {fmt(measureDist)} {unit}
                   </div>
                 )}
               </>
+            );
+          })()}
+
+          {/* polygone de superficie */}
+          {areaPts.length > 0 && (() => {
+            const scr = areaPts.map(p => worldToScreen(p.x, p.y));
+            if (scr.some(s => !s)) return null;
+            const pts = scr as { px: number; py: number }[];
+            const poly = pts.map(s => `${s.px},${s.py}`).join(' ');
+            const cen = areaCentroid ? worldToScreen(areaCentroid.x, areaCentroid.y) : null;
+            return (
+              <>
+                <svg className="absolute inset-0 w-full h-full">
+                  {(areaClosed || pts.length >= 3) && (
+                    <polygon points={poly} fill="rgba(16,185,129,0.18)" stroke="#059669" strokeWidth={2}
+                      strokeDasharray={areaClosed ? undefined : '5 4'} />
+                  )}
+                  {!areaClosed && pts.length === 2 && (
+                    <polyline points={poly} fill="none" stroke="#059669" strokeWidth={2} strokeDasharray="5 4" />
+                  )}
+                </svg>
+                {pts.map((s, i) => (
+                  <div key={`a${i}`} className="absolute" style={{ left: s.px - 4, top: s.py - 4, width: 8, height: 8, borderRadius: 8, background: '#059669', border: '2px solid #fff' }} />
+                ))}
+                {areaValue !== null && cen && (
+                  <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-emerald-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap"
+                    style={{ left: cen.px, top: cen.py }}>
+                    {fmt(areaValue)} {unit}&sup2;
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
+          {/* indicateur d'accrochage */}
+          {snapHover && tool !== 'pan' && (() => {
+            const s = worldToScreen(snapHover.x, snapHover.y); if (!s) return null;
+            return (
+              <div className="absolute" style={{ left: s.px - 6, top: s.py - 6, width: 12, height: 12, border: '2px solid #F59E0B', background: 'rgba(245,158,11,0.25)', boxShadow: '0 0 0 1px #fff' }} />
             );
           })()}
 
@@ -278,7 +450,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
                       <button onClick={() => deleteAnnotation(a.id)} className="text-[10px] text-red-500 opacity-0 group-hover:opacity-100">supprimer</button>
                     )}
                   </div>
-                  <span style={{ color: a.color, fontSize: 18, lineHeight: 1 }}>▼</span>
+                  <span style={{ color: a.color, fontSize: 18, lineHeight: 1 }}>&#9660;</span>
                 </div>
               </div>
             );
@@ -300,7 +472,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
                       className="rounded bg-slate-200 text-slate-700 text-xs px-2 py-1">Annuler</button>
                   </div>
                 </div>
-                <span style={{ color: '#EF4444', fontSize: 18 }}>▼</span>
+                <span style={{ color: '#EF4444', fontSize: 18 }}>&#9660;</span>
               </div>
             );
           })()}
