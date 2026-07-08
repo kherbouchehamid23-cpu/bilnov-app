@@ -51,6 +51,8 @@ export async function POST(
       expiresInDays?: number | null;
       allowedNodeIds?: string[] | null;
       allowedFileIds?: string[] | null;
+      commentShareMode?: string;
+      commentAuthorId?: string | null;
     };
 
     const {
@@ -61,7 +63,11 @@ export async function POST(
       expiresInDays,
       allowedNodeIds = [],
       allowedFileIds = [],
+      commentShareMode = 'NONE',
+      commentAuthorId = null,
     } = body;
+    const CSM = ['NONE', 'ALL', 'OPEN', 'UNRESOLVED', 'BY_USER'];
+    const shareMode = CSM.includes(commentShareMode) ? commentShareMode : 'NONE';
 
     // Générer un code unique
     let displayCode = generateCode();
@@ -91,6 +97,8 @@ export async function POST(
             canShare,
             allowedNodeIds: allowedNodeIds ?? [],
             allowedFileIds: allowedFileIds ?? [],
+            commentShareMode: shareMode,
+            commentAuthorId: shareMode === 'BY_USER' ? commentAuthorId : null,
           },
         },
       },

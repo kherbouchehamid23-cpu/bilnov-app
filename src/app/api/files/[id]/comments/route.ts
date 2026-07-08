@@ -10,7 +10,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
-    const file = await prisma.file.findUnique({ where: { id: params.id }, select: { projectId: true } });
+    const file = await prisma.file.findUnique({
+      where: { id: params.id },
+      select: { projectId: true, project: { select: { cadUnit: true } } },
+    });
     if (!file) return apiError('Fichier introuvable', 'NOT_FOUND', 404);
     const access = await getProjectAccess(user, file.projectId);
     if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
@@ -20,7 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       orderBy: { number: 'asc' },
       include: commentInclude,
     });
-    return apiSuccess({ comments });
+    return apiSuccess({ comments, projectId: file.projectId, cadUnit: file.project.cadUnit, canManage: access.canManage });
   } catch (error) {
     return apiError(error instanceof Error ? error.message : 'Erreur', 'INTERNAL_ERROR', 500);
   }
@@ -37,6 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const access = await getProjectAccess(user, file.projectId);
     if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
+    if (!access.canComment) return apiError('Droit de commenter requis', 'FORBIDDEN', 403);
     const body = await req.json() as {
       x?: number; y?: number; title?: string; text?: string;
       priority?: string; status?: string; assigneeId?: string | null; dueDate?: string | null;

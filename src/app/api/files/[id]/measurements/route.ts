@@ -35,6 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const access = await getProjectAccess(user, file.projectId);
     if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
+    if (!access.canMeasure) return apiError('Droit de mesurer requis', 'FORBIDDEN', 403);
     const body = await req.json() as {
       kind?: string; points?: { x: number; y: number }[]; unit?: string;
       distance?: number; area?: number; perimeter?: number; label?: string;

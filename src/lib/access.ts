@@ -14,6 +14,11 @@ export interface ProjectAccess {
   canUpload: boolean;
   canDownload: boolean;
   canShare: boolean;
+  // Droits collaboratifs fins (§17). Owner = tout ; member = ses booléens.
+  canMeasure: boolean;
+  canComment: boolean;
+  canReply: boolean;
+  canValidate: boolean;
   // owner : peut gérer (inviter, supprimer espaces, créer codes). member : non.
   canManage: boolean;
   // null = accès à tout le projet ; sinon liste des nœuds autorisés (member).
@@ -44,6 +49,10 @@ export async function getProjectAccess(
       canUpload: true,
       canDownload: true,
       canShare: true,
+      canMeasure: true,
+      canComment: true,
+      canReply: true,
+      canValidate: true,
       canManage: true,
       allowedNodeIds: null,
       allowedFileIds: null,
@@ -58,6 +67,10 @@ export async function getProjectAccess(
       canUpload: true,
       canDownload: true,
       canShare: true,
+      canMeasure: true,
+      canComment: true,
+      canReply: true,
+      canValidate: true,
       expiresAt: true,
       allowedNodeIds: true,
       allowedFileIds: true,
@@ -75,6 +88,10 @@ export async function getProjectAccess(
     canUpload: member.canUpload,
     canDownload: member.canDownload,
     canShare: member.canShare,
+    canMeasure: member.canMeasure,
+    canComment: member.canComment,
+    canReply: member.canReply,
+    canValidate: member.canValidate,
     canManage: false,
     allowedNodeIds: (member.allowedNodeIds && member.allowedNodeIds.length > 0)
       ? member.allowedNodeIds

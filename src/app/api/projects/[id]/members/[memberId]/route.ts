@@ -44,6 +44,10 @@ export async function PATCH(
       canUpload?: boolean;
       canDownload?: boolean;
       canShare?: boolean;
+      canMeasure?: boolean;
+      canComment?: boolean;
+      canReply?: boolean;
+      canValidate?: boolean;
       allowedNodeIds?: string[] | null;
       allowedFileIds?: string[] | null;
     };
@@ -53,6 +57,10 @@ export async function PATCH(
     if (body.canUpload !== undefined) data.canUpload = body.canUpload;
     if (body.canDownload !== undefined) data.canDownload = body.canDownload;
     if (body.canShare !== undefined) data.canShare = body.canShare;
+    if (body.canMeasure !== undefined) data.canMeasure = body.canMeasure;
+    if (body.canComment !== undefined) data.canComment = body.canComment;
+    if (body.canReply !== undefined) data.canReply = body.canReply;
+    if (body.canValidate !== undefined) data.canValidate = body.canValidate;
     if (body.allowedNodeIds !== undefined) data.allowedNodeIds = body.allowedNodeIds ?? [];
     if (body.allowedFileIds !== undefined) data.allowedFileIds = body.allowedFileIds ?? [];
 

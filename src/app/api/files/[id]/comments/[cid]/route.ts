@@ -57,6 +57,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     if (body.status !== undefined) {
       if (!isStatus(body.status)) return apiError('Statut invalide', 'VALIDATION_ERROR', 400);
+      const terminal = body.status === 'VALIDATED' || body.status === 'CLOSED' || body.status === 'ARCHIVED';
+      if (terminal && !access.canValidate && !access.canManage) return apiError('Droit de valider/clôturer requis', 'FORBIDDEN', 403);
       if (body.status !== ann.status) {
         data.status = body.status;
         data.color = statusColor(body.status);
