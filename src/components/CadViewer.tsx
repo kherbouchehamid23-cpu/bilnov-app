@@ -514,9 +514,9 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
             if (m.kind === 'DISTANCE' && pts.length === 2) {
               const midX = (pts[0].px + pts[1].px) / 2, midY = (pts[0].py + pts[1].py) / 2;
               return (
-                <div key={m.id} className="pointer-events-auto group">
-                  <svg className="absolute inset-0 w-full h-full"><line x1={pts[0].px} y1={pts[0].py} x2={pts[1].px} y2={pts[1].py} stroke="#2563EB" strokeWidth={2} /></svg>
-                  <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap" style={{ left: midX, top: midY }}>
+                <div key={m.id}>
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none"><line x1={pts[0].px} y1={pts[0].py} x2={pts[1].px} y2={pts[1].py} stroke="#2563EB" strokeWidth={2} /></svg>
+                  <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap pointer-events-auto group" style={{ left: midX, top: midY }}>
                     {m.label ?? fmt((m.distance ?? 0) * lenFactor)}
                     <button className="ml-1 opacity-0 group-hover:opacity-100" onClick={() => void deleteMeasurement(m.id)}>✕</button>
                   </div>
@@ -527,9 +527,9 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
               const poly = pts.map((s) => `${s.px},${s.py}`).join(' ');
               const cx = pts.reduce((s, p) => s + p.px, 0) / pts.length, cy = pts.reduce((s, p) => s + p.py, 0) / pts.length;
               return (
-                <div key={m.id} className="pointer-events-auto group">
-                  <svg className="absolute inset-0 w-full h-full"><polygon points={poly} fill="rgba(16,185,129,0.15)" stroke="#059669" strokeWidth={2} /></svg>
-                  <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-emerald-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap" style={{ left: cx, top: cy }}>
+                <div key={m.id}>
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none"><polygon points={poly} fill="rgba(16,185,129,0.15)" stroke="#059669" strokeWidth={2} /></svg>
+                  <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-emerald-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap pointer-events-auto group" style={{ left: cx, top: cy }}>
                     {m.label ?? fmt((m.area ?? 0) * lenFactor * lenFactor)}
                     <button className="ml-1 opacity-0 group-hover:opacity-100" onClick={() => void deleteMeasurement(m.id)}>✕</button>
                   </div>
@@ -546,7 +546,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
             if (!a || !b) return null; const midX = (a.px + b.px) / 2, midY = (a.py + b.py) / 2;
             return (<>
               <svg className="absolute inset-0 w-full h-full"><line x1={a.px} y1={a.py} x2={b.px} y2={b.py} stroke="#2563EB" strokeWidth={2} strokeDasharray="5 4" /></svg>
-              {dispDist !== null && <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap" style={{ left: midX, top: midY }}>{fmt(dispDist)} {unitLabel}</div>}
+              {dispDist !== null && <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap pointer-events-auto group" style={{ left: midX, top: midY }}>{fmt(dispDist)} {unitLabel}</div>}
             </>);
           })()}
 
