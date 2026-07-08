@@ -53,6 +53,19 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const [tool, setTool] = useState<Tool>('pan');
   const toolRef = useRef<Tool>('pan');
   useEffect(() => { toolRef.current = tool; }, [tool]);
+  const [isTouch, setIsTouch] = useState(false);
+  const [isNarrow, setIsNarrow] = useState(false);
+  const isTouchRef = useRef(false);
+  useEffect(() => { isTouchRef.current = isTouch; }, [isTouch]);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mqT = window.matchMedia('(pointer: coarse)');
+    const mqN = window.matchMedia('(max-width: 767px)');
+    const upd = () => { setIsTouch(mqT.matches); setIsNarrow(mqN.matches); };
+    upd();
+    mqT.addEventListener('change', upd); mqN.addEventListener('change', upd);
+    return () => { mqT.removeEventListener('change', upd); mqN.removeEventListener('change', upd); };
+  }, []);
   const [, setTick] = useState(0);
   const [showLayers, setShowLayers] = useState(false);
   const [layers, setLayers] = useState<LayerItem[]>([]);
@@ -206,6 +219,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           const origin = viewer.GetOrigin();
           const world = snapWorld({ x: pos.x + origin.x, y: pos.y + origin.y });
           const t = toolRef.current;
+          if (isTouchRef.current) return; // tactile : placement via réticule + bouton (pas au tap, pour ne pas gêner le pan)
           if (t === 'measure') {
             const cur = measurePtsRef.current;
             setMeasurePts(cur.length >= 2 ? [world] : [...cur, world]);
@@ -288,6 +302,19 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   }
   function fitView() { const v = viewerRef.current; if (!v) return; const b = v.GetBounds(); if (b) v.FitView(b.minX, b.maxX, b.minY, b.maxY, 0.1); }
   function resetTools() { setMeasurePts([]); setDraft(null); setAreaPts([]); setAreaClosed(false); }
+
+  // Point au centre du viewport (avec accrochage) — pour le placement tactile.
+  function centerWorld(): Pt | null {
+    const cont = containerRef.current; if (!cont) return null;
+    const c = screenToWorld(cont.clientWidth / 2, cont.clientHeight / 2);
+    return c ? snapWorld(c) : null;
+  }
+  function placeCenterPoint() {
+    const p = centerWorld(); if (!p) return;
+    if (tool === 'measure') setMeasurePts((cur) => (cur.length >= 2 ? [p] : [...cur, p]));
+    else if (tool === 'area') { if (!areaClosed) setAreaPts((cur) => [...cur, p]); }
+    else if (tool === 'annotate') { setDraft(p); setDTitle(''); setDText(''); setDPriority('NORMAL'); setDAssignee(''); setDDue(''); }
+  }
 
   // ---- Unité ----
   const canConvert = baseUnit !== 'u' && unit !== 'u' && (baseUnit in UNIT_MM) && (unit in UNIT_MM);
@@ -446,7 +473,8 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     if (w) { w.document.write(html); w.document.close(); }
   }
 
-  const btn = (active: boolean) => `rounded-md px-3 py-1 text-sm ${active ? 'bg-white text-slate-900' : 'bg-white/10 text-white hover:bg-white/20'}`;
+  const placementTool = tool === 'measure' || tool === 'area' || tool === 'annotate';
+  const btn = (active: boolean) => `rounded-md px-3 ${isTouch ? 'py-2' : 'py-1'} text-sm ${active ? 'bg-white text-slate-900' : 'bg-white/10 text-white hover:bg-white/20'}`;
   const visibleComments = comments.filter((c) => statusFilter === 'ALL' || c.status === statusFilter);
 
   return (
@@ -505,7 +533,19 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
         <div ref={containerRef} className="flex-1 bg-white" />
 
         {/* Overlay */}
-        <div ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ right: showPanel ? 340 : (showLayers ? 240 : 0) }}>
+        <div ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ right: showPanel && !isNarrow ? 340 : (showLayers && !isNarrow ? 240 : 0) }}>
+          {/* Réticule de visée tactile (§ placement mobile) */}
+          {isTouch && placementTool && !draft && (() => {
+            const p = centerWorld(); const s = p ? worldToScreen(p.x, p.y) : null;
+            return (
+              <>
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                  <svg width="52" height="52" viewBox="0 0 52 52"><g stroke="#7C3AED" strokeWidth="1.5" fill="none" opacity="0.85"><line x1="26" y1="6" x2="26" y2="20" /><line x1="26" y1="32" x2="26" y2="46" /><line x1="6" y1="26" x2="20" y2="26" /><line x1="32" y1="26" x2="46" y2="26" /><circle cx="26" cy="26" r="3" /></g></svg>
+                </div>
+                {s && <div className="absolute" style={{ left: s.px - 7, top: s.py - 7, width: 14, height: 14, borderRadius: 14, border: '3px solid #F59E0B', background: 'rgba(245,158,11,0.3)' }} />}
+              </>
+            );
+          })()}
           {/* Mesures persistées */}
           {measurements.map((m) => {
             const scr = m.points.map((p) => worldToScreen(p.x, p.y));
@@ -619,9 +659,29 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           })()}
         </div>
 
+        {/* Barre d'action de placement tactile (zone du pouce, cibles >=44px) */}
+        {isTouch && placementTool && !draft && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-2xl bg-slate-800/95 px-3 py-2 shadow-2xl">
+            {tool === 'measure' && (<>
+              <button onClick={placeCenterPoint} disabled={measurePts.length >= 2} className="rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-40" style={{ minHeight: 44 }}>＋ Point ({measurePts.length}/2)</button>
+              {measureDist !== null && <button onClick={() => void saveDistance()} className="rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white" style={{ minHeight: 44 }}>Enregistrer</button>}
+              {measurePts.length > 0 && <button onClick={() => setMeasurePts([])} className="rounded-xl bg-white/10 px-3 text-sm text-white" style={{ minHeight: 44 }}>Effacer</button>}
+            </>)}
+            {tool === 'area' && (<>
+              {!areaClosed && <button onClick={placeCenterPoint} className="rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white" style={{ minHeight: 44 }}>＋ Point ({areaPts.length})</button>}
+              {areaPts.length >= 3 && !areaClosed && <button onClick={() => setAreaClosed(true)} className="rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white" style={{ minHeight: 44 }}>Fermer</button>}
+              {areaClosed && <button onClick={() => void saveArea()} className="rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white" style={{ minHeight: 44 }}>Enregistrer</button>}
+              {areaPts.length > 0 && <button onClick={() => { setAreaPts([]); setAreaClosed(false); }} className="rounded-xl bg-white/10 px-3 text-sm text-white" style={{ minHeight: 44 }}>Effacer</button>}
+            </>)}
+            {tool === 'annotate' && (
+              <button onClick={placeCenterPoint} className="rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white" style={{ minHeight: 44 }}>＋ Placer le commentaire ici</button>
+            )}
+          </div>
+        )}
+
         {/* Panneau latéral commentaires (§12) */}
         {showPanel && (
-          <div className="w-[340px] shrink-0 overflow-y-auto border-l border-slate-700 bg-slate-50">
+          <div className="absolute inset-0 z-40 overflow-y-auto bg-slate-50 md:static md:inset-auto md:z-auto md:w-[340px] md:shrink-0 md:border-l md:border-slate-700">
             {selected ? (
               <CommentDetail
                 c={selected} members={members} canManage={canManage} busy={busy} attUrls={attUrls}

@@ -128,7 +128,7 @@ export default function SharedCadViewer({ shareId, code, fileId, fileName, onClo
         </div>
 
         {showPanel && (
-          <div className="w-[340px] shrink-0 overflow-y-auto border-l border-slate-700 bg-slate-50">
+          <div className="absolute inset-0 z-40 overflow-y-auto bg-slate-50 md:static md:inset-auto md:z-auto md:w-[340px] md:shrink-0 md:border-l md:border-slate-700">
             {selected ? (
               <div className="p-3">
                 <button className="text-xs text-slate-500 hover:underline mb-2" onClick={() => setSelectedId(null)}>← Liste</button>
