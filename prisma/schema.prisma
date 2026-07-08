@@ -29,7 +29,14 @@ model User {
   refreshTokens   RefreshToken[]
 
   krpanoTours  KrpanoTour[]
-  cadAnnotations CadAnnotation[]
+  cadAnnotationsAuthored CadAnnotation[]         @relation("CadAnnotationAuthor")
+  cadAnnotationsAssigned CadAnnotation[]         @relation("CadAnnotationAssignee")
+  cadReplies             CadAnnotationReply[]
+  cadEvents              CadAnnotationEvent[]
+  cadAttachments         CadAnnotationAttachment[]
+  cadMeasurements        CadMeasurement[]
+  notifications          Notification[]          @relation("NotificationRecipient")
+  notificationsActed     Notification[]          @relation("NotificationActor")
   @@map("users")
 }
 
@@ -88,6 +95,7 @@ model Project {
   sector         String?
   coverUrl       String?       @map("cover_url")
   uploadRules    Json?         @map("upload_rules")
+  cadUnit        String        @default("cm") @map("cad_unit")
   status         ProjectStatus @default(ACTIVE)
   createdById    String        @map("created_by_id")
   createdAt      DateTime      @default(now()) @map("created_at")
@@ -179,6 +187,7 @@ model File {
   project  Project               @relation(fields: [projectId], references: [id])
   node     ProjectStructureNode? @relation(fields: [nodeId], references: [id])
   annotations CadAnnotation[]
+  measurements CadMeasurement[]
   uploader User                  @relation(fields: [uploaderId], references: [id])
 
   @@map("files")
@@ -393,23 +402,159 @@ enum KrpanoTourStatus {
   ERROR
 }
 
-// Annotations posées sur un fichier CAO (DWG/DXF), en coordonnées MONDE du
-// dessin (indépendantes du zoom). type: 'marker' (épingle + texte).
+// Commentaire-fiche posé sur un fichier CAO (DWG/DXF), en coordonnées MONDE du
+// dessin (indépendantes du zoom). C'est l'unité de collaboration : chaque
+// commentaire porte un workflow (statut), une discussion, un historique et des
+// pièces jointes. Les anciennes annotations restent valides (champs par défaut).
 model CadAnnotation {
-  id        String   @id @default(uuid())
-  fileId    String   @map("file_id")
-  authorId  String   @map("author_id")
-  type      String   @default("marker")
-  x         Float
-  y         Float
-  text      String
-  color     String   @default("#EF4444")
-  createdAt DateTime @default(now()) @map("created_at")
+  id          String      @id @default(uuid())
+  fileId      String      @map("file_id")
+  authorId    String      @map("author_id")
+  number      Int         @default(0)
+  type        String      @default("marker")
+  x           Float
+  y           Float
+  title       String?
+  text        String
+  priority    CadPriority @default(NORMAL)
+  status      CadStatus   @default(OPEN)
+  assigneeId  String?     @map("assignee_id")
+  dueDate     DateTime?   @map("due_date")
+  color       String      @default("#EF4444")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at")
+
+  file        File                      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  author      User                      @relation("CadAnnotationAuthor", fields: [authorId], references: [id])
+  assignee    User?                     @relation("CadAnnotationAssignee", fields: [assigneeId], references: [id])
+  replies     CadAnnotationReply[]
+  events      CadAnnotationEvent[]
+  attachments CadAnnotationAttachment[]
+
+  @@index([fileId])
+  @@index([assigneeId])
+  @@map("cad_annotations")
+}
+
+enum CadPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum CadStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  VALIDATED
+  CLOSED
+  ARCHIVED
+}
+
+model CadAnnotationReply {
+  id           String   @id @default(uuid())
+  annotationId String   @map("annotation_id")
+  authorId     String   @map("author_id")
+  body         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  annotation CadAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  author     User          @relation(fields: [authorId], references: [id])
+
+  @@index([annotationId])
+  @@map("cad_annotation_replies")
+}
+
+model CadAnnotationEvent {
+  id           String   @id @default(uuid())
+  annotationId String   @map("annotation_id")
+  actorId      String   @map("actor_id")
+  type         String
+  meta         Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  annotation CadAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  actor      User          @relation(fields: [actorId], references: [id])
+
+  @@index([annotationId])
+  @@map("cad_annotation_events")
+}
+
+model CadAnnotationAttachment {
+  id           String            @id @default(uuid())
+  annotationId String            @map("annotation_id")
+  uploaderId   String            @map("uploader_id")
+  kind         CadAttachmentKind
+  name         String
+  storageKey   String            @map("storage_key")
+  mimeType     String            @map("mime_type")
+  sizeBytes    BigInt            @map("size_bytes")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  annotation CadAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  uploader   User          @relation(fields: [uploaderId], references: [id])
+
+  @@index([annotationId])
+  @@map("cad_annotation_attachments")
+}
+
+enum CadAttachmentKind {
+  PHOTO
+  PDF
+}
+
+model CadMeasurement {
+  id        String             @id @default(uuid())
+  fileId    String             @map("file_id")
+  authorId  String             @map("author_id")
+  kind      CadMeasurementKind
+  points    Json
+  unit      String             @default("cm")
+  distance  Float?
+  area      Float?
+  perimeter Float?
+  label     String?
+  createdAt DateTime           @default(now()) @map("created_at")
 
   file   File @relation(fields: [fileId], references: [id], onDelete: Cascade)
   author User @relation(fields: [authorId], references: [id])
 
   @@index([fileId])
-  @@map("cad_annotations")
+  @@map("cad_measurements")
 }
+
+enum CadMeasurementKind {
+  DISTANCE
+  AREA
+}
+
+model Notification {
+  id           String           @id @default(uuid())
+  userId       String           @map("user_id")
+  actorId      String?          @map("actor_id")
+  projectId    String?          @map("project_id")
+  fileId       String?          @map("file_id")
+  annotationId String?          @map("annotation_id")
+  type         NotificationType
+  message      String
+  readAt       DateTime?        @map("read_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  user  User  @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor User? @relation("NotificationActor", fields: [actorId], references: [id])
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  COMMENT_CREATED
+  COMMENT_REPLIED
+  ATTACHMENT_ADDED
+  STATUS_CHANGED
+  COMMENT_CLOSED
+  ASSIGNED
+}
+
 
