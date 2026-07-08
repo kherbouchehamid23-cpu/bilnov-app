@@ -1,11 +1,10 @@
 // Web Worker : conversion DWG -> DXF hors du thread principal (évite le gel UI
 // sur gros fichiers). Charge LibreDWG (WASM) depuis /cad/.
 // Message entrant : { id, buffer: ArrayBuffer, isDwg: boolean }
-// Message sortant  : { id, ok: true, dxf: string, snap: ArrayBuffer } | { id, ok: false, error }
+// Message sortant  : { id, ok: true, dxf, snap: ArrayBuffer, insunits } | { id, ok: false, error }
 //
-// `snap` est un Float32Array [x0,y0,x1,y1,...] des points de repère du dessin
-// (coins, extrémités, sommets de polylignes, points d'insertion) servant à
-// l'accrochage des outils de mesure / superficie côté viewer.
+// `snap`     : Float32Array [x0,y0,x1,y1,...] des repères d'accrochage du dessin.
+// `insunits` : code $INSUNITS du DXF (unité native : 4=mm, 5=cm, 6=m, 1=in, 2=ft...).
 
 let libPromise = null;
 
@@ -19,11 +18,7 @@ async function getLib() {
   return libPromise;
 }
 
-// --- Extraction des points d'accrochage depuis le texte DXF ---------------
-// On parcourt la section ENTITIES et on relève les coordonnées (codes 10-13
-// suivis de 20-23). Cela capture les extrémités de LINE, les sommets de
-// LWPOLYLINE/POLYLINE, les centres de CIRCLE/ARC, les points d'insertion
-// d'INSERT et les contours de HATCH — soit tous les repères géométriques utiles.
+// Points d'accrochage : coordonnées (codes 10-13 / 20-23) de la section ENTITIES.
 function extractSnapPoints(dxf) {
   const lines = dxf.split(/\r\n|\r|\n/);
   const out = [];
@@ -45,9 +40,8 @@ function extractSnapPoints(dxf) {
 
   for (let i = 0; i + 1 < lines.length; i += 2) {
     const code = parseInt(lines[i], 10);
-    if (Number.isNaN(code)) continue; // ligne mal alignée -> on ignore la paire
-    const raw = lines[i + 1];
-    const val = raw === undefined ? '' : raw.trim();
+    if (Number.isNaN(code)) continue;
+    const val = (lines[i + 1] === undefined ? '' : lines[i + 1]).trim();
 
     if (code === 0) {
       const up = val.toUpperCase();
@@ -74,6 +68,22 @@ function extractSnapPoints(dxf) {
   return new Float32Array(out);
 }
 
+// Unité native du dessin : variable HEADER $INSUNITS (code 9 = nom, code 70 = valeur).
+function extractInsUnits(dxf) {
+  const lines = dxf.split(/\r\n|\r|\n/);
+  for (let i = 0; i + 1 < lines.length; i++) {
+    if (lines[i].trim() === '9' && (lines[i + 1] || '').trim() === '$INSUNITS') {
+      for (let j = i + 2; j + 1 < lines.length; j += 2) {
+        const c = parseInt(lines[j], 10);
+        if (Number.isNaN(c) || c === 9) break;
+        if (c === 70) return parseInt((lines[j + 1] || '').trim(), 10) || 0;
+      }
+      return 0;
+    }
+  }
+  return 0;
+}
+
 self.onmessage = async (e) => {
   const { id, buffer, isDwg } = e.data;
   try {
@@ -89,9 +99,9 @@ self.onmessage = async (e) => {
       }
       dxf = new TextDecoder('utf-8').decode(bytes);
     }
-    let snap;
-    try { snap = extractSnapPoints(dxf); } catch (_) { snap = new Float32Array(0); }
-    self.postMessage({ id, ok: true, dxf, snap: snap.buffer }, [snap.buffer]);
+    let snap; try { snap = extractSnapPoints(dxf); } catch (_) { snap = new Float32Array(0); }
+    let insunits; try { insunits = extractInsUnits(dxf); } catch (_) { insunits = 0; }
+    self.postMessage({ id, ok: true, dxf, snap: snap.buffer, insunits }, [snap.buffer]);
   } catch (err) {
     self.postMessage({ id, ok: false, error: (err && err.message) ? String(err.message) : 'Erreur de conversion' });
   }

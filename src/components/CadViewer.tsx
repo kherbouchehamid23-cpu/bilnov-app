@@ -20,6 +20,10 @@ type Pt = { x: number; y: number };
 // d'un repère » : sous ce rayon, le point s'aligne exactement sur le repère.
 const SNAP_PX = 14;
 
+// Conversion d'unités (mm de référence) et mapping $INSUNITS -> unité.
+const UNIT_MM: Record<string, number> = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8 };
+const INSUNITS_TO_UNIT: Record<number, string> = { 1: 'in', 2: 'ft', 4: 'mm', 5: 'cm', 6: 'm' };
+
 export default function CadViewer({ fileId, fileName, token, canAnnotate = true, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -44,7 +48,8 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const [measurePts, setMeasurePts] = useState<Pt[]>([]);
   const measurePtsRef = useRef<Pt[]>([]);
   useEffect(() => { measurePtsRef.current = measurePts; }, [measurePts]);
-  const [unit, setUnit] = useState('u'); // unité affichée (défaut : unités dessin)
+  const [unit, setUnit] = useState('u');        // unité d'affichage
+  const [baseUnit, setBaseUnit] = useState('u'); // unité native du dessin ($INSUNITS)
 
   // Superficie : sommets du polygone (coords monde) + état fermé
   const [areaPts, setAreaPts] = useState<Pt[]>([]);
@@ -135,10 +140,12 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
 
         const isDwg = /\.dwg$/i.test(fileName);
         setPhase(isDwg ? 'Conversion du DWG (peut prendre un moment sur les gros fichiers)…' : 'Préparation du plan…');
-        const { url, snapPoints } = await toDxfObjectUrl(blob, fileName);
+        const { url, snapPoints, insUnits } = await toDxfObjectUrl(blob, fileName);
         if (cancelled) { URL.revokeObjectURL(url); return; }
         objectUrlRef.current = url;
         snapIndexRef.current = snapPoints.length > 0 ? new SnapIndex(snapPoints) : null;
+        const detected = INSUNITS_TO_UNIT[insUnits] ?? 'u';
+        setBaseUnit(detected); setUnit(detected);
 
         setPhase('Rendu du plan…');
         const [{ DxfViewer }, THREE] = await Promise.all([
@@ -186,12 +193,13 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           } else if (t === 'area') {
             if (areaClosedRef.current) return;
             const cur = areaPtsRef.current;
-            // clic près du 1er sommet -> fermer le polygone
+            // clic visuellement sur le 1er sommet (<= 12 px écran) -> fermer le polygone
             if (cur.length >= 3) {
-              const wpp = worldPerPixel();
-              const thr = wpp ? SNAP_PX * wpp : 0;
-              const d = Math.hypot(world.x - cur[0].x, world.y - cur[0].y);
-              if (thr > 0 && d <= thr) { setAreaClosed(true); return; }
+              const sFirst = worldToScreen(cur[0].x, cur[0].y);
+              const sClick = worldToScreen(world.x, world.y);
+              if (sFirst && sClick && Math.hypot(sFirst.px - sClick.px, sFirst.py - sClick.py) <= 12) {
+                setAreaClosed(true); return;
+              }
             }
             setAreaPts([...cur, world]);
           }
@@ -211,7 +219,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
       }
     })();
     return () => { cancelled = true; cleanup(); };
-  }, [fileId, fileName, token, cleanup, snapWorld, worldPerPixel]);
+  }, [fileId, fileName, token, cleanup, snapWorld, worldPerPixel, worldToScreen]);
 
   // Indicateur d'accrochage au survol (hors mode navigation)
   useEffect(() => {
@@ -302,6 +310,11 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     : null;
 
   const fmt = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+  const canConvert = baseUnit !== 'u' && unit !== 'u' && (baseUnit in UNIT_MM) && (unit in UNIT_MM);
+  const lenFactor = canConvert ? UNIT_MM[baseUnit] / UNIT_MM[unit] : 1;
+  const unitLabel = unit === 'u' ? 'u' : unit;
+  const dispDist = measureDist !== null ? measureDist * lenFactor : null;
+  const dispArea = areaValue !== null ? areaValue * lenFactor * lenFactor : null;
   const btn = (active: boolean) =>
     `rounded-md px-3 py-1 text-sm ${active ? 'bg-white text-slate-900' : 'bg-white/10 text-white hover:bg-white/20'}`;
 
@@ -329,12 +342,14 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           <span>Cliquez 2 points pour mesurer — l&apos;accrochage aligne le point sur le repère le plus proche.</span>
           {measureDist !== null && (
             <>
-              <span className="font-semibold">Distance : {fmt(measureDist)} {unit}</span>
+              <span className="font-semibold">Distance : {fmt(dispDist ?? 0)} {unitLabel}</span>
               <select value={unit} onChange={e => setUnit(e.target.value)} className="bg-slate-600 rounded px-1 py-0.5 text-xs">
                 <option value="u">unités</option>
                 <option value="mm">mm</option>
                 <option value="cm">cm</option>
                 <option value="m">m</option>
+                <option value="in">in</option>
+                <option value="ft">ft</option>
               </select>
               <button className="underline" onClick={() => setMeasurePts([])}>Effacer</button>
             </>
@@ -343,15 +358,17 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
       )}
       {tool === 'area' && (
         <div className="bg-slate-700 px-3 py-1.5 text-xs text-white flex items-center gap-3 flex-wrap">
-          <span>Cliquez les sommets (≥ 3). Cliquez près du 1er point ou « Terminer » pour fermer.</span>
+          <span>Cliquez autant de sommets que voulu (≥ 3), puis « Terminer » ou cliquez sur le 1er point pour fermer.</span>
           {areaValue !== null && (
             <>
-              <span className="font-semibold">Superficie : {fmt(areaValue)} {unit}²</span>
+              <span className="font-semibold">Superficie : {fmt(dispArea ?? 0)} {unitLabel}²</span>
               <select value={unit} onChange={e => setUnit(e.target.value)} className="bg-slate-600 rounded px-1 py-0.5 text-xs">
                 <option value="u">unités</option>
                 <option value="mm">mm</option>
                 <option value="cm">cm</option>
                 <option value="m">m</option>
+                <option value="in">in</option>
+                <option value="ft">ft</option>
               </select>
             </>
           )}
@@ -387,10 +404,10 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
                 <svg className="absolute inset-0 w-full h-full">
                   <line x1={a.px} y1={a.py} x2={b.px} y2={b.py} stroke="#2563EB" strokeWidth={2} strokeDasharray="5 4" />
                 </svg>
-                {measureDist !== null && (
+                {dispDist !== null && (
                   <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap"
                     style={{ left: midX, top: midY }}>
-                    {fmt(measureDist)} {unit}
+                    {fmt(dispDist)} {unitLabel}
                   </div>
                 )}
               </>
@@ -418,10 +435,10 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
                 {pts.map((s, i) => (
                   <div key={`a${i}`} className="absolute" style={{ left: s.px - 4, top: s.py - 4, width: 8, height: 8, borderRadius: 8, background: '#059669', border: '2px solid #fff' }} />
                 ))}
-                {areaValue !== null && cen && (
+                {dispArea !== null && cen && (
                   <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-emerald-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap"
                     style={{ left: cen.px, top: cen.py }}>
-                    {fmt(areaValue)} {unit}&sup2;
+                    {fmt(dispArea)} {unitLabel}&sup2;
                   </div>
                 )}
               </>
