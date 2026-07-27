@@ -35,7 +35,8 @@
     "zod": "^3.23.8",
     "qrcode": "^1.5.3",
     "dxf-viewer": "^1.0.47",
-    "three": "^0.160.0"
+    "three": "^0.160.0",
+    "web-ifc": "0.0.57"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.5",

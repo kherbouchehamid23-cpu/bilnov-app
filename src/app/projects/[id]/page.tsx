@@ -6,11 +6,13 @@ import { api } from '@/lib/api-client';
 import { fetchWithAuth } from '@/lib/auth-client';
 import dynamic from 'next/dynamic';
 import { isCadFile } from '@/lib/cad';
+import { isBimOr3D } from '@/lib/bim';
 import { uploadFileDirect } from '@/lib/upload';
 import { acceptAttr, uploadHint, type UploadRulesConfig } from '@/lib/uploadRules';
 import { makeThumb, getCachedThumb } from '@/lib/thumbs';
 
 const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
+const Model3DViewer = dynamic(() => import('@/components/Model3DViewer'), { ssr: false });
 const VisitesPanel = dynamic(() => import('@/components/VisitesPanel'), { ssr: false });
 
 interface ProjectAccess { role: 'owner' | 'member'; canView: boolean; canUpload: boolean; canDownload: boolean; canShare: boolean; canManage: boolean; }
@@ -57,6 +59,7 @@ export default function ProjectPage() {
   const [uploading, setUploading] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [cadFile, setCadFile] = useState<{ id: string; name: string } | null>(null);
+  const [model3dFile, setModel3dFile] = useState<{ id: string; name: string } | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editingFileName, setEditingFileName] = useState('');
@@ -156,6 +159,10 @@ export default function ProjectPage() {
   async function openFile(fileId: string): Promise<void> {
     if (openingId) return;
     const target = files.find(f => f.id === fileId);
+    if (target && isBimOr3D(target.name, target.fileType)) {
+      setModel3dFile({ id: fileId, name: target.name });
+      return;
+    }
     if (target && isCadFile(target.name, target.fileType)) {
       setCadFile({ id: fileId, name: target.name });
       return;
@@ -574,6 +581,9 @@ export default function ProjectPage() {
 
       {cadFile && (
         <CadViewer fileId={cadFile.id} fileName={cadFile.name} token={getToken()} canAnnotate={canManage || canUpload} onClose={() => setCadFile(null)} />
+      )}
+      {model3dFile && (
+        <Model3DViewer fileId={model3dFile.id} fileName={model3dFile.name} token={getToken()} projectId={id} canComment={canManage || canUpload} onClose={() => setModel3dFile(null)} />
       )}
     </div>
   );
