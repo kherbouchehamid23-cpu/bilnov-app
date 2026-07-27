@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api-client';
@@ -27,7 +27,7 @@ interface NodesApiResponse { data: { nodes: StructureNode[] }; }
 interface FilesApiResponse { data: { files: FileItem[] }; }
 interface ThumbnailApiResponse { data: { url: string }; }
 
-type Tab = 'files' | 'tours' | 'team' | 'access';
+type Tab = 'files' | 'tours' | 'team' | 'access' | 'comments';
 
 // Type d'enfant déduit du type parent (ex: étage -> pièce)
 const childTypeOf: Record<string, string> = {
@@ -128,6 +128,13 @@ export default function ProjectPage() {
   }, [id, loadFiles]);
 
   useEffect(() => { void loadFiles(selectedNodeId); }, [selectedNodeId, loadFiles]);
+  const openedFromQueryRef = useRef(false);
+  useEffect(() => {
+    if (openedFromQueryRef.current || typeof window === 'undefined' || files.length === 0) return;
+    const fid = new URLSearchParams(window.location.search).get('file');
+    if (fid && files.some(f => f.id === fid)) { openedFromQueryRef.current = true; void openFile(fid); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>): Promise<void> {
     const list = e.target.files;
@@ -325,6 +332,7 @@ export default function ProjectPage() {
     { key: 'tours', label: 'Visites', icon: '🌐' },
     { key: 'team', label: 'Équipe', icon: '👥' },
     { key: 'access', label: 'Partage', icon: '🔗' },
+    { key: 'comments', label: 'Commentaires', icon: '💬' },
   ];
 
   const selectedNodeName = selectedNodeId
@@ -538,6 +546,14 @@ export default function ProjectPage() {
               <h3 className="font-bold text-lg mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Codes de partage</h3>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Créez des codes d&apos;accès sécurisés.</p>
               <Link href={`/projects/${id}/access`} className="btn-primary">Gérer les codes</Link>
+            </div>
+          )}
+          {tab === 'comments' && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--violet-light)' }}>💬</div>
+              <h3 className="font-bold text-lg mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Commentaires &amp; reserves</h3>
+              <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Observations, reserves et non-conformites du projet.</p>
+              <Link href={`/projects/${id}/comments`} className="btn-primary">Ouvrir les commentaires</Link>
             </div>
           )}
         </main>

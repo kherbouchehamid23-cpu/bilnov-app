@@ -19,6 +19,48 @@ async function getLib() {
   return libPromise;
 }
 
+// Segments (murs/lignes) : LINE (10/20 -> 11/21) + LWPOLYLINE (sommets 10/20, code 70 ferme).
+function extractSegments(dxf) {
+  const L = dxf.split(/\r\n|\r|\n/);
+  const out = [];
+  let inEntities = false, sectionNameNext = false, ent = null, pendVX = null;
+  const flush = () => {
+    if (!ent) return;
+    if (ent.type === 'LINE' && ent.x1 != null && ent.x2 != null) out.push(ent.x1, ent.y1, ent.x2, ent.y2);
+    else if (ent.type === 'LWPOLYLINE' && ent.xs.length >= 2) {
+      for (let k = 0; k < ent.xs.length - 1; k++) out.push(ent.xs[k], ent.ys[k], ent.xs[k + 1], ent.ys[k + 1]);
+      if (ent.closed && ent.xs.length >= 3) out.push(ent.xs[ent.xs.length - 1], ent.ys[ent.xs.length - 1], ent.xs[0], ent.ys[0]);
+    }
+    ent = null; pendVX = null;
+  };
+  for (let i = 0; i + 1 < L.length; i += 2) {
+    const code = parseInt(L[i], 10);
+    if (Number.isNaN(code)) continue;
+    const val = (L[i + 1] === undefined ? '' : L[i + 1]).trim();
+    if (code === 0) {
+      const up = val.toUpperCase();
+      if (up === 'SECTION') { flush(); sectionNameNext = true; continue; }
+      if (up === 'ENDSEC') { flush(); inEntities = false; sectionNameNext = false; continue; }
+      flush();
+      if (inEntities && (up === 'LINE' || up === 'LWPOLYLINE')) ent = { type: up, xs: [], ys: [], closed: false, x1: null, y1: null, x2: null, y2: null };
+      continue;
+    }
+    if (code === 2 && sectionNameNext) { inEntities = val.toUpperCase() === 'ENTITIES'; sectionNameNext = false; continue; }
+    if (!inEntities || !ent) continue;
+    const num = parseFloat(val);
+    if (ent.type === 'LINE') {
+      if (code === 10) ent.x1 = num; else if (code === 20) ent.y1 = num;
+      else if (code === 11) ent.x2 = num; else if (code === 21) ent.y2 = num;
+    } else {
+      if (code === 10) pendVX = num;
+      else if (code === 20 && pendVX != null) { ent.xs.push(pendVX); ent.ys.push(num); pendVX = null; }
+      else if (code === 70) { if ((parseInt(val, 10) & 1) === 1) ent.closed = true; }
+    }
+  }
+  flush();
+  return new Float32Array(out);
+}
+
 // Points d'accrochage : coordonnées (codes 10-13 / 20-23) de la section ENTITIES.
 function extractSnapPoints(dxf) {
   const lines = dxf.split(/\r\n|\r|\n/);
@@ -112,9 +154,10 @@ self.onmessage = async (e) => {
     }
     // Accrochage calculé sur le dessin complet (avant retrait des hachures).
     let snap; try { snap = extractSnapPoints(dxf); } catch (_) { snap = new Float32Array(0); }
+    let segs; try { segs = extractSegments(dxf); } catch (_) { segs = new Float32Array(0); }
     let insunits; try { insunits = extractInsUnits(dxf); } catch (_) { insunits = 0; }
     try { const r = stripSolidHatches(dxf); dxf = r.dxf; } catch (_) { /* garde le dxf tel quel */ }
-    self.postMessage({ id, ok: true, dxf, snap: snap.buffer, insunits }, [snap.buffer]);
+    self.postMessage({ id, ok: true, dxf, snap: snap.buffer, segs: segs.buffer, insunits }, [snap.buffer, segs.buffer]);
   } catch (err) {
     self.postMessage({ id, ok: false, error: (err && err.message) ? String(err.message) : 'Erreur de conversion' });
   }

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { toDxfObjectUrl } from '@/lib/cad';
 import { SnapIndex } from '@/lib/snap';
+import { SegmentIndex, segmentsFromFloat32, snap as snapSegments, applyOrtho, type SnapType } from '@/lib/snapEngine';
+import { quickMeasure, type QuickResult } from '@/lib/quickMeasure';
 import {
   UNIT_MM, unitFromInsUnits, lengthFactor, distance as segLen,
   polygonArea, polygonPerimeter, centroid as polyCentroid, formatMeasure,
@@ -31,7 +33,7 @@ interface Measurement {
 }
 
 interface LayerItem { name: string; displayName: string; color: number; visible: boolean }
-type Tool = 'pan' | 'measure' | 'annotate' | 'area';
+type Tool = 'pan' | 'measure' | 'annotate' | 'area' | 'quick';
 type Pt = { x: number; y: number };
 
 // Conversion d'unités & géométrie : fonctions pures testées dans '@/lib/cadMeasure'.
@@ -47,6 +49,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const viewerRef = useRef<any>(null);
   const THREERef = useRef<any>(null);
   const snapIndexRef = useRef<SnapIndex | null>(null);
+  const segIndexRef = useRef<SegmentIndex | null>(null);
   const objectUrlRef = useRef<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -92,7 +95,9 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Accrochage
-  const [snapHover, setSnapHover] = useState<Pt | null>(null);
+  const [snapHover, setSnapHover] = useState<{ x: number; y: number; type: SnapType } | null>(null);
+  const [measureCursor, setMeasureCursor] = useState<Pt | null>(null);
+  const [quickResult, setQuickResult] = useState<{ res: QuickResult; cursor: Pt } | null>(null);
 
   // Collaboration : commentaires-fiches
   const [comments, setComments] = useState<Comment[]>([]);
@@ -164,12 +169,25 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     } catch { return null; }
   }, []);
 
-  const snapWorld = useCallback((p: Pt): Pt => {
-    if (!snapIndexRef.current) return p;
-    const wpp = worldPerPixel(); if (!wpp) return p;
-    const hit = snapIndexRef.current.nearest(p.x, p.y, 14 * wpp);
-    return hit ? { x: hit.x, y: hit.y } : p;
+  const snapResolve = useCallback((p: Pt): { x: number; y: number; type: SnapType } => {
+    const wpp = worldPerPixel();
+    const tol = (wpp ?? 1) * 14;
+    if (segIndexRef.current) {
+      const cand = segIndexRef.current.query(p.x, p.y, tol);
+      if (cand.length > 0) { const r = snapSegments(cand, p, tol); if (r.type !== 'NONE') return { x: r.x, y: r.y, type: r.type }; }
+    }
+    if (snapIndexRef.current && wpp) { const hit = snapIndexRef.current.nearest(p.x, p.y, tol); if (hit) return { x: hit.x, y: hit.y, type: 'ENDPOINT' }; }
+    return { x: p.x, y: p.y, type: 'NONE' };
   }, [worldPerPixel]);
+  const snapWorld = useCallback((p: Pt): Pt => {
+    const r = snapResolve(p);
+    if (r.type !== 'NONE') return { x: r.x, y: r.y };
+    const t = toolRef.current;
+    const mp = measurePtsRef.current, ap = areaPtsRef.current;
+    const from = t === 'measure' && mp.length === 1 ? mp[0] : (t === 'area' && ap.length >= 1 && !areaClosedRef.current ? ap[ap.length - 1] : null);
+    if (from) { const o = applyOrtho(from, p); if (o.locked) return { x: o.x, y: o.y }; }
+    return p;
+  }, [snapResolve]);
 
   // Recentre la vue sur un point monde en conservant le zoom courant.
   const centerOn = useCallback((x: number, y: number) => {
@@ -192,10 +210,11 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
         const blob = await res.blob();
 
         setPhase('Conversion DWG…');
-        const { url, snapPoints, insUnits } = await toDxfObjectUrl(blob, fileName);
+        const { url, snapPoints, segments, insUnits } = await toDxfObjectUrl(blob, fileName);
         if (cancelled) { URL.revokeObjectURL(url); return; }
         objectUrlRef.current = url;
         snapIndexRef.current = snapPoints.length > 0 ? new SnapIndex(snapPoints) : null;
+        segIndexRef.current = segments.length > 0 ? new SegmentIndex(segmentsFromFloat32(segments)) : null;
         const detected = unitFromInsUnits(insUnits);
         setBaseUnit(detected); setUnit(detected);
 
@@ -281,13 +300,19 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     const process = () => {
       raf = 0;
       const t = toolRef.current;
-      if (t === 'pan' || !snapIndexRef.current) { setSnapHover((prev) => (prev ? null : prev)); return; }
+      if (t === 'pan') { setSnapHover((prev) => (prev ? null : prev)); setMeasureCursor(null); return; }
       const rect = cont.getBoundingClientRect();
       const world = screenToWorld(lastX - rect.left, lastY - rect.top);
       if (!world) return;
-      const wpp = worldPerPixel(); if (!wpp) return;
-      const hit = snapIndexRef.current.nearest(world.x, world.y, 14 * wpp);
-      setSnapHover(hit ? { x: hit.x, y: hit.y } : null);
+      const typed = snapResolve(world);
+      const placed = snapWorld(world);
+      setSnapHover({ x: placed.x, y: placed.y, type: typed.type });
+      const mp = measurePtsRef.current;
+      setMeasureCursor(t === 'measure' && mp.length === 1 ? placed : null);
+      if (t === 'quick' && segIndexRef.current) {
+        const rad = (worldPerPixel() ?? 1) * Math.max(cont.clientWidth, cont.clientHeight);
+        setQuickResult({ res: quickMeasure(segIndexRef.current.query(world.x, world.y, rad), world), cursor: world });
+      } else { setQuickResult((prev) => (prev ? null : prev)); }
     };
     const onMove = (e: MouseEvent) => { lastX = e.clientX; lastY = e.clientY; if (!raf) raf = requestAnimationFrame(process); };
     cont.addEventListener('mousemove', onMove);
@@ -304,7 +329,18 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     }));
   }
   function fitView() { const v = viewerRef.current; if (!v) return; const b = v.GetBounds(); if (b) v.FitView(b.minX, b.maxX, b.minY, b.maxY, 0.1); }
-  function resetTools() { setMeasurePts([]); setDraft(null); setAreaPts([]); setAreaClosed(false); setEditingId(null); }
+  function resetTools() { setMeasurePts([]); setDraft(null); setAreaPts([]); setAreaClosed(false); setEditingId(null); setQuickResult(null); }
+  async function saveQuick(from: Pt, to: Pt) {
+    const dworld = segLen(from, to);
+    try {
+      const res = await fetch(`/api/files/${fileId}/measurements`, {
+        method: 'POST', headers: authHeaders(true),
+        body: JSON.stringify({ kind: 'DISTANCE', points: [from, to], unit, distance: dworld, label: `${fmt(dworld * lenFactor)} ${unitLabel}` }),
+      });
+      const d = await res.json() as { data?: Measurement };
+      if (d.data) setMeasurements((prev) => [...prev, d.data as Measurement]);
+    } catch { /* noop */ }
+  }
 
   // Point au centre du viewport (avec accrochage) — pour le placement tactile.
   function centerWorld(): Pt | null {
@@ -522,6 +558,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           <button className={btn(tool === 'pan')} onClick={() => { setTool('pan'); resetTools(); }}>✋ Naviguer</button>
           <button className={btn(tool === 'measure')} onClick={() => { setTool('measure'); resetTools(); }}>📏 Mesurer</button>
           <button className={btn(tool === 'area')} onClick={() => { setTool('area'); resetTools(); }}>📐 Superficie</button>
+          <button className={btn(tool === 'quick')} onClick={() => { setTool('quick'); resetTools(); }}>⚡ Mesure rapide</button>
           {canAnnotate && <button className={btn(tool === 'annotate')} onClick={() => { setTool('annotate'); resetTools(); }}>💬 Commenter</button>}
           <label className="ml-1 flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-sm" title="Unité de mesure — modifiable à tout moment">
             <span className="opacity-70">Unité</span>
@@ -570,6 +607,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
         </div>
       )}
       {tool === 'annotate' && <div className="bg-slate-700 px-3 py-1.5 text-xs text-white">Cliquez sur le plan pour poser un commentaire (accrochage actif).</div>}
+      {tool === 'quick' && <div className="bg-slate-700 px-3 py-1.5 text-xs text-white">Déplacez le curseur : les distances avec les murs s&apos;affichent automatiquement. Cliquez une distance pour l&apos;enregistrer.</div>}
 
       <div className="relative flex flex-1 overflow-hidden">
         <div ref={containerRef} className="flex-1 bg-white" style={{ cursor: tool === 'pan' ? 'default' : 'crosshair' }} />
@@ -625,6 +663,15 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
 
           {/* Mesure live */}
           {measurePts.map((p, i) => { const s = worldToScreen(p.x, p.y); if (!s) return null; return <div key={`m${i}`} {...vertexHandlers('measure', i)} className="absolute pointer-events-auto" style={{ left: s.px - 8, top: s.py - 8, width: 16, height: 16, borderRadius: 16, background: '#2563EB', border: '2px solid #fff', cursor: 'grab', touchAction: 'none' }} title="Glisser pour déplacer ce point" />; })}
+          {tool === 'measure' && measurePts.length === 1 && measureCursor && (() => {
+            const a = worldToScreen(measurePts[0].x, measurePts[0].y); const b = worldToScreen(measureCursor.x, measureCursor.y);
+            if (!a || !b) return null; const midX = (a.px + b.px) / 2, midY = (a.py + b.py) / 2;
+            const dprev = segLen(measurePts[0], measureCursor) * lenFactor;
+            return (<>
+              <svg className="absolute inset-0 w-full h-full pointer-events-none"><line x1={a.px} y1={a.py} x2={b.px} y2={b.py} stroke="#2563EB" strokeWidth={1.5} strokeDasharray="4 3" /></svg>
+              <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-blue-600 px-1.5 py-0.5 text-[11px] text-white font-semibold whitespace-nowrap pointer-events-none" style={{ left: midX, top: midY - 14 }}>{fmt(dprev)} {unitLabel}</div>
+            </>);
+          })()}
           {measurePts.length === 2 && (() => {
             const a = worldToScreen(measurePts[0].x, measurePts[0].y); const b = worldToScreen(measurePts[1].x, measurePts[1].y);
             if (!a || !b) return null; const midX = (a.px + b.px) / 2, midY = (a.py + b.py) / 2;
@@ -650,7 +697,47 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           })()}
 
           {/* Accrochage */}
-          {snapHover && tool !== 'pan' && (() => { const s = worldToScreen(snapHover.x, snapHover.y); if (!s) return null; return (<svg className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden><g stroke="#16A34A" strokeWidth={1.5}><line x1={s.px - 22} y1={s.py} x2={s.px + 22} y2={s.py} /><line x1={s.px} y1={s.py - 22} x2={s.px} y2={s.py + 22} /><rect x={s.px - 6} y={s.py - 6} width={12} height={12} fill="rgba(22,163,74,0.20)" /></g></svg>); })()}
+          {tool === 'quick' && quickResult && (() => {
+            const c = worldToScreen(quickResult.cursor.x, quickResult.cursor.y); if (!c) return null;
+            const q = quickResult.res;
+            const seg = (hit: { x: number; y: number } | undefined, val: number | null) => {
+              if (!hit || val == null) return null;
+              const h = worldToScreen(hit.x, hit.y); if (!h) return null;
+              const mx = (c.px + h.px) / 2, my = (c.py + h.py) / 2;
+              return (<g key={`${hit.x.toFixed(2)},${hit.y.toFixed(2)}`}>
+                <line x1={c.px} y1={c.py} x2={h.px} y2={h.py} stroke="#0EA5E9" strokeWidth={1.5} strokeDasharray="4 3" />
+                <foreignObject x={mx - 34} y={my - 10} width={68} height={20} style={{ pointerEvents: 'auto' }}>
+                  <button onClick={() => void saveQuick(quickResult.cursor, hit)} className="w-full rounded bg-sky-600 px-1 text-[10px] text-white hover:bg-sky-700" style={{ height: 18 }}>{fmt(val * lenFactor)} {unitLabel}</button>
+                </foreignObject>
+              </g>);
+            };
+            return (<svg className="absolute inset-0 w-full h-full pointer-events-none">
+              {seg(q.points.left, q.left)}
+              {seg(q.points.right, q.right)}
+              {seg(q.points.up, q.up)}
+              {seg(q.points.down, q.down)}
+            </svg>);
+          })()}
+          {snapHover && tool !== 'pan' && (() => {
+            const s = worldToScreen(snapHover.x, snapHover.y); if (!s) return null;
+            const ty = snapHover.type;
+            const col = ty === 'NONE' ? '#94A3B8' : '#16A34A';
+            const label: Record<string, string> = { ENDPOINT: 'Extremite', MIDPOINT: 'Milieu', INTERSECTION: 'Intersection', CENTER: 'Centre', PERPENDICULAR: 'Perpendiculaire', ON_SEGMENT: 'Sur la ligne', NEAREST: 'Proche', NONE: '' };
+            return (<>
+              <svg className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden>
+                <g stroke={col} strokeWidth={1.5} fill="none">
+                  <line x1={s.px - 22} y1={s.py} x2={s.px + 22} y2={s.py} /><line x1={s.px} y1={s.py - 22} x2={s.px} y2={s.py + 22} />
+                  {ty === 'ENDPOINT' && <rect x={s.px - 6} y={s.py - 6} width={12} height={12} />}
+                  {ty === 'MIDPOINT' && <polygon points={`${s.px},${s.py - 7} ${s.px - 7},${s.py + 6} ${s.px + 7},${s.py + 6}`} />}
+                  {ty === 'INTERSECTION' && <g><line x1={s.px - 7} y1={s.py - 7} x2={s.px + 7} y2={s.py + 7} /><line x1={s.px - 7} y1={s.py + 7} x2={s.px + 7} y2={s.py - 7} /></g>}
+                  {(ty === 'CENTER' || ty === 'NEAREST') && <circle cx={s.px} cy={s.py} r={7} />}
+                  {ty === 'PERPENDICULAR' && <path d={`M ${s.px - 7} ${s.py} L ${s.px} ${s.py} L ${s.px} ${s.py + 7} M ${s.px - 7} ${s.py + 7} L ${s.px + 7} ${s.py + 7}`} />}
+                  {ty === 'ON_SEGMENT' && <rect x={s.px - 5} y={s.py - 5} width={10} height={10} transform={`rotate(45 ${s.px} ${s.py})`} />}
+                </g>
+              </svg>
+              {ty !== 'NONE' && <div className="absolute rounded bg-emerald-700 px-1 py-0.5 text-[10px] text-white pointer-events-none" style={{ left: s.px + 14, top: s.py + 14 }}>{label[ty]}</div>}
+            </>);
+          })()}
 
           {/* Marqueurs de commentaires (§11) */}
           {comments.map((c) => {
