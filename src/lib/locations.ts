@@ -21,6 +21,12 @@ export function navigationTarget(projectId: string, loc: CommentLocationLike): N
     }
     case 'PANORAMA_360':
       return { support: '360', label: 'Voir la visite 360°', href: `/projects/${projectId}?tab=tours` };
+    case 'BIM_IFC': {
+      const fid = loc.resourceId ?? asStr(meta['bim_model_id']);
+      const eid = meta['express_id'];
+      const q = fid ? `?file=${fid}${typeof eid === 'number' ? `&bimExpress=${eid}` : ''}` : '';
+      return { support: 'BIM', label: 'Voir dans la maquette BIM', href: fid ? `/projects/${projectId}${q}` : null };
+    }
     case 'PHOTO': {
       const fid = loc.resourceId ?? asStr(meta['file_id']);
       return { support: 'PHOTO', label: 'Voir la photo', href: fid ? `/projects/${projectId}?file=${fid}` : null };

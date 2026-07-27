@@ -47,3 +47,14 @@ describe('mapping CAO → central', () => {
     expect(mapCadPriority('???')).toBe('NORMAL');
   });
 });
+
+describe('navigationTarget BIM_IFC', () => {
+  it('construit le lien vers la maquette avec l’objet', () => {
+    const t = navigationTarget('p1', { locationType: 'BIM_IFC', resourceId: 'f3', metadata: { express_id: 8452 } });
+    expect(t.label).toBe('Voir dans la maquette BIM');
+    expect(t.href).toBe('/projects/p1?file=f3&bimExpress=8452');
+  });
+  it('sans objet : lien vers le fichier seul', () => {
+    expect(navigationTarget('p1', { locationType: 'BIM_IFC', resourceId: 'f3' }).href).toBe('/projects/p1?file=f3');
+  });
+});
