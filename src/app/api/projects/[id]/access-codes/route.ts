@@ -48,6 +48,7 @@ export async function POST(
       canDownload?: boolean;
       canUpload?: boolean;
       canShare?: boolean;
+      canMeasure?: boolean;
       expiresInDays?: number | null;
       allowedNodeIds?: string[] | null;
       allowedFileIds?: string[] | null;
@@ -60,6 +61,7 @@ export async function POST(
       canDownload = false,
       canUpload = false,
       canShare = false,
+      canMeasure = false,
       expiresInDays,
       allowedNodeIds = [],
       allowedFileIds = [],
@@ -95,6 +97,7 @@ export async function POST(
             canDownload,
             canUpload,
             canShare,
+            canMeasure,
             allowedNodeIds: allowedNodeIds ?? [],
             allowedFileIds: allowedFileIds ?? [],
             commentShareMode: shareMode,

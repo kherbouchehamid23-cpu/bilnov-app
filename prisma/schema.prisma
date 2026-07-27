@@ -37,6 +37,8 @@ model User {
   cadMeasurements        CadMeasurement[]
   notifications          Notification[]          @relation("NotificationRecipient")
   notificationsActed     Notification[]          @relation("NotificationActor")
+  commentsCreated  Comment[]        @relation("CommentAuthor")
+  commentMessages  CommentMessage[] @relation("CommentMessageAuthor")
   @@map("users")
 }
 
@@ -111,6 +113,7 @@ model Project {
   accessCodes  AccessCode[]
 
   krpanoTours  KrpanoTour[]
+  comments     Comment[]
   @@map("projects")
 }
 
@@ -305,6 +308,7 @@ model ShareRule {
   canUpload        Boolean    @default(false) @map("can_upload")
   canShare         Boolean    @default(false) @map("can_share")
   allowedFileTypes FileType[] @map("allowed_file_types")
+  canMeasure       Boolean    @default(false) @map("can_measure")
   commentShareMode String     @default("NONE") @map("comment_share_mode")
   commentAuthorId  String?    @map("comment_author_id")
   allowedNodeIds   String[]   @map("allowed_node_ids")
@@ -564,3 +568,219 @@ enum NotificationType {
 }
 
 
+
+
+// ============================================================
+// M1 — Système de commentaires unifiés (additif, non destructif).
+// Objet central `Comment` + `CommentLocation` générique + fil, PJ, historique.
+// N'altère PAS CadAnnotation (conservé) : pont/backfill possible ultérieurement.
+// ============================================================
+
+model Comment {
+  id            String          @id @default(uuid())
+  projectId     String          @map("project_id")
+  number        Int             @default(0)
+  type          CommentType     @default(GENERAL)
+  title         String?
+  description   String
+  status        CommentStatus   @default(NEW)
+  priority      CommentPriority @default(NORMAL)
+  nodeId        String?         @map("node_id")
+  spaceId       String?         @map("space_id")
+  lotId         String?         @map("lot_id")
+  tradeId       String?         @map("trade_id")
+  buildingId    String?         @map("building_id")
+  floorId       String?         @map("floor_id")
+  zoneId        String?         @map("zone_id")
+  companyId     String?         @map("company_id")
+  createdById   String          @map("created_by_id")
+  dueDate       DateTime?       @map("due_date")
+  resolvedAt    DateTime?       @map("resolved_at")
+  validatedAt   DateTime?       @map("validated_at")
+  validatedById String?         @map("validated_by_id")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @default(now()) @updatedAt @map("updated_at")
+  deletedAt     DateTime?       @map("deleted_at")
+
+  project     Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User                   @relation("CommentAuthor", fields: [createdById], references: [id])
+  assignees   CommentAssignee[]
+  messages    CommentMessage[]
+  attachments CommentAttachment[]
+  locations   CommentLocation[]
+  history     CommentStatusHistory[]
+  activity    CommentActivityLog[]
+
+  @@index([projectId])
+  @@index([status])
+  @@map("comments")
+}
+
+model CommentAssignee {
+  id             String             @id @default(uuid())
+  commentId      String             @map("comment_id")
+  userId         String?            @map("user_id")
+  companyId      String?            @map("company_id")
+  responsibility ResponsibilityType @default(RESPONSIBLE)
+  assignedById   String             @map("assigned_by_id")
+  assignedAt     DateTime           @default(now()) @map("assigned_at")
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([commentId])
+  @@map("comment_assignees")
+}
+
+model CommentMessage {
+  id              String    @id @default(uuid())
+  commentId       String    @map("comment_id")
+  authorId        String    @map("author_id")
+  parentMessageId String?   @map("parent_message_id")
+  body            String
+  editedAt        DateTime? @map("edited_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  author  User    @relation("CommentMessageAuthor", fields: [authorId], references: [id])
+
+  @@index([commentId])
+  @@map("comment_messages")
+}
+
+model CommentAttachment {
+  id           String    @id @default(uuid())
+  commentId    String    @map("comment_id")
+  messageId    String?   @map("message_id")
+  filename     String
+  storageKey   String    @map("storage_key")
+  mimeType     String    @map("mime_type")
+  fileSize     Int       @map("file_size")
+  uploadedById String    @map("uploaded_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([commentId])
+  @@map("comment_attachments")
+}
+
+model CommentLocation {
+  id                String              @id @default(uuid())
+  commentId         String              @map("comment_id")
+  locationType      CommentLocationType @map("location_type")
+  resourceType      String?             @map("resource_type")
+  resourceId        String?             @map("resource_id")
+  resourceVersionId String?             @map("resource_version_id")
+  title             String?
+  metadata          Json?
+  createdById       String              @map("created_by_id")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at")
+  deletedAt         DateTime?           @map("deleted_at")
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([commentId])
+  @@map("comment_locations")
+}
+
+model CommentStatusHistory {
+  id             String         @id @default(uuid())
+  commentId      String         @map("comment_id")
+  previousStatus CommentStatus? @map("previous_status")
+  newStatus      CommentStatus  @map("new_status")
+  changedById    String         @map("changed_by_id")
+  note           String?
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([commentId])
+  @@map("comment_status_history")
+}
+
+model CommentActivityLog {
+  id        String   @id @default(uuid())
+  commentId String   @map("comment_id")
+  action    String
+  oldValues Json?    @map("old_values")
+  newValues Json?    @map("new_values")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([commentId])
+  @@map("comment_activity_logs")
+}
+
+enum CommentType {
+  GENERAL
+  OBSERVATION
+  TECHNICAL
+  QUESTION
+  INFO_REQUEST
+  INSTRUCTION
+  DECISION
+  TASK
+  RESERVE
+  NON_CONFORMITY
+  BLOCKER
+  RISK
+  VALIDATION_REQUEST
+  COORDINATION
+  QUALITY
+  SAFETY
+  COST
+  DELAY
+}
+
+enum CommentStatus {
+  NEW
+  ASSIGNED
+  IN_PROGRESS
+  ON_HOLD
+  BLOCKED
+  TO_VERIFY
+  RESOLVED
+  VALIDATED
+  REJECTED
+  CANCELLED
+  REOPENED
+  ARCHIVED
+}
+
+enum CommentPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+  CRITICAL
+}
+
+enum ResponsibilityType {
+  RESPONSIBLE
+  APPROVER
+  CONSULTED
+  INFORMED
+}
+
+enum CommentLocationType {
+  DWG
+  PDF
+  BIM_IFC
+  PANORAMA_360
+  PHOTO
+  VIDEO
+  DOCUMENT
+  MODEL_3D
+  AUGMENTED_REALITY
+  GPS
+  TASK
+  LOT
+  SPACE
+  SITE_DIARY
+  MEETING
+}

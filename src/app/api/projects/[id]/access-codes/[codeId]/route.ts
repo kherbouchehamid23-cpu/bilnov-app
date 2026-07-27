@@ -75,6 +75,7 @@ export async function PATCH(
     if (body.canDownload !== undefined) ruleData.canDownload = body.canDownload;
     if (body.canUpload !== undefined) ruleData.canUpload = body.canUpload;
     if (body.canShare !== undefined) ruleData.canShare = body.canShare;
+    if ((body as { canMeasure?: boolean }).canMeasure !== undefined) ruleData.canMeasure = (body as { canMeasure?: boolean }).canMeasure;
     if (body.allowedNodeIds !== undefined) ruleData.allowedNodeIds = body.allowedNodeIds ?? [];
     if (body.allowedFileIds !== undefined) ruleData.allowedFileIds = body.allowedFileIds ?? [];
 

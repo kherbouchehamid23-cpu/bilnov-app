@@ -8,6 +8,7 @@ const SharedCadViewer = dynamic(() => import('@/components/SharedCadViewer'), { 
 interface Permissions {
   canView: boolean;
   canDownload: boolean;
+  canMeasure?: boolean;
   canUpload: boolean;
   canShare: boolean;
 }
@@ -208,6 +209,7 @@ export default function SharedProjectPage() {
           code={typeof window !== 'undefined' ? (sessionStorage.getItem('bilnov_access_code') ?? '') : ''}
           fileId={cadFile.id}
           fileName={cadFile.name}
+          canMeasure={!!accessData?.permissions.canMeasure}
           onClose={() => setCadFile(null)}
         />
       )}

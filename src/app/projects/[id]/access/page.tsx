@@ -31,6 +31,7 @@ interface CreateCodeForm {
   canDownload: boolean;
   canUpload: boolean;
   canShare: boolean;
+  canMeasure: boolean;
   commentShareMode: string;
   expiresInDays: string;
 }
@@ -65,6 +66,7 @@ export default function AccessCodesPage() {
     canDownload: false,
     canUpload: false,
     canShare: false,
+    canMeasure: false,
     commentShareMode: 'NONE',
     expiresInDays: '30',
   });
@@ -120,6 +122,7 @@ export default function AccessCodesPage() {
           canDownload: form.canDownload,
           canUpload: form.canUpload,
           canShare: form.canShare,
+          canMeasure: form.canMeasure,
           commentShareMode: form.commentShareMode,
           expiresInDays: form.expiresInDays ? parseInt(form.expiresInDays, 10) : null,
           allowedNodeIds: scope?.nodeIds ?? [],
@@ -346,6 +349,7 @@ export default function AccessCodesPage() {
                     { key: 'canDownload' as const, label: '⬇️ Télécharger', desc: 'Télécharger les fichiers' },
                     { key: 'canUpload' as const, label: '⬆️ Uploader', desc: 'Ajouter des fichiers' },
                     { key: 'canShare' as const, label: '🔗 Partager', desc: 'Créer des codes' },
+                    { key: 'canMeasure' as const, label: '📏 Mesurer', desc: 'Prise de mesure / superficie (devis)' },
                   ]).map(perm => (
                     <button
                       key={perm.key}

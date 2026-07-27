@@ -46,6 +46,7 @@ export async function GET(
         canDownload: code.shareRule?.canDownload ?? false,
         canUpload: code.shareRule?.canUpload ?? false,
         canShare: code.shareRule?.canShare ?? false,
+        canMeasure: code.shareRule?.canMeasure ?? false,
       },
     });
   } catch (error) {

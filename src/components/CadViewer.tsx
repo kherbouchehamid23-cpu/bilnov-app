@@ -1,8 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { toDxfObjectUrl } from '@/lib/cad';
 import { SnapIndex } from '@/lib/snap';
+import {
+  UNIT_MM, unitFromInsUnits, lengthFactor, distance as segLen,
+  polygonArea, polygonPerimeter, centroid as polyCentroid, formatMeasure,
+} from '@/lib/cadMeasure';
 import {
   STATUS_META, STATUS_ORDER, PRIORITY_META, PRIORITY_ORDER,
   statusColor, statusLabel, eventLabel,
@@ -30,9 +34,7 @@ interface LayerItem { name: string; displayName: string; color: number; visible:
 type Tool = 'pan' | 'measure' | 'annotate' | 'area';
 type Pt = { x: number; y: number };
 
-// Conversion d'unités (référence mm) et mapping $INSUNITS.
-const UNIT_MM: Record<string, number> = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8 };
-const INSUNITS_TO_UNIT: Record<number, string> = { 1: 'in', 2: 'ft', 4: 'mm', 5: 'cm', 6: 'm' };
+// Conversion d'unités & géométrie : fonctions pures testées dans '@/lib/cadMeasure'.
 
 interface Props {
   fileId: string; fileName: string; token: string;
@@ -87,6 +89,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
 
   // Mesures persistées (§16)
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Accrochage
   const [snapHover, setSnapHover] = useState<Pt | null>(null);
@@ -193,7 +196,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
         if (cancelled) { URL.revokeObjectURL(url); return; }
         objectUrlRef.current = url;
         snapIndexRef.current = snapPoints.length > 0 ? new SnapIndex(snapPoints) : null;
-        const detected = INSUNITS_TO_UNIT[insUnits] ?? 'u';
+        const detected = unitFromInsUnits(insUnits);
         setBaseUnit(detected); setUnit(detected);
 
         setPhase('Rendu du plan…');
@@ -301,7 +304,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     }));
   }
   function fitView() { const v = viewerRef.current; if (!v) return; const b = v.GetBounds(); if (b) v.FitView(b.minX, b.maxX, b.minY, b.maxY, 0.1); }
-  function resetTools() { setMeasurePts([]); setDraft(null); setAreaPts([]); setAreaClosed(false); }
+  function resetTools() { setMeasurePts([]); setDraft(null); setAreaPts([]); setAreaClosed(false); setEditingId(null); }
 
   // Point au centre du viewport (avec accrochage) — pour le placement tactile.
   function centerWorld(): Pt | null {
@@ -316,11 +319,28 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     else if (tool === 'annotate') { setDraft(p); setDTitle(''); setDText(''); setDPriority('NORMAL'); setDAssignee(''); setDDue(''); }
   }
 
+  // Édition des points déjà posés : glisser un sommet le déplace (avec ré-accrochage OSNAP).
+  const dragRef = useRef<{ kind: 'measure' | 'area'; index: number } | null>(null);
+  const moveVertex = useCallback((clientX: number, clientY: number) => {
+    const d = dragRef.current; const cont = containerRef.current; if (!d || !cont) return;
+    const rect = cont.getBoundingClientRect();
+    const w = screenToWorld(clientX - rect.left, clientY - rect.top); if (!w) return;
+    const snapped = snapWorld(w);
+    if (d.kind === 'measure') setMeasurePts((cur) => cur.map((p, i) => (i === d.index ? snapped : p)));
+    else setAreaPts((cur) => cur.map((p, i) => (i === d.index ? snapped : p)));
+  }, [screenToWorld, snapWorld]);
+  function vertexHandlers(kind: 'measure' | 'area', index: number) {
+    return {
+      onPointerDown: (e: ReactPointerEvent) => { e.stopPropagation(); try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { /* noop */ } dragRef.current = { kind, index }; },
+      onPointerMove: (e: ReactPointerEvent) => { if (dragRef.current) { e.stopPropagation(); moveVertex(e.clientX, e.clientY); } },
+      onPointerUp: (e: ReactPointerEvent) => { e.stopPropagation(); dragRef.current = null; },
+    };
+  }
+
   // ---- Unité ----
-  const canConvert = baseUnit !== 'u' && unit !== 'u' && (baseUnit in UNIT_MM) && (unit in UNIT_MM);
-  const lenFactor = canConvert ? UNIT_MM[baseUnit] / UNIT_MM[unit] : 1;
+  const lenFactor = lengthFactor(baseUnit, unit);
   const unitLabel = unit === 'u' ? 'u' : unit;
-  const fmt = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+  const fmt = (n: number) => formatMeasure(n);
 
   async function changeUnit(u: string) {
     setUnit(u);
@@ -330,17 +350,24 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   }
 
   // ---- Mesures : calculs live ----
-  const measureDist = measurePts.length === 2 ? Math.hypot(measurePts[1].x - measurePts[0].x, measurePts[1].y - measurePts[0].y) : null;
+  const measureDist = measurePts.length === 2 ? segLen(measurePts[0], measurePts[1]) : null;
   const dispDist = measureDist !== null ? measureDist * lenFactor : null;
-  function polyArea(pts: Pt[]): number { return Math.abs(pts.reduce((acc, p, i) => { const q = pts[(i + 1) % pts.length]; return acc + (p.x * q.y - q.x * p.y); }, 0)) / 2; }
-  function polyPerim(pts: Pt[], closed: boolean): number { let s = 0; for (let i = 0; i < pts.length - (closed ? 0 : 1); i++) { const q = pts[(i + 1) % pts.length]; s += Math.hypot(q.x - pts[i].x, q.y - pts[i].y); } return s; }
-  const areaValue = areaPts.length >= 3 ? polyArea(areaPts) : null;
+  const areaValue = areaPts.length >= 3 ? polygonArea(areaPts) : null;
   const dispArea = areaValue !== null ? areaValue * lenFactor * lenFactor : null;
-  const areaCentroid = areaPts.length > 0 ? { x: areaPts.reduce((s, p) => s + p.x, 0) / areaPts.length, y: areaPts.reduce((s, p) => s + p.y, 0) / areaPts.length } : null;
+  const areaCentroid = polyCentroid(areaPts);
 
   async function saveDistance() {
     if (measurePts.length !== 2 || measureDist === null) return;
     try {
+      if (editingId) {
+        const res = await fetch(`/api/files/${fileId}/measurements/${editingId}`, {
+          method: 'PATCH', headers: authHeaders(true),
+          body: JSON.stringify({ points: measurePts, unit, label: `${fmt(dispDist ?? 0)} ${unitLabel}` }),
+        });
+        const d = await res.json() as { data?: Measurement };
+        if (d.data) { setMeasurements((prev) => prev.map((m) => (m.id === editingId ? d.data as Measurement : m))); setMeasurePts([]); setEditingId(null); }
+        return;
+      }
       const res = await fetch(`/api/files/${fileId}/measurements`, {
         method: 'POST', headers: authHeaders(true),
         body: JSON.stringify({ kind: 'DISTANCE', points: measurePts, unit, distance: measureDist, label: `${fmt(dispDist ?? 0)} ${unitLabel}` }),
@@ -352,9 +379,18 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   async function saveArea() {
     if (areaValue === null) return;
     try {
+      if (editingId) {
+        const res = await fetch(`/api/files/${fileId}/measurements/${editingId}`, {
+          method: 'PATCH', headers: authHeaders(true),
+          body: JSON.stringify({ points: areaPts, unit, label: `${fmt(dispArea ?? 0)} ${unitLabel}²` }),
+        });
+        const d = await res.json() as { data?: Measurement };
+        if (d.data) { setMeasurements((prev) => prev.map((m) => (m.id === editingId ? d.data as Measurement : m))); setAreaPts([]); setAreaClosed(false); setEditingId(null); }
+        return;
+      }
       const res = await fetch(`/api/files/${fileId}/measurements`, {
         method: 'POST', headers: authHeaders(true),
-        body: JSON.stringify({ kind: 'AREA', points: areaPts, unit, area: areaValue, perimeter: polyPerim(areaPts, true), label: `${fmt(dispArea ?? 0)} ${unitLabel}²` }),
+        body: JSON.stringify({ kind: 'AREA', points: areaPts, unit, area: areaValue, perimeter: polygonPerimeter(areaPts, true), label: `${fmt(dispArea ?? 0)} ${unitLabel}²` }),
       });
       const d = await res.json() as { data?: Measurement };
       if (d.data) { setMeasurements((prev) => [...prev, d.data as Measurement]); setAreaPts([]); setAreaClosed(false); }
@@ -487,6 +523,12 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           <button className={btn(tool === 'measure')} onClick={() => { setTool('measure'); resetTools(); }}>📏 Mesurer</button>
           <button className={btn(tool === 'area')} onClick={() => { setTool('area'); resetTools(); }}>📐 Superficie</button>
           {canAnnotate && <button className={btn(tool === 'annotate')} onClick={() => { setTool('annotate'); resetTools(); }}>💬 Commenter</button>}
+          <label className="ml-1 flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-sm" title="Unité de mesure — modifiable à tout moment">
+            <span className="opacity-70">Unité</span>
+            <select value={unit} onChange={(e) => void changeUnit(e.target.value)} className="bg-slate-700 rounded px-1 py-0.5 text-sm">
+              <option value="u">u</option><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option><option value="in">in</option><option value="ft">ft</option>
+            </select>
+          </label>
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={() => setShowPanel((s) => !s)}>🗂️ Commentaires ({comments.length})</button>
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={genReport}>📄 Rapport</button>
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={fitView}>Ajuster</button>
@@ -530,7 +572,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
       {tool === 'annotate' && <div className="bg-slate-700 px-3 py-1.5 text-xs text-white">Cliquez sur le plan pour poser un commentaire (accrochage actif).</div>}
 
       <div className="relative flex flex-1 overflow-hidden">
-        <div ref={containerRef} className="flex-1 bg-white" />
+        <div ref={containerRef} className="flex-1 bg-white" style={{ cursor: tool === 'pan' ? 'default' : 'crosshair' }} />
 
         {/* Overlay */}
         <div ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ right: showPanel && !isNarrow ? 340 : (showLayers && !isNarrow ? 240 : 0) }}>
@@ -558,6 +600,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
                   <svg className="absolute inset-0 w-full h-full pointer-events-none"><line x1={pts[0].px} y1={pts[0].py} x2={pts[1].px} y2={pts[1].py} stroke="#2563EB" strokeWidth={2} /></svg>
                   <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap pointer-events-auto group" style={{ left: midX, top: midY }}>
                     {m.label ?? fmt((m.distance ?? 0) * lenFactor)}
+                    {canManage && <button className="ml-1 opacity-0 group-hover:opacity-100" title="Éditer les points" onClick={() => { setTool('measure'); setMeasurePts(m.points); setEditingId(m.id); }}>✎</button>}
                     <button className="ml-1 opacity-0 group-hover:opacity-100" onClick={() => void deleteMeasurement(m.id)}>✕</button>
                   </div>
                 </div>
@@ -571,6 +614,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
                   <svg className="absolute inset-0 w-full h-full pointer-events-none"><polygon points={poly} fill="rgba(16,185,129,0.15)" stroke="#059669" strokeWidth={2} /></svg>
                   <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-emerald-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap pointer-events-auto group" style={{ left: cx, top: cy }}>
                     {m.label ?? fmt((m.area ?? 0) * lenFactor * lenFactor)}
+                    {canManage && <button className="ml-1 opacity-0 group-hover:opacity-100" title="Éditer les points" onClick={() => { setTool('area'); setAreaPts(m.points); setAreaClosed(true); setEditingId(m.id); }}>✎</button>}
                     <button className="ml-1 opacity-0 group-hover:opacity-100" onClick={() => void deleteMeasurement(m.id)}>✕</button>
                   </div>
                 </div>
@@ -580,7 +624,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           })}
 
           {/* Mesure live */}
-          {measurePts.map((p, i) => { const s = worldToScreen(p.x, p.y); if (!s) return null; return <div key={`m${i}`} className="absolute" style={{ left: s.px - 4, top: s.py - 4, width: 8, height: 8, borderRadius: 8, background: '#2563EB', border: '2px solid #fff' }} />; })}
+          {measurePts.map((p, i) => { const s = worldToScreen(p.x, p.y); if (!s) return null; return <div key={`m${i}`} {...vertexHandlers('measure', i)} className="absolute pointer-events-auto" style={{ left: s.px - 8, top: s.py - 8, width: 16, height: 16, borderRadius: 16, background: '#2563EB', border: '2px solid #fff', cursor: 'grab', touchAction: 'none' }} title="Glisser pour déplacer ce point" />; })}
           {measurePts.length === 2 && (() => {
             const a = worldToScreen(measurePts[0].x, measurePts[0].y); const b = worldToScreen(measurePts[1].x, measurePts[1].y);
             if (!a || !b) return null; const midX = (a.px + b.px) / 2, midY = (a.py + b.py) / 2;
@@ -600,13 +644,13 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
                 {(areaClosed || pts.length >= 3) && <polygon points={poly} fill="rgba(16,185,129,0.18)" stroke="#059669" strokeWidth={2} strokeDasharray={areaClosed ? undefined : '5 4'} />}
                 {!areaClosed && pts.length === 2 && <polyline points={poly} fill="none" stroke="#059669" strokeWidth={2} strokeDasharray="5 4" />}
               </svg>
-              {pts.map((s, i) => <div key={`a${i}`} className="absolute" style={{ left: s.px - 4, top: s.py - 4, width: 8, height: 8, borderRadius: 8, background: '#059669', border: '2px solid #fff' }} />)}
+              {pts.map((s, i) => <div key={`a${i}`} {...vertexHandlers('area', i)} className="absolute pointer-events-auto" style={{ left: s.px - 8, top: s.py - 8, width: 16, height: 16, borderRadius: 16, background: '#059669', border: '2px solid #fff', cursor: 'grab', touchAction: 'none' }} title="Glisser pour déplacer ce sommet" />)}
               {dispArea !== null && cen && <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-emerald-600 px-2 py-0.5 text-xs text-white font-semibold whitespace-nowrap" style={{ left: cen.px, top: cen.py }}>{fmt(dispArea)} {unitLabel}&sup2;</div>}
             </>);
           })()}
 
           {/* Accrochage */}
-          {snapHover && tool !== 'pan' && (() => { const s = worldToScreen(snapHover.x, snapHover.y); if (!s) return null; return <div className="absolute" style={{ left: s.px - 6, top: s.py - 6, width: 12, height: 12, border: '2px solid #F59E0B', background: 'rgba(245,158,11,0.25)', boxShadow: '0 0 0 1px #fff' }} />; })()}
+          {snapHover && tool !== 'pan' && (() => { const s = worldToScreen(snapHover.x, snapHover.y); if (!s) return null; return (<svg className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden><g stroke="#16A34A" strokeWidth={1.5}><line x1={s.px - 22} y1={s.py} x2={s.px + 22} y2={s.py} /><line x1={s.px} y1={s.py - 22} x2={s.px} y2={s.py + 22} /><rect x={s.px - 6} y={s.py - 6} width={12} height={12} fill="rgba(22,163,74,0.20)" /></g></svg>); })()}
 
           {/* Marqueurs de commentaires (§11) */}
           {comments.map((c) => {
