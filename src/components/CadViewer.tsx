@@ -50,6 +50,9 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const THREERef = useRef<any>(null);
   const snapIndexRef = useRef<SnapIndex | null>(null);
   const segIndexRef = useRef<SegmentIndex | null>(null);
+  const touchLayerRef = useRef<HTMLDivElement>(null);
+  const pinchRef = useRef<{ dist: number; cx: number; cy: number; halfW: number; halfH: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const objectUrlRef = useRef<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -343,7 +346,52 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   }
 
   // Point au centre du viewport (avec accrochage) — pour le placement tactile.
+  // --- Tactile : le doigt deplace le CURSEUR (le plan reste fixe) en mode Mesure. §mobile ---
+  useEffect(() => {
+    const el = touchLayerRef.current; if (!el) return;
+    const resolve = (cx: number, cy: number): { placed: Pt; type: SnapType } | null => {
+      const cont = containerRef.current; if (!cont) return null;
+      const rect = cont.getBoundingClientRect();
+      const world = screenToWorld(cx - rect.left, cy - rect.top); if (!world) return null;
+      return { placed: snapWorld(world), type: snapResolve(world).type };
+    };
+    const cursor = (cx: number, cy: number) => {
+      const r = resolve(cx, cy); if (!r) return;
+      setSnapHover({ x: r.placed.x, y: r.placed.y, type: r.type });
+      setMeasureCursor(toolRef.current === 'measure' && measurePtsRef.current.length === 1 ? r.placed : null);
+    };
+    const commit = (cx: number, cy: number) => {
+      const r = resolve(cx, cy); if (!r) return; const world = r.placed; const t = toolRef.current;
+      if (t === 'measure') setMeasurePts((c) => (c.length >= 2 ? [world] : [...c, world]));
+      else if (t === 'area') {
+        if (areaClosedRef.current) return; const c = areaPtsRef.current;
+        if (c.length >= 3) { const sF = worldToScreen(c[0].x, c[0].y); const sC = worldToScreen(world.x, world.y); if (sF && sC && Math.hypot(sF.px - sC.px, sF.py - sC.py) <= 16) { setAreaClosed(true); return; } }
+        setAreaPts([...c, world]);
+      } else if (t === 'annotate') { setDraft(world); setDTitle(''); setDText(''); setDPriority('NORMAL'); setDAssignee(''); setDDue(''); }
+    };
+    const pm = (ts: TouchList) => { const a = ts[0], b = ts[1]; return { dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), mx: (a.clientX + b.clientX) / 2, my: (a.clientY + b.clientY) / 2 }; };
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) { const t = e.touches[0]; touchStartRef.current = { x: t.clientX, y: t.clientY, moved: false }; cursor(t.clientX, t.clientY); }
+      else if (e.touches.length >= 2) {
+        touchStartRef.current = null; const cont = containerRef.current;
+        if (cont) { const rect = cont.getBoundingClientRect(); const m = pm(e.touches); const wc = screenToWorld(m.mx - rect.left, m.my - rect.top); const tl = screenToWorld(0, 0); const br = screenToWorld(cont.clientWidth, cont.clientHeight); if (wc && tl && br) pinchRef.current = { dist: m.dist, cx: wc.x, cy: wc.y, halfW: Math.abs(br.x - tl.x) / 2, halfH: Math.abs(tl.y - br.y) / 2 }; }
+      }
+      if (e.cancelable) e.preventDefault();
+    };
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length === 1 && touchStartRef.current) { const t = e.touches[0]; if (Math.hypot(t.clientX - touchStartRef.current.x, t.clientY - touchStartRef.current.y) > 8) touchStartRef.current.moved = true; cursor(t.clientX, t.clientY); }
+      else if (e.touches.length >= 2 && pinchRef.current) { const p = pinchRef.current; const m = pm(e.touches); if (m.dist > 0) { const s = p.dist / m.dist; viewerRef.current?.FitView?.(p.cx - p.halfW * s, p.cx + p.halfW * s, p.cy - p.halfH * s, p.cy + p.halfH * s, 0); } }
+      if (e.cancelable) e.preventDefault();
+    };
+    const onEnd = (e: TouchEvent) => { const s = touchStartRef.current; if (s && !s.moved) commit(s.x, s.y); touchStartRef.current = null; pinchRef.current = null; if (e.cancelable) e.preventDefault(); };
+    el.addEventListener('touchstart', onStart, { passive: false });
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd, { passive: false });
+    return () => { el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove); el.removeEventListener('touchend', onEnd); };
+  }, [screenToWorld, snapWorld, snapResolve, worldToScreen]);
+
   function centerWorld(): Pt | null {
+    if (snapHover) return { x: snapHover.x, y: snapHover.y };
     const cont = containerRef.current; if (!cont) return null;
     const c = screenToWorld(cont.clientWidth / 2, cont.clientHeight / 2);
     return c ? snapWorld(c) : null;
@@ -611,6 +659,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
 
       <div className="relative flex flex-1 overflow-hidden">
         <div ref={containerRef} className="flex-1 bg-white" style={{ cursor: tool === 'pan' ? 'default' : 'crosshair' }} />
+        <div ref={touchLayerRef} className="absolute inset-0 z-20" style={{ touchAction: 'none', pointerEvents: (isTouch && (tool === 'measure' || tool === 'area' || tool === 'quick' || (tool === 'annotate' && canAnnotate))) ? 'auto' : 'none' }} />
 
         {/* Overlay */}
         <div ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ right: showPanel && !isNarrow ? 340 : (showLayers && !isNarrow ? 240 : 0) }}>
@@ -619,9 +668,11 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
             const p = centerWorld(); const s = p ? worldToScreen(p.x, p.y) : null;
             return (
               <>
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                  <svg width="52" height="52" viewBox="0 0 52 52"><g stroke="#7C3AED" strokeWidth="1.5" fill="none" opacity="0.85"><line x1="26" y1="6" x2="26" y2="20" /><line x1="26" y1="32" x2="26" y2="46" /><line x1="6" y1="26" x2="20" y2="26" /><line x1="32" y1="26" x2="46" y2="26" /><circle cx="26" cy="26" r="3" /></g></svg>
-                </div>
+                {!snapHover && (
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                    <svg width="52" height="52" viewBox="0 0 52 52"><g stroke="#7C3AED" strokeWidth="1.5" fill="none" opacity="0.85"><line x1="26" y1="6" x2="26" y2="20" /><line x1="26" y1="32" x2="26" y2="46" /><line x1="6" y1="26" x2="20" y2="26" /><line x1="32" y1="26" x2="46" y2="26" /><circle cx="26" cy="26" r="3" /></g></svg>
+                  </div>
+                )}
                 {s && <div className="absolute" style={{ left: s.px - 7, top: s.py - 7, width: 14, height: 14, borderRadius: 14, border: '3px solid #F59E0B', background: 'rgba(245,158,11,0.3)' }} />}
               </>
             );
