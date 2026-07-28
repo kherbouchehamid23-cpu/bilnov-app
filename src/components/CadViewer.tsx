@@ -50,9 +50,6 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const THREERef = useRef<any>(null);
   const snapIndexRef = useRef<SnapIndex | null>(null);
   const segIndexRef = useRef<SegmentIndex | null>(null);
-  const touchLayerRef = useRef<HTMLDivElement>(null);
-  const pinchRef = useRef<{ dist: number; cx: number; cy: number; halfW: number; halfH: number } | null>(null);
-  const touchStartRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const objectUrlRef = useRef<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -346,49 +343,56 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   }
 
   // Point au centre du viewport (avec accrochage) — pour le placement tactile.
-  // --- Tactile : le doigt deplace le CURSEUR (le plan reste fixe) en mode Mesure. §mobile ---
+  // --- Tactile/pointeur : 1 pointeur = CURSEUR (plan fixe) ; >=2 = navigation NATIVE. §mobile ---
   useEffect(() => {
-    const el = touchLayerRef.current; if (!el) return;
+    const cont = containerRef.current; if (!cont) return;
+    const active = new Map<number, { x: number; y: number }>();
+    let single: { x: number; y: number; moved: boolean } | null = null;
+    let multi = false; // vrai des >=2 pointeurs, jusqu'a 0 (WAITING_FOR_ALL_TOUCHES_RELEASED)
+    const placement = () => { const t = toolRef.current; return t === 'measure' || t === 'area' || t === 'quick' || (t === 'annotate' && canAnnotate); };
     const resolve = (cx: number, cy: number): { placed: Pt; type: SnapType } | null => {
-      const cont = containerRef.current; if (!cont) return null;
-      const rect = cont.getBoundingClientRect();
-      const world = screenToWorld(cx - rect.left, cy - rect.top); if (!world) return null;
-      return { placed: snapWorld(world), type: snapResolve(world).type };
+      const r = cont.getBoundingClientRect(); const w = screenToWorld(cx - r.left, cy - r.top); if (!w) return null;
+      return { placed: snapWorld(w), type: snapResolve(w).type };
     };
-    const cursor = (cx: number, cy: number) => {
-      const r = resolve(cx, cy); if (!r) return;
-      setSnapHover({ x: r.placed.x, y: r.placed.y, type: r.type });
-      setMeasureCursor(toolRef.current === 'measure' && measurePtsRef.current.length === 1 ? r.placed : null);
-    };
+    const moveCursor = (cx: number, cy: number) => { const r = resolve(cx, cy); if (!r) return; setSnapHover({ x: r.placed.x, y: r.placed.y, type: r.type }); setMeasureCursor(toolRef.current === 'measure' && measurePtsRef.current.length === 1 ? r.placed : null); };
     const commit = (cx: number, cy: number) => {
-      const r = resolve(cx, cy); if (!r) return; const world = r.placed; const t = toolRef.current;
-      if (t === 'measure') setMeasurePts((c) => (c.length >= 2 ? [world] : [...c, world]));
-      else if (t === 'area') {
-        if (areaClosedRef.current) return; const c = areaPtsRef.current;
-        if (c.length >= 3) { const sF = worldToScreen(c[0].x, c[0].y); const sC = worldToScreen(world.x, world.y); if (sF && sC && Math.hypot(sF.px - sC.px, sF.py - sC.py) <= 16) { setAreaClosed(true); return; } }
-        setAreaPts([...c, world]);
-      } else if (t === 'annotate') { setDraft(world); setDTitle(''); setDText(''); setDPriority('NORMAL'); setDAssignee(''); setDDue(''); }
+      const r = resolve(cx, cy); if (!r) return; const w = r.placed; const t = toolRef.current;
+      if (t === 'measure') setMeasurePts((c) => (c.length >= 2 ? [w] : [...c, w]));
+      else if (t === 'area') { if (areaClosedRef.current) return; const c = areaPtsRef.current; if (c.length >= 3) { const sF = worldToScreen(c[0].x, c[0].y); const sC = worldToScreen(w.x, w.y); if (sF && sC && Math.hypot(sF.px - sC.px, sF.py - sC.py) <= 16) { setAreaClosed(true); return; } } setAreaPts([...c, w]); }
+      else if (t === 'annotate') { setDraft(w); setDTitle(''); setDText(''); setDPriority('NORMAL'); setDAssignee(''); setDDue(''); }
     };
-    const pm = (ts: TouchList) => { const a = ts[0], b = ts[1]; return { dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), mx: (a.clientX + b.clientX) / 2, my: (a.clientY + b.clientY) / 2 }; };
-    const onStart = (e: TouchEvent) => {
-      if (e.touches.length === 1) { const t = e.touches[0]; touchStartRef.current = { x: t.clientX, y: t.clientY, moved: false }; cursor(t.clientX, t.clientY); }
-      else if (e.touches.length >= 2) {
-        touchStartRef.current = null; const cont = containerRef.current;
-        if (cont) { const rect = cont.getBoundingClientRect(); const m = pm(e.touches); const wc = screenToWorld(m.mx - rect.left, m.my - rect.top); const tl = screenToWorld(0, 0); const br = screenToWorld(cont.clientWidth, cont.clientHeight); if (wc && tl && br) pinchRef.current = { dist: m.dist, cx: wc.x, cy: wc.y, halfW: Math.abs(br.x - tl.x) / 2, halfH: Math.abs(tl.y - br.y) / 2 }; }
-      }
-      if (e.cancelable) e.preventDefault();
+    const down = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
+      active.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (active.size >= 2) { multi = true; single = null; return; }            // 2e doigt : navigation native, tap annule
+      if (!placement()) return;
+      single = { x: e.clientX, y: e.clientY, moved: false }; moveCursor(e.clientX, e.clientY);
     };
-    const onMove = (e: TouchEvent) => {
-      if (e.touches.length === 1 && touchStartRef.current) { const t = e.touches[0]; if (Math.hypot(t.clientX - touchStartRef.current.x, t.clientY - touchStartRef.current.y) > 8) touchStartRef.current.moved = true; cursor(t.clientX, t.clientY); }
-      else if (e.touches.length >= 2 && pinchRef.current) { const p = pinchRef.current; const m = pm(e.touches); if (m.dist > 0) { const s = p.dist / m.dist; viewerRef.current?.FitView?.(p.cx - p.halfW * s, p.cx + p.halfW * s, p.cy - p.halfH * s, p.cy + p.halfH * s, 0); } }
-      if (e.cancelable) e.preventDefault();
+    const mv = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
+      if (active.has(e.pointerId)) active.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (active.size >= 2 || multi) return;                                     // navigation : curseur suspendu
+      if (!single || !placement()) return;
+      e.stopPropagation(); if (e.cancelable) e.preventDefault();                 // 1 doigt en mesure : on bloque le pan du plan
+      if (Math.hypot(e.clientX - single.x, e.clientY - single.y) > 8) single.moved = true;
+      moveCursor(e.clientX, e.clientY);
     };
-    const onEnd = (e: TouchEvent) => { const s = touchStartRef.current; if (s && !s.moved) commit(s.x, s.y); touchStartRef.current = null; pinchRef.current = null; if (e.cancelable) e.preventDefault(); };
-    el.addEventListener('touchstart', onStart, { passive: false });
-    el.addEventListener('touchmove', onMove, { passive: false });
-    el.addEventListener('touchend', onEnd, { passive: false });
-    return () => { el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove); el.removeEventListener('touchend', onEnd); };
-  }, [screenToWorld, snapWorld, snapResolve, worldToScreen]);
+    const up = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
+      const wasSingle = !!single && !multi && active.size === 1;
+      active.delete(e.pointerId);
+      if (wasSingle && single && !single.moved && placement()) commit(single.x, single.y);
+      single = null;
+      if (active.size === 0) multi = false;                                      // reset uniquement quand TOUT est relache
+    };
+    const cancel = (e: PointerEvent) => { active.delete(e.pointerId); single = null; if (active.size === 0) multi = false; };
+    const cap = { capture: true } as AddEventListenerOptions;
+    cont.addEventListener('pointerdown', down, cap);
+    cont.addEventListener('pointermove', mv, cap);
+    cont.addEventListener('pointerup', up, cap);
+    cont.addEventListener('pointercancel', cancel, cap);
+    return () => { cont.removeEventListener('pointerdown', down, cap); cont.removeEventListener('pointermove', mv, cap); cont.removeEventListener('pointerup', up, cap); cont.removeEventListener('pointercancel', cancel, cap); };
+  }, [screenToWorld, snapWorld, snapResolve, worldToScreen, canAnnotate]);
 
   function centerWorld(): Pt | null {
     if (snapHover) return { x: snapHover.x, y: snapHover.y };
@@ -659,7 +663,6 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
 
       <div className="relative flex flex-1 overflow-hidden">
         <div ref={containerRef} className="flex-1 bg-white" style={{ cursor: tool === 'pan' ? 'default' : 'crosshair' }} />
-        <div ref={touchLayerRef} className="absolute inset-0 z-20" style={{ touchAction: 'none', pointerEvents: (isTouch && (tool === 'measure' || tool === 'area' || tool === 'quick' || (tool === 'annotate' && canAnnotate))) ? 'auto' : 'none' }} />
 
         {/* Overlay */}
         <div ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ right: showPanel && !isNarrow ? 340 : (showLayers && !isNarrow ? 240 : 0) }}>
