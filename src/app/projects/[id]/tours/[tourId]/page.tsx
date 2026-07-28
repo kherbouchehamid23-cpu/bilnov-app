@@ -3,9 +3,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { uploadFileDirect } from '@/lib/upload';
+import { kindToType, hotspotLabel, isDirection } from '@/lib/tour';
 
 interface Tour { id: string; name: string; status: string; }
 interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; }
+interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
 declare global {
@@ -20,6 +22,7 @@ interface PannellumViewer {
   destroy: () => void;
   loadScene: (sceneId: string) => void;
   on: (event: string, callback: () => void) => void;
+  mouseEventToCoords: (e: MouseEvent) => [number, number];
 }
 
 export default function TourEditorPage() {
@@ -39,6 +42,19 @@ export default function TourEditorPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
   const [pannellumLoaded, setPannellumLoaded] = useState(false);
+  const [hotspots, setHotspots] = useState<Hotspot[]>([]);
+  const [addMode, setAddMode] = useState(false);
+  const [draft, setDraft] = useState<{ yaw: number; pitch: number } | null>(null);
+  const [dKind, setDKind] = useState('DIRECTION');
+  const [dTarget, setDTarget] = useState('');
+  const [dTitle, setDTitle] = useState('');
+  const [dText, setDText] = useState('');
+  const [dUrl, setDUrl] = useState('');
+  const [infoModal, setInfoModal] = useState<Hotspot | null>(null);
+  const scenesRef = useRef<Scene[]>([]);
+  const addModeRef = useRef(false);
+  useEffect(() => { scenesRef.current = scenes; }, [scenes]);
+  useEffect(() => { addModeRef.current = addMode; }, [addMode]);
 
   const viewerRef = useRef<HTMLDivElement>(null);
   const pannellumInstanceRef = useRef<PannellumViewer | null>(null);
@@ -62,43 +78,57 @@ export default function TourEditorPage() {
     document.head.appendChild(script);
   }, []);
 
-  // Initialiser ou mettre à jour le viewer quand la scène change
+  // Viewer + hotspots (rendu Pannellum) + mode ajout par clic
   useEffect(() => {
     if (!pannellumLoaded || !currentScene?.imageUrl || !viewerRef.current) return;
-
-    // Détruire l'instance précédente
-    if (pannellumInstanceRef.current) {
-      try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ }
-      pannellumInstanceRef.current = null;
-    }
-
-    // Créer le viewer
+    if (pannellumInstanceRef.current) { try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ } pannellumInstanceRef.current = null; }
+    const hs = hotspots.map((h) => ({
+      id: h.id, pitch: h.positionPitch, yaw: h.positionYaw,
+      cssClass: isDirection(h.type) ? 'pnlm-hotspot bilnov-dir' : 'pnlm-hotspot bilnov-info',
+      text: hotspotLabel(h.type, h.content, scenesRef.current.find((s) => s.id === h.targetSceneId)?.name),
+      clickHandlerFunc: () => { if (isDirection(h.type)) { const t = scenesRef.current.find((s) => s.id === h.targetSceneId); if (t) setCurrentScene(t); } else setInfoModal(h); },
+    }));
     try {
       pannellumInstanceRef.current = window.pannellum.viewer(viewerRef.current, {
-        type: 'equirectangular',
-        panorama: currentScene.imageUrl,
-        autoLoad: true,
-        autoRotate: -2,
-        compass: false,
-        showControls: true,
-        showFullscreenCtrl: true,
-        showZoomCtrl: true,
-        mouseZoom: true,
-        hfov: 100,
-        minHfov: 50,
-        maxHfov: 120,
-        pitch: 0,
-        yaw: 0,
+        type: 'equirectangular', panorama: currentScene.imageUrl, autoLoad: true, autoRotate: 0,
+        compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true,
+        hfov: 100, minHfov: 50, maxHfov: 120, pitch: 0, yaw: 0, hotSpots: hs,
       });
     } catch { /* viewer init failed */ }
+    const el = viewerRef.current;
+    const onClick = (e: MouseEvent) => { if (!addModeRef.current || !pannellumInstanceRef.current) return; try { const c = pannellumInstanceRef.current.mouseEventToCoords(e); setDraft({ pitch: c[0], yaw: c[1] }); setAddMode(false); } catch { /* noop */ } };
+    el.addEventListener('click', onClick);
+    return () => { el.removeEventListener('click', onClick); if (pannellumInstanceRef.current) { try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ } pannellumInstanceRef.current = null; } };
+  }, [pannellumLoaded, currentScene?.imageUrl, hotspots]);
 
-    return () => {
-      if (pannellumInstanceRef.current) {
-        try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ }
-        pannellumInstanceRef.current = null;
-      }
-    };
-  }, [pannellumLoaded, currentScene?.imageUrl]);
+  useEffect(() => {
+    if (!currentScene) { setHotspots([]); return; }
+    void (async () => {
+      try {
+        const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots`, { headers: { Authorization: `Bearer ${getToken()}` } });
+        const d = await r.json() as ApiResponse<{ hotspots: Hotspot[] }>;
+        setHotspots(d.data?.hotspots ?? []);
+      } catch { setHotspots([]); }
+    })();
+  }, [currentScene, id, tourId]);
+
+  const saveHotspot = async (): Promise<void> => {
+    if (!draft || !currentScene) return;
+    const type = kindToType(dKind as 'DIRECTION' | 'INFO_TEXT' | 'INFO_IMAGE' | 'INFO_VIDEO');
+    const content: Record<string, unknown> = dKind === 'DIRECTION' ? {} : { title: dTitle || undefined, text: dText || undefined, url: dUrl || undefined };
+    try {
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots`, {
+        method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, positionYaw: draft.yaw, positionPitch: draft.pitch, targetSceneId: dKind === 'DIRECTION' ? (dTarget || null) : null, content }),
+      });
+      const d = await r.json() as ApiResponse<Hotspot>;
+      if (d.data) setHotspots((prev) => [...prev, d.data]);
+      setDraft(null); setDTarget(''); setDTitle(''); setDText(''); setDUrl('');
+    } catch { alert('Erreur création hotspot'); }
+  };
+  const deleteHotspot = async (hid: string): Promise<void> => {
+    try { await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene?.id}/hotspots/${hid}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } }); setHotspots((prev) => prev.filter((h) => h.id !== hid)); } catch { /* noop */ }
+  };
 
   const loadScenes = async (): Promise<void> => {
     const res = await fetch(`/api/projects/${id}/tours/${tourId}/scenes`, {
@@ -304,6 +334,61 @@ export default function TourEditorPage() {
             <>
               {/* Pannellum container */}
               <div ref={viewerRef} className="flex-1" style={{ minHeight: '500px', background: '#000' }} />
+              {currentScene && (
+                <button onClick={() => setAddMode((m) => !m)} className={`absolute top-4 right-4 z-20 rounded-lg px-3 py-1.5 text-sm font-medium ${addMode ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}>{addMode ? 'Cliquez sur le panorama…' : '＋ Hotspot'}</button>
+              )}
+              {hotspots.length > 0 && (
+                <div className="absolute bottom-4 left-4 z-20 max-h-40 w-56 overflow-y-auto rounded-lg bg-black/70 p-2 text-white">
+                  <p className="mb-1 text-[10px] uppercase text-stone-400">Hotspots ({hotspots.length})</p>
+                  {hotspots.map((h) => (
+                    <div key={h.id} className="flex items-center justify-between py-0.5 text-xs">
+                      <span className="truncate">{isDirection(h.type) ? '➤' : 'ℹ'} {hotspotLabel(h.type, h.content, scenes.find((s) => s.id === h.targetSceneId)?.name)}</span>
+                      <button onClick={() => void deleteHotspot(h.id)} className="ml-2 text-stone-400 hover:text-red-400">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {draft && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60">
+                  <div className="w-72 rounded-xl bg-white p-4 text-slate-800">
+                    <p className="mb-2 text-sm font-semibold">Nouveau hotspot</p>
+                    <select value={dKind} onChange={(e) => setDKind(e.target.value)} className="mb-2 w-full rounded border px-2 py-1 text-sm">
+                      <option value="DIRECTION">Direction (aller vers une scene)</option>
+                      <option value="INFO_TEXT">Information (texte)</option>
+                      <option value="INFO_IMAGE">Information (image)</option>
+                      <option value="INFO_VIDEO">Information (video)</option>
+                    </select>
+                    {dKind === 'DIRECTION' ? (
+                      <select value={dTarget} onChange={(e) => setDTarget(e.target.value)} className="mb-2 w-full rounded border px-2 py-1 text-sm">
+                        <option value="">Scene cible…</option>
+                        {scenes.filter((s) => s.id !== currentScene?.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    ) : (
+                      <>
+                        <input value={dTitle} onChange={(e) => setDTitle(e.target.value)} placeholder="Titre" className="mb-2 w-full rounded border px-2 py-1 text-sm" />
+                        {dKind === 'INFO_TEXT'
+                          ? <textarea value={dText} onChange={(e) => setDText(e.target.value)} placeholder="Texte" rows={2} className="mb-2 w-full rounded border px-2 py-1 text-sm" />
+                          : <input value={dUrl} onChange={(e) => setDUrl(e.target.value)} placeholder="URL (image/video)" className="mb-2 w-full rounded border px-2 py-1 text-sm" />}
+                      </>
+                    )}
+                    <div className="flex gap-2">
+                      <button onClick={() => void saveHotspot()} disabled={dKind === 'DIRECTION' && !dTarget} className="flex-1 rounded bg-violet-600 py-1.5 text-sm text-white disabled:opacity-40">Enregistrer</button>
+                      <button onClick={() => setDraft(null)} className="rounded bg-slate-200 px-3 text-sm">Annuler</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {infoModal && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60" onClick={() => setInfoModal(null)}>
+                  <div className="max-w-sm rounded-xl bg-white p-4 text-slate-800" onClick={(e) => e.stopPropagation()}>
+                    {typeof infoModal.content.title === 'string' && <p className="mb-1 font-semibold">{infoModal.content.title}</p>}
+                    {infoModal.type === 'TEXT' && <p className="whitespace-pre-wrap text-sm">{String(infoModal.content.text ?? '')}</p>}
+                    {infoModal.type === 'IMAGE' && <img src={String(infoModal.content.url ?? '')} alt="" className="max-h-64 rounded" />}
+                    {infoModal.type === 'VIDEO' && <video src={String(infoModal.content.url ?? '')} controls className="max-h-64 rounded" />}
+                    <button onClick={() => setInfoModal(null)} className="mt-3 w-full rounded bg-slate-200 py-1.5 text-sm">Fermer</button>
+                  </div>
+                </div>
+              )}
 
               {/* Scene name overlay */}
               <div className="absolute top-4 left-4 z-10 flex items-center gap-2 pointer-events-none">
