@@ -6,7 +6,7 @@ import { uploadFileDirect } from '@/lib/upload';
 import { kindToType, hotspotLabel, isDirection } from '@/lib/tour';
 
 interface Tour { id: string; name: string; status: string; }
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
@@ -90,7 +90,7 @@ export default function TourEditorPage() {
     }));
     try {
       pannellumInstanceRef.current = window.pannellum.viewer(viewerRef.current, {
-        type: 'equirectangular', panorama: currentScene.imageUrl, autoLoad: true, autoRotate: 0,
+        type: 'equirectangular', panorama: currentScene.panoramaProxy ? `${currentScene.panoramaProxy}?token=${getToken()}` : currentScene.imageUrl, autoLoad: true, autoRotate: 0,
         compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true,
         hfov: 100, minHfov: 50, maxHfov: 120, pitch: 0, yaw: 0, hotSpots: hs,
       });
@@ -287,6 +287,7 @@ export default function TourEditorPage() {
           <Link href={`/projects/${id}`} className="text-stone-400 hover:text-white transition-colors text-sm">
             ← Retour
           </Link>
+          <Link href={`/projects/${id}/tours/${tourId}/view`} className="text-stone-400 hover:text-white transition-colors text-sm">👁 Voir</Link>
           <div className="w-px h-4 bg-stone-700" />
           <span className="font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
             {tour?.name}

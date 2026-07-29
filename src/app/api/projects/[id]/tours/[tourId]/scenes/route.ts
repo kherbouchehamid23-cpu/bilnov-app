@@ -20,9 +20,9 @@ export async function GET(
       scenes.map(async scene => {
         try {
           const { url } = await getSignedFileUrl(scene.imageUrl, 'view');
-          return { ...scene, imageUrl: url };
+          return { ...scene, imageUrl: url, panoramaProxy: `/api/projects/${params.id}/tours/${params.tourId}/scenes/${scene.id}/raw` };
         } catch {
-          return scene;
+          return { ...scene, panoramaProxy: `/api/projects/${params.id}/tours/${params.tourId}/scenes/${scene.id}/raw` };
         }
       })
     );
@@ -63,7 +63,7 @@ export async function POST(
     });
 
     const { url } = await getSignedFileUrl(storageKey, 'view');
-    return apiSuccess({ ...scene, imageUrl: url }, 201);
+    return apiSuccess({ ...scene, imageUrl: url, panoramaProxy: `/api/projects/${params.id}/tours/${params.tourId}/scenes/${scene.id}/raw` }, 201);
   } catch (error) {
     return apiError(error instanceof Error ? error.message : 'Erreur', 'INTERNAL_ERROR', 500);
   }

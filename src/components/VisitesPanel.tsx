@@ -221,8 +221,8 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Cartes 360° */}
           {tours360.map(t => (
-            <Link key={`t360-${t.id}`} href={`/projects/${projectId}/tours/${t.id}`}>
-              <div className="file-card rounded-2xl p-5">
+            <div key={`t360-${t.id}`} className="file-card rounded-2xl p-5">
+              <Link href={`/projects/${projectId}/tours/${t.id}/view`} className="block">
                 <div className="flex items-center justify-between mb-3">
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'var(--violet-light)' }}>🌐</div>
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>360°</span>
@@ -232,8 +232,11 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
                   style={{ background: t.status === 'PUBLISHED' ? '#ECFDF5' : 'var(--surface-2)', color: t.status === 'PUBLISHED' ? '#10B981' : 'var(--text-muted)' }}>
                   {t.status === 'PUBLISHED' ? '● Publié' : '○ Brouillon'}
                 </span>
-              </div>
-            </Link>
+              </Link>
+              {canManage && (
+                <Link href={`/projects/${projectId}/tours/${t.id}`} className="mt-3 inline-block text-xs hover:underline" style={{ color: 'var(--violet)' }}>✎ Modifier</Link>
+              )}
+            </div>
           ))}
 
           {/* Cartes krpano */}
