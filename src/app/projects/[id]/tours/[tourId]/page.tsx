@@ -37,6 +37,7 @@ export default function TourEditorPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [published, setPublished] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -268,7 +269,9 @@ export default function TourEditorPage() {
       });
       setPublished(true);
       setTour(prev => prev ? { ...prev, status: 'PUBLISHED' } : null);
-    } catch { alert('Erreur publication'); }
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2500);
+    } catch { alert('Erreur, reessayez.'); }
   };
 
   if (loading) {
@@ -312,11 +315,12 @@ export default function TourEditorPage() {
             <input type="file" className="hidden" accept="image/*"
               onChange={e => { void handleUpload360(e); }} disabled={uploading} />
           </label>
-          {!published && (
-            <button onClick={() => { void handlePublish(); }}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
-              Publier
-            </button>
+          <button onClick={() => { void handlePublish(); }}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
+            {published ? '✓ Enregistrer les modifications' : 'Publier'}
+          </button>
+          {savedFlash && (
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#052e16', color: '#4ade80' }}>✓ Enregistré</span>
           )}
         </div>
       </header>

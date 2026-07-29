@@ -1,58 +1,93 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Bilnov - Correctif visuel : hotspots 360 invisibles.
+"""Bilnov - Style des hotspots 360 (Pannellum). VERSION 2 (moderne/discret).
 
-Symptome : la photo panoramique s'affiche, mais les hotspots poses ne sont
-jamais visibles et la navigation ne marche pas.
+Symptome initial : hotspots invisibles (cssClass custom sans style -> div 0x0).
+Feedback Hamid : l'ancien style etait trop rudimentaire / bleu peu contraste.
 
-Cause : les hotspots sont crees avec une cssClass personnalisee
-(`bilnov-dir` / `bilnov-info`). Quand on fournit une cssClass a Pannellum,
-il N'APPLIQUE PLUS son sprite par defaut -> le <div> du hotspot n'a ni
-taille ni fond -> 0x0, invisible (et donc non cliquable, d'ou l'absence de
-navigation). Il faut fournir nous-memes le style de ces classes.
+VERSION 2 : pastilles en verre depoli translucide (blanc neutre), lisibles
+sur photo claire comme sombre ; direction = chevron explicite "avance vers ce
+point" facon Street View + leger anneau de pulsation ; info = petit "i"
+discret. Effet de survol (opacite + scale).
 
-Correctif : on ajoute le CSS des pastilles dans le globals.css (importe par
-le layout -> s'applique a l'editeur ET au visiteur). Additif, idempotent.
+Le CSS est ajoute dans globals.css (importe par le layout -> editeur ET
+visiteur). Le script REMPLACE tout bloc Bilnov hotspots existant (v1 ou v2),
+donc rejouable meme si l'ancienne version a deja ete deployee.
 
-ADDITIF. Rejouable. Aucun git push.
+ADDITIF / idempotent. Aucun git push.
 Usage : python 21_apply_tour_hotspot_styles.py --root <chemin-repo> [--no-build]
 """
-import os, sys, glob, subprocess
+import os, re, sys, glob, subprocess
 
-MARKER = "/* === Bilnov hotspots 360 (Pannellum) === */"
-
+# Bloc CSS complet (delimite par les marqueurs de debut/fin).
 CSS = """
 
-/* === Bilnov hotspots 360 (Pannellum) === */
-/* Les hotspots utilisent une cssClass custom (bilnov-dir / bilnov-info) :
-   Pannellum n'applique alors PAS son sprite par defaut, on style nous-memes. */
+/* === Bilnov hotspots 360 (Pannellum) v2 === */
+/* Style moderne/discret : verre depoli, blanc neutre (bon contraste clair+sombre).
+   Direction = chevron explicite du sens de deplacement + anneau de pulsation.
+   Info = petit "i" discret. */
 .pnlm-hotspot-base.bilnov-dir,
 .pnlm-hotspot-base.bilnov-info {
-  width: 32px;
-  height: 32px;
-  margin: -16px 0 0 -16px;
-  border-radius: 9999px;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  line-height: 1;
-  font-weight: 700;
+  border-radius: 9999px;
   color: #fff;
-  border: 2px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-  transition: transform 0.15s ease;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
   z-index: 10;
 }
-.pnlm-hotspot-base.bilnov-dir { background: rgba(124, 58, 237, 0.92); }
-.pnlm-hotspot-base.bilnov-info { background: rgba(245, 158, 11, 0.92); }
-.pnlm-hotspot-base.bilnov-dir::after { content: "\\2794"; }
-.pnlm-hotspot-base.bilnov-info::after { content: "\\2139"; }
+.pnlm-hotspot-base.bilnov-dir { width: 38px; height: 38px; margin: -19px 0 0 -19px; }
+.pnlm-hotspot-base.bilnov-dir::after {
+  content: '';
+  width: 11px;
+  height: 11px;
+  border-top: 2.5px solid #fff;
+  border-right: 2.5px solid #fff;
+  transform: translateY(2px) rotate(-45deg);
+}
+.pnlm-hotspot-base.bilnov-dir::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  animation: bilnovPulse 2.4s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes bilnovPulse {
+  0%   { transform: scale(0.85); opacity: 0.6; }
+  70%  { opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.pnlm-hotspot-base.bilnov-info {
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  background: rgba(255, 255, 255, 0.12);
+  font: italic 700 14px/1 Georgia, 'Times New Roman', serif;
+}
+.pnlm-hotspot-base.bilnov-info::after { content: 'i'; }
 .pnlm-hotspot-base.bilnov-dir:hover,
-.pnlm-hotspot-base.bilnov-info:hover { transform: scale(1.14); }
+.pnlm-hotspot-base.bilnov-info:hover {
+  background: rgba(255, 255, 255, 0.30);
+  transform: scale(1.12);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
 /* === fin Bilnov hotspots 360 === */
 """
+
+VERSION_SENTINEL = "Bilnov hotspots 360 (Pannellum) v2"
+# retire tout bloc Bilnov existant (v1 sans "v2", ou v2), debut -> fin inclus
+OLD_BLOCK = re.compile(
+    r"\n*/\* === Bilnov hotspots 360 \(Pannellum\).*?/\* === fin Bilnov hotspots 360 === \*/\n?",
+    re.DOTALL,
+)
 
 
 def parse(a):
@@ -86,19 +121,28 @@ def run(cmd, root):
 
 def main():
     root, build = parse(sys.argv[1:])
-    print("== Bilnov - styles hotspots 360 ==")
+    print("== Bilnov - styles hotspots 360 (v2 moderne) ==")
     css = find_globals(root)
     if not css:
         print("!! globals.css introuvable sous", root); sys.exit(1)
     rel = os.path.relpath(css, root)
     src = open(css, encoding="utf-8").read()
-    if MARKER in src:
-        print("  =  deja applique :", rel)
+
+    had_block = bool(OLD_BLOCK.search(src))
+    src = OLD_BLOCK.sub("\n", src).rstrip() + CSS
+    open(css, "w", encoding="utf-8").write(src)
+    if had_block:
+        print("  ~  ancien bloc hotspots remplace par la v2 :", rel)
     else:
-        open(css, "a", encoding="utf-8").write(CSS)
-        print("  +  CSS hotspots ajoute :", rel)
+        print("  +  CSS hotspots v2 ajoute :", rel)
+
+    # garde-fou
+    check = open(css, encoding="utf-8").read()
+    if check.count(VERSION_SENTINEL) != 1:
+        print("!! bloc v2 non unique apres ecriture -> verifier a la main"); sys.exit(3)
+
     run(["npm", "run", "build"], root) if build else print("(build saute)")
-    print("\nOK. Pastilles hotspots visibles. Pense a git commit + push.")
+    print("\nOK. Hotspots v2 appliques. Pense a git commit + push.")
 
 
 if __name__ == "__main__":
