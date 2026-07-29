@@ -90,7 +90,7 @@ export default function TourViewerPage() {
     }));
     try {
       instRef.current = window.pannellum.viewer(viewerRef.current, {
-        type: 'equirectangular', panorama: src, autoLoad: true, autoRotate: -2,
+        type: 'equirectangular', panorama: src, autoLoad: true, autoRotate: 0,
         compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true,
         hfov: 100, minHfov: 50, maxHfov: 120, pitch: 0, yaw: 0, hotSpots: hs,
       });

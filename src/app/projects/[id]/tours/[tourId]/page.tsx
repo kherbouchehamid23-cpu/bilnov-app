@@ -3,7 +3,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { uploadFileDirect } from '@/lib/upload';
-import { kindToType, hotspotLabel, isDirection } from '@/lib/tour';
+import { hotspotLabel, isDirection } from '@/lib/tour';
+import { buildHotspotPayload, kindFromContent, type HotspotKind } from '@/lib/tourHotspots';
+import TourHotspotPanel from '@/components/TourHotspotPanel';
 
 interface Tour { id: string; name: string; status: string; }
 interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; }
@@ -23,6 +25,15 @@ interface PannellumViewer {
   loadScene: (sceneId: string) => void;
   on: (event: string, callback: () => void) => void;
   mouseEventToCoords: (e: MouseEvent) => [number, number];
+}
+
+// Rendu du contenu d'un hotspot info (modale) selon son type fin.
+function embedUrl(u: string): string | null {
+  const yt = u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
+  const vm = u.match(/vimeo\.com\/(\d+)/);
+  if (vm) return `https://player.vimeo.com/video/${vm[1]}`;
+  return null;
 }
 
 export default function TourEditorPage() {
@@ -46,12 +57,15 @@ export default function TourEditorPage() {
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
   const [addMode, setAddMode] = useState(false);
   const [draft, setDraft] = useState<{ yaw: number; pitch: number } | null>(null);
-  const [dKind, setDKind] = useState('DIRECTION');
-  const [dTarget, setDTarget] = useState('');
-  const [dTitle, setDTitle] = useState('');
-  const [dText, setDText] = useState('');
-  const [dUrl, setDUrl] = useState('');
   const [infoModal, setInfoModal] = useState<Hotspot | null>(null);
+
+  // Panneau de création de hotspot (§9) — remplace l'ancienne modale/popup.
+  const [hsOpen, setHsOpen] = useState(false);
+  const [hsStep, setHsStep] = useState<'type' | 'place' | 'form'>('type');
+  const [hsKind, setHsKind] = useState<HotspotKind | null>(null);
+  const [hsForm, setHsForm] = useState<Record<string, unknown>>({});
+  const [hsErrors, setHsErrors] = useState<string[]>([]);
+
   const scenesRef = useRef<Scene[]>([]);
   const addModeRef = useRef(false);
   useEffect(() => { scenesRef.current = scenes; }, [scenes]);
@@ -97,7 +111,15 @@ export default function TourEditorPage() {
       });
     } catch { /* viewer init failed */ }
     const el = viewerRef.current;
-    const onClick = (e: MouseEvent) => { if (!addModeRef.current || !pannellumInstanceRef.current) return; try { const c = pannellumInstanceRef.current.mouseEventToCoords(e); setDraft({ pitch: c[0], yaw: c[1] }); setAddMode(false); } catch { /* noop */ } };
+    const onClick = (e: MouseEvent) => {
+      if (!addModeRef.current || !pannellumInstanceRef.current) return;
+      try {
+        const c = pannellumInstanceRef.current.mouseEventToCoords(e);
+        setDraft({ pitch: c[0], yaw: c[1] });
+        setAddMode(false);
+        setHsStep('form');   // le point est placé -> formulaire du type choisi
+      } catch { /* noop */ }
+    };
     el.addEventListener('click', onClick);
     return () => { el.removeEventListener('click', onClick); if (pannellumInstanceRef.current) { try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ } pannellumInstanceRef.current = null; } };
   }, [pannellumLoaded, currentScene?.imageUrl, hotspots]);
@@ -113,20 +135,42 @@ export default function TourEditorPage() {
     })();
   }, [currentScene, id, tourId]);
 
-  const saveHotspot = async (): Promise<void> => {
-    if (!draft || !currentScene) return;
-    const type = kindToType(dKind as 'DIRECTION' | 'INFO_TEXT' | 'INFO_IMAGE' | 'INFO_VIDEO');
-    const content: Record<string, unknown> = dKind === 'DIRECTION' ? {} : { title: dTitle || undefined, text: dText || undefined, url: dUrl || undefined };
+  // --- Panneau de création de hotspot ---
+  const initialFormFor = (k: HotspotKind): Record<string, unknown> => {
+    const f: Record<string, unknown> = {};
+    if (k === 'COMMENT') { f.status = 'NEW'; f.priority = 'NORMAL'; }
+    if (k === 'URL') f.openMode = 'newTab';
+    return f;
+  };
+  const openHotspotPanel = (): void => {
+    setHsOpen(true); setHsStep('type'); setHsKind(null); setHsForm({}); setHsErrors([]);
+    setDraft(null); setAddMode(false);
+  };
+  const closeHotspotPanel = (): void => {
+    setHsOpen(false); setHsStep('type'); setHsKind(null); setHsForm({}); setHsErrors([]);
+    setDraft(null); setAddMode(false);
+  };
+  const pickKind = (k: HotspotKind): void => {
+    setHsKind(k); setHsForm(initialFormFor(k)); setHsErrors([]); setHsStep('place'); setAddMode(true);
+  };
+  const backToTypes = (): void => {
+    setHsStep('type'); setHsKind(null); setHsForm({}); setHsErrors([]); setDraft(null); setAddMode(false);
+  };
+  const submitHotspot = async (): Promise<void> => {
+    if (!hsKind || !currentScene) return;
+    const res = buildHotspotPayload(hsKind, hsForm, draft);
+    if (!res.ok || !res.payload) { setHsErrors(res.errors); return; }
     try {
       const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots`, {
         method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, positionYaw: draft.yaw, positionPitch: draft.pitch, targetSceneId: dKind === 'DIRECTION' ? (dTarget || null) : null, content }),
+        body: JSON.stringify(res.payload),
       });
       const d = await r.json() as ApiResponse<Hotspot>;
       if (d.data) setHotspots((prev) => [...prev, d.data]);
-      setDraft(null); setDTarget(''); setDTitle(''); setDText(''); setDUrl('');
-    } catch { alert('Erreur création hotspot'); }
+      closeHotspotPanel();
+    } catch { setHsErrors(["Erreur lors de l'enregistrement, réessayez."]); }
   };
+
   const deleteHotspot = async (hid: string): Promise<void> => {
     try { await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene?.id}/hotspots/${hid}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } }); setHotspots((prev) => prev.filter((h) => h.id !== hid)); } catch { /* noop */ }
   };
@@ -282,6 +326,8 @@ export default function TourEditorPage() {
     );
   }
 
+  const infoKind = infoModal ? kindFromContent(infoModal.type, infoModal.content) : null;
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#0f0f0f' }}>
       {/* Header */}
@@ -340,7 +386,7 @@ export default function TourEditorPage() {
               {/* Pannellum container */}
               <div ref={viewerRef} className="flex-1" style={{ minHeight: '500px', background: '#000' }} />
               {currentScene && (
-                <button onClick={() => setAddMode((m) => !m)} className={`absolute top-4 right-4 z-20 rounded-lg px-3 py-1.5 text-sm font-medium ${addMode ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}>{addMode ? 'Cliquez sur le panorama…' : '＋ Hotspot'}</button>
+                <button onClick={openHotspotPanel} className={`absolute top-4 right-4 z-20 rounded-lg px-3 py-1.5 text-sm font-medium ${addMode ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}>{addMode ? 'Placement…' : '＋ Hotspot'}</button>
               )}
               {hotspots.length > 0 && (
                 <div className="absolute bottom-4 left-4 z-20 max-h-40 w-56 overflow-y-auto rounded-lg bg-black/70 p-2 text-white">
@@ -353,43 +399,55 @@ export default function TourEditorPage() {
                   ))}
                 </div>
               )}
-              {draft && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60">
-                  <div className="w-72 rounded-xl bg-white p-4 text-slate-800">
-                    <p className="mb-2 text-sm font-semibold">Nouveau hotspot</p>
-                    <select value={dKind} onChange={(e) => setDKind(e.target.value)} className="mb-2 w-full rounded border px-2 py-1 text-sm">
-                      <option value="DIRECTION">Direction (aller vers une scene)</option>
-                      <option value="INFO_TEXT">Information (texte)</option>
-                      <option value="INFO_IMAGE">Information (image)</option>
-                      <option value="INFO_VIDEO">Information (video)</option>
-                    </select>
-                    {dKind === 'DIRECTION' ? (
-                      <select value={dTarget} onChange={(e) => setDTarget(e.target.value)} className="mb-2 w-full rounded border px-2 py-1 text-sm">
-                        <option value="">Scene cible…</option>
-                        {scenes.filter((s) => s.id !== currentScene?.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
-                    ) : (
-                      <>
-                        <input value={dTitle} onChange={(e) => setDTitle(e.target.value)} placeholder="Titre" className="mb-2 w-full rounded border px-2 py-1 text-sm" />
-                        {dKind === 'INFO_TEXT'
-                          ? <textarea value={dText} onChange={(e) => setDText(e.target.value)} placeholder="Texte" rows={2} className="mb-2 w-full rounded border px-2 py-1 text-sm" />
-                          : <input value={dUrl} onChange={(e) => setDUrl(e.target.value)} placeholder="URL (image/video)" className="mb-2 w-full rounded border px-2 py-1 text-sm" />}
-                      </>
-                    )}
-                    <div className="flex gap-2">
-                      <button onClick={() => void saveHotspot()} disabled={dKind === 'DIRECTION' && !dTarget} className="flex-1 rounded bg-violet-600 py-1.5 text-sm text-white disabled:opacity-40">Enregistrer</button>
-                      <button onClick={() => setDraft(null)} className="rounded bg-slate-200 px-3 text-sm">Annuler</button>
-                    </div>
-                  </div>
-                </div>
-              )}
+
+              {/* Panneau de création de hotspot (§9) */}
+              <TourHotspotPanel
+                open={hsOpen}
+                step={hsStep}
+                kind={hsKind}
+                scenes={scenes}
+                currentSceneId={currentScene.id}
+                form={hsForm}
+                errors={hsErrors}
+                onPickKind={pickKind}
+                onChange={(name, value) => setHsForm((prev) => ({ ...prev, [name]: value }))}
+                onSubmit={() => { void submitHotspot(); }}
+                onBack={backToTypes}
+                onCancel={closeHotspotPanel}
+              />
+
               {infoModal && (
                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60" onClick={() => setInfoModal(null)}>
                   <div className="max-w-sm rounded-xl bg-white p-4 text-slate-800" onClick={(e) => e.stopPropagation()}>
-                    {typeof infoModal.content.title === 'string' && <p className="mb-1 font-semibold">{infoModal.content.title}</p>}
-                    {infoModal.type === 'TEXT' && <p className="whitespace-pre-wrap text-sm">{String(infoModal.content.text ?? '')}</p>}
-                    {infoModal.type === 'IMAGE' && <img src={String(infoModal.content.url ?? '')} alt="" className="max-h-64 rounded" />}
-                    {infoModal.type === 'VIDEO' && <video src={String(infoModal.content.url ?? '')} controls className="max-h-64 rounded" />}
+                    {typeof infoModal.content.title === 'string' && infoModal.content.title && (
+                      <p className="mb-2 font-semibold">{infoModal.content.title}</p>
+                    )}
+                    {(infoKind === 'DESCRIPTION' || infoKind === 'INFO' || infoKind === 'COMMENT') && (
+                      <p className="whitespace-pre-wrap text-sm">{String(infoModal.content.text ?? '')}</p>
+                    )}
+                    {infoKind === 'IMAGE' && (
+                      <img src={String(infoModal.content.url ?? '')} alt={String(infoModal.content.caption ?? '')} className="max-h-64 rounded" />
+                    )}
+                    {infoKind === 'GALLERY' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {(Array.isArray(infoModal.content.images) ? infoModal.content.images : []).map((u, i) => (
+                          <img key={i} src={String(u)} alt="" className="h-24 w-full rounded object-cover" />
+                        ))}
+                      </div>
+                    )}
+                    {infoKind === 'VIDEO' && (() => {
+                      const u = String(infoModal.content.url ?? '');
+                      const emb = embedUrl(u);
+                      return emb
+                        ? <iframe src={emb} className="aspect-video w-full rounded" allowFullScreen title="Vidéo" />
+                        : <video src={u} controls className="max-h-64 rounded" />;
+                    })()}
+                    {(infoKind === 'PDF' || infoKind === 'FILE' || infoKind === 'URL' || infoKind === 'AUDIO' || infoKind === 'PRODUCT') && (
+                      <a href={String(infoModal.content.url ?? '#')} target="_blank" rel="noopener noreferrer"
+                        className="mt-1 inline-block rounded-lg bg-violet-600 px-3 py-1.5 text-sm text-white">
+                        Ouvrir
+                      </a>
+                    )}
                     <button onClick={() => setInfoModal(null)} className="mt-3 w-full rounded bg-slate-200 py-1.5 text-sm">Fermer</button>
                   </div>
                 </div>
