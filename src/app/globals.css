@@ -163,3 +163,34 @@ h1, h2, h3, h4 {
   box-shadow: 0 8px 24px rgba(107, 70, 193, 0.1);
 }
 .file-card:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+
+/* === Bilnov hotspots 360 (Pannellum) === */
+/* Les hotspots utilisent une cssClass custom (bilnov-dir / bilnov-info) :
+   Pannellum n'applique alors PAS son sprite par defaut, on style nous-memes. */
+.pnlm-hotspot-base.bilnov-dir,
+.pnlm-hotspot-base.bilnov-info {
+  width: 32px;
+  height: 32px;
+  margin: -16px 0 0 -16px;
+  border-radius: 9999px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 700;
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s ease;
+  z-index: 10;
+}
+.pnlm-hotspot-base.bilnov-dir { background: rgba(124, 58, 237, 0.92); }
+.pnlm-hotspot-base.bilnov-info { background: rgba(245, 158, 11, 0.92); }
+.pnlm-hotspot-base.bilnov-dir::after { content: "\2794"; }
+.pnlm-hotspot-base.bilnov-info::after { content: "\2139"; }
+.pnlm-hotspot-base.bilnov-dir:hover,
+.pnlm-hotspot-base.bilnov-info:hover { transform: scale(1.14); }
+/* === fin Bilnov hotspots 360 === */
