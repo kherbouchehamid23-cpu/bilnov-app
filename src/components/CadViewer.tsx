@@ -228,6 +228,8 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
           sceneOptions: { suppressPaperSpace: true, arcTessellationAngle: 15 },
         });
         viewerRef.current = viewer;
+        // §mobile : le navigateur ne doit jamais gerer le pinch/pan en meme temps qu'OrbitControls
+        try { const cv = viewer.GetCanvas?.(); if (cv) cv.style.touchAction = 'none'; } catch { /* noop */ }
         await viewer.Load({ url, fonts: ['/cad/DejaVuSans.ttf'] });
         if (cancelled) return;
 
@@ -671,7 +673,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
       {tool === 'quick' && <div className="bg-slate-700 px-3 py-1.5 text-xs text-white">Déplacez le curseur : les distances avec les murs s&apos;affichent automatiquement. Cliquez une distance pour l&apos;enregistrer.</div>}
 
       <div className="relative flex flex-1 overflow-hidden">
-        <div ref={containerRef} className="flex-1 bg-white" style={{ cursor: tool === 'pan' ? 'default' : 'crosshair' }} />
+        <div ref={containerRef} className="flex-1 bg-white" style={{ cursor: tool === 'pan' ? 'default' : 'crosshair', touchAction: 'none' }} />
 
         {/* Overlay */}
         <div ref={overlayRef} className="pointer-events-none absolute inset-0" style={{ right: showPanel && !isNarrow ? 340 : (showLayers && !isNarrow ? 240 : 0) }}>
