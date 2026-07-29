@@ -9,10 +9,6 @@ interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
-declare global {
-  interface Window { pannellum: { viewer: (c: string | HTMLElement, cfg: object) => { destroy: () => void }; }; }
-}
-
 // Mode VISITEUR (lecture seule) : navigation par hotspots, aucune commande d'edition.
 export default function TourViewerPage() {
   const params = useParams();
