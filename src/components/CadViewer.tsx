@@ -391,7 +391,16 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     cont.addEventListener('pointermove', mv, cap);
     cont.addEventListener('pointerup', up, cap);
     cont.addEventListener('pointercancel', cancel, cap);
-    return () => { cont.removeEventListener('pointerdown', down, cap); cont.removeEventListener('pointermove', mv, cap); cont.removeEventListener('pointerup', up, cap); cont.removeEventListener('pointercancel', cancel, cap); };
+    // §mobile : OrbitControls (dxf-viewer) panne le plan via les evenements TOUCH,
+    // pas via pointer -> on bloque le tactile a 1 doigt en mode placement.
+    const capNP = { capture: true, passive: false } as AddEventListenerOptions;
+    const touchGuard = (e: TouchEvent) => {
+      if (!placement() || e.touches.length >= 2) return;   // >=2 doigts : navigation native
+      e.stopPropagation(); if (e.cancelable) e.preventDefault();
+    };
+    cont.addEventListener('touchstart', touchGuard, capNP);
+    cont.addEventListener('touchmove', touchGuard, capNP);
+    return () => { cont.removeEventListener('pointerdown', down, cap); cont.removeEventListener('pointermove', mv, cap); cont.removeEventListener('pointerup', up, cap); cont.removeEventListener('pointercancel', cancel, cap); cont.removeEventListener('touchstart', touchGuard, capNP); cont.removeEventListener('touchmove', touchGuard, capNP); };
   }, [screenToWorld, snapWorld, snapResolve, worldToScreen, canAnnotate]);
 
   function centerWorld(): Pt | null {
