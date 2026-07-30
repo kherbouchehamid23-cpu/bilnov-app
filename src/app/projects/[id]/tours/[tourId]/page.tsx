@@ -56,6 +56,7 @@ export default function TourEditorPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [importStatus, setImportStatus] = useState<{ current: number; total: number } | null>(null);
   const [published, setPublished] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
@@ -413,32 +414,37 @@ export default function TourEditorPage() {
   }, [id, tourId]);
 
   const handleUpload360 = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
     setUploading(true);
-    setUploadProgress(0);
-    try {
-      const { fileId } = await uploadFileDirect(
-        file, id, getToken(), null,
-        (p) => setUploadProgress(p),
-      );
-      const sceneRes = await fetch(`/api/projects/${id}/tours/${tourId}/scenes`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId, name: file.name.replace(/\.[^.]+$/, '') }),
-      });
-      const sceneData = await sceneRes.json() as ApiResponse<Scene>;
-      if (sceneData.data) {
-        setScenes(prev => [...prev, sceneData.data]);
-        setCurrentScene(sceneData.data);
-      }
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Erreur upload');
-    } finally {
-      setUploading(false);
+    const created: Scene[] = [];
+    const failed: string[] = [];
+    // Import séquentiel : chaque fichier a sa progression ; une erreur n'interrompt pas les autres.
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setImportStatus({ current: i + 1, total: files.length });
       setUploadProgress(0);
-      e.target.value = '';
+      try {
+        const { fileId } = await uploadFileDirect(
+          file, id, getToken(), null,
+          (p) => setUploadProgress(p),
+        );
+        const sceneRes = await fetch(`/api/projects/${id}/tours/${tourId}/scenes`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileId, name: file.name.replace(/\.[^.]+$/, '') }),
+        });
+        const sceneData = await sceneRes.json() as ApiResponse<Scene>;
+        if (sceneData.data) { const sc = sceneData.data; created.push(sc); setScenes(prev => [...prev, sc]); }
+        else failed.push(file.name);
+      } catch { failed.push(file.name); }
     }
+    if (created.length > 0) setCurrentScene((cur) => cur ?? created[0]);   // sélectionne la 1re nouvelle scène si aucune active
+    setUploading(false);
+    setUploadProgress(0);
+    setImportStatus(null);
+    e.target.value = '';
+    if (failed.length > 0) alert(`${failed.length} fichier(s) non importé(s) : ${failed.join(', ')}`);
   };
 
   const handleDeleteScene = async (sceneId: string): Promise<void> => {
@@ -577,10 +583,10 @@ export default function TourEditorPage() {
             {uploading ? (
               <span className="flex items-center gap-2">
                 <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
-                {uploadProgress}%
+                {importStatus ? `${importStatus.current}/${importStatus.total} · ${uploadProgress}%` : `${uploadProgress}%`}
               </span>
             ) : '+ Image 360°'}
-            <input type="file" className="hidden" accept="image/*"
+            <input type="file" multiple className="hidden" accept="image/*"
               onChange={e => { void handleUpload360(e); }} disabled={uploading} />
           </label>
           <button onClick={() => { void handlePublish(); }}
@@ -743,7 +749,7 @@ export default function TourEditorPage() {
               </p>
               <label className="px-6 py-3 rounded-xl font-medium cursor-pointer bg-violet-600 hover:bg-violet-500 text-white transition-colors">
                 + Ajouter image 360°
-                <input type="file" className="hidden" accept="image/*"
+                <input type="file" multiple className="hidden" accept="image/*"
                   onChange={e => { void handleUpload360(e); }} />
               </label>
             </div>
@@ -860,7 +866,7 @@ export default function TourEditorPage() {
           <div className="p-3 border-t border-stone-800">
             <label className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-colors text-stone-400 hover:text-white hover:bg-stone-800">
               + Ajouter une scène
-              <input type="file" className="hidden" accept="image/*"
+              <input type="file" multiple className="hidden" accept="image/*"
                 onChange={e => { void handleUpload360(e); }} disabled={uploading} />
             </label>
           </div>
