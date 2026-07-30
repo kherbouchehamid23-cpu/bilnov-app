@@ -255,7 +255,7 @@ export default function SharedCadViewer({ shareId, code, fileId, fileName, canMe
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-900">
-      <div className="flex items-center justify-between bg-slate-800 px-3 py-2 text-white">
+      <div className="flex items-center justify-between bg-white/5 backdrop-blur-xl border-b border-white/10 px-3 py-2 text-white">
         <span className="truncate text-sm font-medium max-w-[34%]">{fileName}</span>
         <div className="flex items-center gap-1.5 flex-wrap">
           {canMeasure ? (
@@ -280,13 +280,13 @@ export default function SharedCadViewer({ shareId, code, fileId, fileName, canMe
       </div>
 
       {canMeasure && tool === 'measure' && (
-        <div className="bg-slate-700 px-3 py-1.5 text-xs text-white flex items-center gap-3 flex-wrap">
+        <div className="bg-white/8 backdrop-blur-md px-3 py-1.5 text-xs text-white flex items-center gap-3 flex-wrap">
           <span>Cliquez 2 points (accrochage actif). Glissez un point pour l&apos;ajuster.</span>
           {dispDist !== null && <span className="font-semibold">Distance : {fmt(dispDist)} {unitLabel}</span>}
         </div>
       )}
       {canMeasure && tool === 'area' && (
-        <div className="bg-slate-700 px-3 py-1.5 text-xs text-white flex items-center gap-3 flex-wrap">
+        <div className="bg-white/8 backdrop-blur-md px-3 py-1.5 text-xs text-white flex items-center gap-3 flex-wrap">
           <span>Cliquez les sommets (≥ 3), puis « Terminer » ou cliquez le 1er point.</span>
           {dispArea !== null && <span className="font-semibold">Surface : {fmt(dispArea)} {unitLabel}²</span>}
           {dispPerim !== null && <span>Périmètre : {fmt(dispPerim)} {unitLabel}</span>}

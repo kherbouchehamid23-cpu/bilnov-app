@@ -178,7 +178,7 @@ export default function Model3DViewer({ fileId, fileName, token, projectId, canC
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-900">
-      <div className="flex items-center justify-between bg-slate-800 px-3 py-2 text-white">
+      <div className="flex items-center justify-between bg-white/5 backdrop-blur-xl border-b border-white/10 px-3 py-2 text-white">
         <span className="truncate text-sm font-medium max-w-[35%]">{fileName}</span>
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[11px] text-slate-300">Coupe</span>
