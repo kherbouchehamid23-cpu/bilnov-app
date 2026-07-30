@@ -45,9 +45,9 @@ export default function NewProjectPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4"
+    <div className="lg-app min-h-screen flex items-center justify-center p-4"
       style={{ background: 'var(--surface)' }}>
-      <div className="bg-white rounded-3xl border p-8 w-full max-w-lg"
+      <div className="bg-white/5 rounded-3xl border p-8 w-full max-w-lg"
         style={{ borderColor: 'var(--border)' }}>
         <div className="mb-6">
           <Link href="/dashboard" className="text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -92,7 +92,7 @@ export default function NewProjectPage() {
                   className="p-4 rounded-xl border-2 text-left transition-colors"
                   style={{
                     borderColor: form.structureType === opt.value ? 'var(--violet)' : 'var(--border)',
-                    background: form.structureType === opt.value ? 'var(--violet-light)' : 'white',
+                    background: form.structureType === opt.value ? 'var(--violet-light)' : 'rgba(255,255,255,.06)',
                   }}>
                   <div className="font-medium text-sm" style={{ color: 'var(--text)' }}>
                     {opt.label}
