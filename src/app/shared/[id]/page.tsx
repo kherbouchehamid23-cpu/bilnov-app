@@ -115,7 +115,7 @@ export default function SharedProjectPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center"
+      <div className="lg-app min-h-screen flex items-center justify-center"
         style={{ background: 'var(--surface)' }}>
         <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Chargement...</div>
       </div>
@@ -123,7 +123,7 @@ export default function SharedProjectPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--surface)' }}>
+    <div className="lg-app min-h-screen" style={{ background: 'var(--surface)' }}>
       <header className="glass border-b px-6 py-4 sticky top-0 z-40"
         style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-5xl mx-auto flex items-center justify-between">
