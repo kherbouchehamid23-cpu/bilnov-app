@@ -7,6 +7,11 @@ import { hotspotLabel, isDirection } from '@/lib/tour';
 import { buildHotspotPayload, buildReturnPayload, kindFromContent, type HotspotKind } from '@/lib/tourHotspots';
 import { levelForScene, type LevelLite } from '@/lib/tourMap';
 import { buildShareUrl, buildEmbedCode } from '@/lib/tourShare';
+import {
+  emptyHistory, pushAction, canUndo, canRedo, peekUndo, peekRedo,
+  commitUndo, commitRedo, invertAction, remapHotspotId, recreatePayload,
+  type History, type HotspotSnapshot, type HotspotAction,
+} from '@/lib/tourHistory';
 import TourHotspotPanel from '@/components/TourHotspotPanel';
 import TourFloorPlan from '@/components/TourFloorPlan';
 
@@ -82,6 +87,14 @@ export default function TourEditorPage() {
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+
+  // V6c — historique annuler/rétablir (undo/redo) des hotspots.
+  const [history, setHistory] = useState<History>(() => emptyHistory());
+  const [histBusy, setHistBusy] = useState(false);
+  const toSnapshot = (h: Hotspot, sceneId: string): HotspotSnapshot => ({
+    id: h.id, sceneId, type: h.type, positionYaw: h.positionYaw, positionPitch: h.positionPitch,
+    targetSceneId: h.targetSceneId, content: h.content,
+  });
 
   const scenesRef = useRef<Scene[]>([]);
   const addModeRef = useRef(false);
@@ -183,7 +196,11 @@ export default function TourEditorPage() {
         body: JSON.stringify(res.payload),
       });
       const d = await r.json() as ApiResponse<Hotspot>;
-      if (d.data) setHotspots((prev) => [...prev, d.data]);
+      if (d.data) {
+        const created = d.data;
+        setHotspots((prev) => [...prev, created]);
+        setHistory((h) => pushAction(h, { kind: 'create', hotspot: toSnapshot(created, currentScene.id) }));
+      }
       if (hsForm.returnLink === true && res.payload.targetSceneId) {
         const ret = buildReturnPayload(res.payload, currentScene.id, currentScene.name);
         if (ret) {
@@ -200,8 +217,74 @@ export default function TourEditorPage() {
   };
 
   const deleteHotspot = async (hid: string): Promise<void> => {
-    try { await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene?.id}/hotspots/${hid}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } }); setHotspots((prev) => prev.filter((h) => h.id !== hid)); } catch { /* noop */ }
+    const snap = hotspots.find((h) => h.id === hid);
+    const sceneId = currentScene?.id;
+    try {
+      await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sceneId}/hotspots/${hid}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } });
+      setHotspots((prev) => prev.filter((h) => h.id !== hid));
+      if (snap && sceneId) setHistory((h) => pushAction(h, { kind: 'delete', hotspot: toSnapshot(snap, sceneId) }));
+    } catch { /* noop */ }
   };
+
+  // V6c — applique une action côté serveur ; renvoie le nouvel id si recréation.
+  const applyAction = async (a: HotspotAction): Promise<string | null> => {
+    const s = a.hotspot;
+    if (a.kind === 'delete') {
+      await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${s.sceneId}/hotspots/${s.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } });
+      if (currentScene && s.sceneId === currentScene.id) setHotspots((prev) => prev.filter((h) => h.id !== s.id));
+      return null;
+    }
+    const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${s.sceneId}/hotspots`, {
+      method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(recreatePayload(s)),
+    });
+    const d = await r.json() as ApiResponse<Hotspot>;
+    const created = d.data;
+    if (created && currentScene && s.sceneId === currentScene.id) setHotspots((prev) => [...prev, created]);
+    return created?.id ?? null;
+  };
+
+  const doUndo = async (): Promise<void> => {
+    const a = peekUndo(history);
+    if (!a || histBusy) return;
+    setHistBusy(true);
+    try {
+      const inv = invertAction(a);            // annuler = appliquer l'inverse
+      const newId = await applyAction(inv);
+      let h = commitUndo(history);
+      if (inv.kind === 'create' && newId) h = remapHotspotId(h, a.hotspot.id, newId);
+      setHistory(h);
+    } catch { /* noop */ } finally { setHistBusy(false); }
+  };
+
+  const doRedo = async (): Promise<void> => {
+    const a = peekRedo(history);
+    if (!a || histBusy) return;
+    setHistBusy(true);
+    try {
+      const newId = await applyAction(a);     // rétablir = ré-appliquer l'action
+      let h = commitRedo(history);
+      if (a.kind === 'create' && newId) h = remapHotspotId(h, a.hotspot.id, newId);
+      setHistory(h);
+    } catch { /* noop */ } finally { setHistBusy(false); }
+  };
+
+  // V6c — raccourcis clavier : Ctrl/Cmd+Z (annuler), Ctrl/Cmd+Shift+Z ou Ctrl+Y (rétablir).
+  // Ignoré pendant la saisie dans un champ (formulaire hotspot).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); void doUndo(); }
+      else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); void doRedo(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, histBusy, currentScene]);
 
   const loadScenes = async (): Promise<void> => {
     const res = await fetch(`/api/projects/${id}/tours/${tourId}/scenes`, {
@@ -474,6 +557,14 @@ export default function TourEditorPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <button onClick={() => void doUndo()} disabled={!canUndo(history) || histBusy}
+              aria-label="Annuler la dernière action (Ctrl+Z)" title="Annuler (Ctrl+Z)"
+              className={`px-2.5 py-2 rounded-lg text-sm transition-colors ${canUndo(history) && !histBusy ? 'bg-stone-800 hover:bg-stone-700 text-white' : 'bg-stone-900 text-stone-600 cursor-not-allowed'}`}>↶</button>
+            <button onClick={() => void doRedo()} disabled={!canRedo(history) || histBusy}
+              aria-label="Rétablir (Ctrl+Maj+Z)" title="Rétablir (Ctrl+Maj+Z)"
+              className={`px-2.5 py-2 rounded-lg text-sm transition-colors ${canRedo(history) && !histBusy ? 'bg-stone-800 hover:bg-stone-700 text-white' : 'bg-stone-900 text-stone-600 cursor-not-allowed'}`}>↷</button>
+          </div>
           <button onClick={() => setShowLevels(true)}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-stone-800 hover:bg-stone-700 text-white transition-colors">
             🗺 Niveaux &amp; plans{levels.length > 0 ? ` (${levels.length})` : ''}
