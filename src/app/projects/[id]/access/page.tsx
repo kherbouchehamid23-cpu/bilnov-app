@@ -237,7 +237,7 @@ export default function AccessCodesPage() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--surface)' }}>
+    <div className="lg-app min-h-screen" style={{ background: 'var(--surface)' }}>
       {/* Header */}
       <header className="sticky top-0 z-40 glass border-b px-6 py-4"
         style={{ borderColor: 'var(--border)' }}>
@@ -291,7 +291,7 @@ export default function AccessCodesPage() {
                   <p className="text-xs mb-1" style={{ color: '#065F46' }}>Code à 6 chiffres</p>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 px-4 py-3 rounded-xl text-center font-mono text-2xl font-bold tracking-[0.3em]"
-                      style={{ background: 'white', color: 'var(--violet)', border: '2px solid var(--violet-light)' }}>
+                      style={{ background: 'rgba(255,255,255,.06)', color: 'var(--violet)', border: '2px solid var(--violet-light)' }}>
                       {newCode}
                     </div>
                     <button onClick={() => copyCode(newCode)} className="btn-secondary" style={{ minHeight: 44 }}>
@@ -307,7 +307,7 @@ export default function AccessCodesPage() {
                     <input readOnly value={shareUrl}
                       onFocus={e => e.currentTarget.select()}
                       className="flex-1 px-3 py-2 rounded-xl text-sm font-mono"
-                      style={{ background: 'white', border: '1px solid #A7F3D0', color: 'var(--text)' }} />
+                      style={{ background: 'rgba(255,255,255,.06)', border: '1px solid #A7F3D0', color: 'var(--text)' }} />
                     <button onClick={copyLink} className="btn-secondary" style={{ minHeight: 44 }}>
                       {copied === 'link' ? '✓' : '🔗'}
                     </button>
@@ -332,7 +332,7 @@ export default function AccessCodesPage() {
         {/* Formulaire création */}
         {showForm && (
           <div className="mb-8 p-6 rounded-2xl border animate-fade-up"
-            style={{ background: 'white', borderColor: 'var(--violet-light)' }}>
+            style={{ background: 'rgba(255,255,255,.06)', borderColor: 'var(--violet-light)' }}>
             <h2 className="font-bold text-lg mb-5"
               style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
               Nouveau code d&apos;accès
@@ -358,7 +358,7 @@ export default function AccessCodesPage() {
                       className="p-3 rounded-xl border-2 text-left transition-all"
                       style={{
                         borderColor: form[perm.key] ? 'var(--violet)' : 'var(--border)',
-                        background: form[perm.key] ? 'var(--violet-light)' : 'white',
+                        background: form[perm.key] ? 'var(--violet-light)' : 'rgba(255,255,255,.06)',
                       }}>
                       <div className="text-sm font-medium" style={{ color: 'var(--text)' }}>
                         {perm.label}
@@ -466,7 +466,7 @@ export default function AccessCodesPage() {
             <div className="space-y-3">
               {codes.map(code => (
                 <div key={code.id}
-                  className="p-5 rounded-2xl border bg-white"
+                  className="p-5 rounded-2xl border bg-white/5"
                   style={{
                     borderColor: code.isActive ? 'var(--border)' : '#FCA5A5',
                     opacity: code.isActive ? 1 : 0.6,
