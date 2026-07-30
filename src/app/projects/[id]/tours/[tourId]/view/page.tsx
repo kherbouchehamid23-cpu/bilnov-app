@@ -2,6 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { Compass, Maximize2, Minimize2 } from 'lucide-react';
 import Link from 'next/link';
 import { isDirection, hotspotLabel } from '@/lib/tour';
 import { kindFromContent, arrivalTarget } from '@/lib/tourHotspots';
@@ -267,15 +268,15 @@ export default function TourViewerPage() {
           <>
             <div ref={viewerRef} className="flex-1" role="application" aria-label={`Visite virtuelle 360° — ${currentScene?.name ?? tourName}. Flèches gauche/droite pour changer de scène.`} style={{ minHeight: '500px', background: '#000' }} />
             {currentScene && (
-              <div className="absolute top-4 left-4 z-10 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-black/60 pointer-events-none">{currentScene.name}</div>
+              <div className="absolute top-4 left-4 z-10 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-white/10 backdrop-blur-md border border-white/15 pointer-events-none">{currentScene.name}</div>
             )}
             <div className="absolute top-4 right-4 z-10 flex gap-2">
               {gyroSupported && (
                 <button onClick={toggleGyro} aria-pressed={gyroOn} aria-label={gyroOn ? 'Désactiver le gyroscope' : 'Activer le gyroscope'} title="Gyroscope (g)"
-                  className={`rounded-lg px-2.5 py-1.5 text-sm ${gyroOn ? 'bg-violet-600 text-white' : 'bg-black/60 text-stone-200 hover:bg-black/80'}`}>🧭</button>
+                  className={`rounded-lg px-2.5 py-1.5 text-sm ${gyroOn ? 'bg-violet-600 text-white' : 'bg-white/10 backdrop-blur-md border border-white/15 text-stone-100 hover:bg-white/20'}`}><Compass size={16} /></button>
               )}
               <button onClick={toggleFullscreen} aria-pressed={isFs} aria-label={isFs ? 'Quitter le plein écran' : 'Plein écran'} title="Plein écran (f)"
-                className="rounded-lg px-2.5 py-1.5 text-sm bg-black/60 text-stone-200 hover:bg-black/80">{isFs ? '🡼' : '⛶'}</button>
+                className="rounded-lg px-2.5 py-1.5 text-sm bg-white/10 backdrop-blur-md border border-white/15 text-stone-100 hover:bg-white/20">{isFs ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
             </div>
             {(!pLoaded || !viewerReady) && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
@@ -285,7 +286,7 @@ export default function TourViewerPage() {
 
             {/* V4b — mini-carte : plan du niveau courant + marqueurs cliquables */}
             {hasAnyPlan && (
-              <div className="absolute bottom-4 right-4 z-20 w-64 rounded-lg bg-black/75 p-2 text-white">
+              <div className="absolute bottom-4 right-4 z-20 w-64 rounded-lg bg-white/10 backdrop-blur-md border border-white/15 p-2 text-white">
                 <div className="mb-1 flex items-center justify-between">
                   <span className="text-[10px] uppercase text-stone-400">Plan{currentLevel ? ` — ${currentLevel.name}` : ''}</span>
                   <button onClick={() => setShowPlan((v) => !v)} className="text-xs text-stone-300 hover:text-white">{showPlan ? '▾' : '▸'}</button>
@@ -318,7 +319,7 @@ export default function TourViewerPage() {
               </div>
             )}
             {scenes.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto px-4 py-3 border-t border-stone-800 bg-black/40">
+              <div className="flex gap-2 overflow-x-auto px-4 py-3 border-t border-white/10 bg-white/8 backdrop-blur-md">
                 {scenes.map((s) => (
                   <button key={s.id} onClick={() => goToScene(s.id)}
                     className={`flex-shrink-0 rounded-lg overflow-hidden border-2 ${currentSceneId === s.id ? 'border-violet-500' : 'border-transparent'}`}>
