@@ -5,10 +5,13 @@ import Link from 'next/link';
 import { uploadFileDirect } from '@/lib/upload';
 import { hotspotLabel, isDirection } from '@/lib/tour';
 import { buildHotspotPayload, buildReturnPayload, kindFromContent, type HotspotKind } from '@/lib/tourHotspots';
+import { levelForScene, type LevelLite } from '@/lib/tourMap';
 import TourHotspotPanel from '@/components/TourHotspotPanel';
+import TourFloorPlan from '@/components/TourFloorPlan';
 
 interface Tour { id: string; name: string; status: string; }
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; }
+interface Level extends LevelLite { planUrl?: string | null; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
@@ -65,6 +68,13 @@ export default function TourEditorPage() {
   const [hsKind, setHsKind] = useState<HotspotKind | null>(null);
   const [hsForm, setHsForm] = useState<Record<string, unknown>>({});
   const [hsErrors, setHsErrors] = useState<string[]>([]);
+
+  // V4b — niveaux & plans 2D.
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [showLevels, setShowLevels] = useState(false);
+  const [newLevelName, setNewLevelName] = useState('');
+  const [placing, setPlacing] = useState(false);
+  const [planBusy, setPlanBusy] = useState<string | null>(null);
 
   const scenesRef = useRef<Scene[]>([]);
   const addModeRef = useRef(false);
@@ -196,6 +206,65 @@ export default function TourEditorPage() {
     if (list.length > 0 && !currentScene) setCurrentScene(list[0]);
   };
 
+  // --- V4b : niveaux & plans 2D ---
+  const authJson = { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' };
+  const loadLevels = async (): Promise<void> => {
+    try {
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/levels`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const d = await r.json() as ApiResponse<{ levels: Level[] }>;
+      setLevels((d.data?.levels ?? []).slice().sort((a, b) => a.position - b.position));
+    } catch { /* noop */ }
+  };
+  const createLevel = async (): Promise<void> => {
+    const name = newLevelName.trim();
+    if (!name) return;
+    try {
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/levels`, { method: 'POST', headers: authJson, body: JSON.stringify({ name }) });
+      const d = await r.json() as ApiResponse<Level>;
+      if (d.data) setLevels((prev) => [...prev, d.data]);
+      setNewLevelName('');
+    } catch { alert('Erreur création niveau'); }
+  };
+  const renameLevel = async (levelId: string, name: string): Promise<void> => {
+    if (!name.trim()) return;
+    setLevels((prev) => prev.map((l) => l.id === levelId ? { ...l, name } : l));
+    try { await fetch(`/api/projects/${id}/tours/${tourId}/levels/${levelId}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ name }) }); } catch { /* noop */ }
+  };
+  const deleteLevel = async (levelId: string): Promise<void> => {
+    if (!confirm('Supprimer ce niveau ? Les scènes rattachées seront détachées.')) return;
+    try {
+      await fetch(`/api/projects/${id}/tours/${tourId}/levels/${levelId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } });
+      setLevels((prev) => prev.filter((l) => l.id !== levelId));
+      setScenes((prev) => prev.map((s) => s.levelId === levelId ? { ...s, levelId: null, mapX: null, mapY: null } : s));
+    } catch { alert('Erreur suppression'); }
+  };
+  const uploadPlan = async (levelId: string, e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPlanBusy(levelId);
+    try {
+      const { storageKey } = await uploadFileDirect(file, id, getToken(), null);
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/levels/${levelId}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ planImageUrl: storageKey }) });
+      const d = await r.json() as ApiResponse<Level>;
+      if (d.data) setLevels((prev) => prev.map((l) => l.id === levelId ? { ...l, planImageUrl: d.data.planImageUrl, planUrl: d.data.planUrl } : l));
+    } catch (err) { alert(err instanceof Error ? err.message : 'Erreur upload plan'); }
+    finally { setPlanBusy(null); }
+  };
+  const assignSceneLevel = async (sceneId: string, levelId: string | null): Promise<void> => {
+    setScenes((prev) => prev.map((s) => s.id === sceneId ? { ...s, levelId, mapX: null, mapY: null } : s));
+    if (currentScene?.id === sceneId) setCurrentScene((prev) => prev ? { ...prev, levelId, mapX: null, mapY: null } : null);
+    try { await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sceneId}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ levelId, mapX: null, mapY: null }) }); } catch { /* noop */ }
+  };
+  const placeCurrentScene = async (x: number, y: number): Promise<void> => {
+    if (!currentScene) return;
+    const sid = currentScene.id;
+    setScenes((prev) => prev.map((s) => s.id === sid ? { ...s, mapX: x, mapY: y } : s));
+    setCurrentScene((prev) => prev ? { ...prev, mapX: x, mapY: y } : null);
+    setPlacing(false);
+    try { await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sid}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ mapX: x, mapY: y }) }); } catch { /* noop */ }
+  };
+
   useEffect(() => {
     void (async () => {
       try {
@@ -214,10 +283,12 @@ export default function TourEditorPage() {
         const list = scenesData.data?.scenes ?? [];
         setScenes(list);
         if (list.length > 0) setCurrentScene(list[0]);
+        void loadLevels();
       } finally {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, tourId]);
 
   const handleUpload360 = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
@@ -338,6 +409,8 @@ export default function TourEditorPage() {
   }
 
   const infoKind = infoModal ? kindFromContent(infoModal.type, infoModal.content) : null;
+  const currentLevel = currentScene ? levelForScene(levels, currentScene) : null;
+  const currentPlanUrl = (currentLevel && levels.find((l) => l.id === currentLevel.id)?.planUrl) || null;
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#0f0f0f' }}>
@@ -362,6 +435,10 @@ export default function TourEditorPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <button onClick={() => setShowLevels(true)}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-stone-800 hover:bg-stone-700 text-white transition-colors">
+            🗺 Niveaux &amp; plans{levels.length > 0 ? ` (${levels.length})` : ''}
+          </button>
           <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${uploading ? 'opacity-60 bg-stone-700 text-stone-300' : 'bg-violet-600 hover:bg-violet-500 text-white'}`}>
             {uploading ? (
               <span className="flex items-center gap-2">
@@ -408,6 +485,40 @@ export default function TourEditorPage() {
                       <button onClick={() => void deleteHotspot(h.id)} className="ml-2 text-stone-400 hover:text-red-400">✕</button>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* V4b — niveau de la scène courante + mini-plan (placement) */}
+              {levels.length > 0 && (
+                <div className="absolute bottom-4 right-4 z-20 w-64 rounded-lg bg-black/75 p-3 text-white">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-[10px] uppercase text-stone-400">Niveau</span>
+                    <select
+                      value={currentScene.levelId ?? ''}
+                      onChange={(e) => void assignSceneLevel(currentScene.id, e.target.value || null)}
+                      className="flex-1 rounded-md border border-stone-600 bg-stone-800 px-2 py-1 text-xs text-white outline-none">
+                      <option value="">— Aucun —</option>
+                      {levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                  </div>
+                  {currentScene.levelId && (
+                    <>
+                      <button
+                        onClick={() => setPlacing((p) => !p)}
+                        className={`mb-2 w-full rounded-md py-1 text-xs font-medium ${placing ? 'bg-amber-500 text-black' : 'bg-violet-600 text-white hover:bg-violet-500'}`}>
+                        {placing ? 'Cliquez sur le plan…' : (currentScene.mapX != null ? '↻ Repositionner sur le plan' : '＋ Placer sur le plan')}
+                      </button>
+                      <TourFloorPlan
+                        planUrl={currentPlanUrl}
+                        levelId={currentScene.levelId}
+                        scenes={scenes}
+                        currentSceneId={currentScene.id}
+                        onMarkerClick={(sid) => { const t = scenes.find((s) => s.id === sid); if (t) setCurrentScene(t); }}
+                        onPlaceClick={placing ? (x, y) => void placeCurrentScene(x, y) : undefined}
+                        placingSceneName={placing ? currentScene.name : null}
+                      />
+                    </>
+                  )}
                 </div>
               )}
 
@@ -621,6 +732,63 @@ export default function TourEditorPage() {
           </div>
         </aside>
       </div>
+
+      {/* V4b — Modale de gestion des niveaux & plans */}
+      {showLevels && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowLevels(false)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 text-slate-800" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-semibold">Niveaux &amp; plans 2D</h3>
+              <button onClick={() => setShowLevels(false)} className="text-stone-400 hover:text-slate-800">✕</button>
+            </div>
+            <p className="mb-3 text-xs text-stone-500">
+              Créez un niveau par étage, importez son plan, puis rattachez chaque scène à son niveau et placez-la sur le plan (bouton « Placer sur le plan » dans le viewer).
+            </p>
+
+            <div className="mb-4 flex gap-2">
+              <input
+                value={newLevelName}
+                onChange={(e) => setNewLevelName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void createLevel(); }}
+                placeholder="Nom du niveau (ex. Rez-de-chaussée)"
+                className="flex-1 rounded-lg border border-stone-300 px-3 py-2 text-sm outline-none focus:border-violet-500" />
+              <button onClick={() => void createLevel()} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500">Ajouter</button>
+            </div>
+
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {levels.length === 0 && <p className="py-6 text-center text-sm text-stone-400">Aucun niveau pour l’instant.</p>}
+              {levels.map((l) => {
+                const sceneCount = scenes.filter((s) => s.levelId === l.id).length;
+                return (
+                  <div key={l.id} className="rounded-xl border border-stone-200 p-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        defaultValue={l.name}
+                        onBlur={(e) => { if (e.target.value.trim() && e.target.value !== l.name) void renameLevel(l.id, e.target.value.trim()); }}
+                        className="flex-1 rounded-md border border-transparent px-2 py-1 text-sm font-medium hover:border-stone-300 focus:border-violet-500 outline-none" />
+                      <span className="text-xs text-stone-400">{sceneCount} scène{sceneCount !== 1 ? 's' : ''}</span>
+                      <button onClick={() => void deleteLevel(l.id)} className="rounded-md px-2 py-1 text-xs text-red-500 hover:bg-red-50">Supprimer</button>
+                    </div>
+                    <div className="mt-2 flex items-center gap-3">
+                      {l.planUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={l.planUrl} alt="Plan" className="h-14 w-20 rounded object-cover" />
+                      ) : (
+                        <div className="flex h-14 w-20 items-center justify-center rounded bg-stone-100 text-[10px] text-stone-400">Pas de plan</div>
+                      )}
+                      <label className="cursor-pointer rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-stone-200">
+                        {planBusy === l.id ? 'Envoi…' : (l.planUrl ? 'Remplacer le plan' : 'Importer un plan')}
+                        <input type="file" accept="image/*" className="hidden" disabled={planBusy === l.id}
+                          onChange={(e) => void uploadPlan(l.id, e)} />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

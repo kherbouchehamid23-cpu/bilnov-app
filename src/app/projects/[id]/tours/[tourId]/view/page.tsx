@@ -5,8 +5,11 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { isDirection, hotspotLabel } from '@/lib/tour';
 import { kindFromContent, arrivalTarget } from '@/lib/tourHotspots';
+import { levelForScene, type LevelLite } from '@/lib/tourMap';
+import TourFloorPlan from '@/components/TourFloorPlan';
 
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; }
+interface Level extends LevelLite { planUrl?: string | null; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
@@ -33,6 +36,8 @@ export default function TourViewerPage() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [currentSceneId, setCurrentSceneId] = useState<string | null>(null);
   const [hotspotsByScene, setHotspotsByScene] = useState<Record<string, Hotspot[]>>({});
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [showPlan, setShowPlan] = useState(true);
   const [infoModal, setInfoModal] = useState<Hotspot | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [dataReady, setDataReady] = useState(false);
@@ -63,15 +68,20 @@ export default function TourViewerPage() {
     void (async () => {
       try {
         const auth = { headers: { Authorization: `Bearer ${getToken()}` } };
-        const [pRes, tRes, sRes] = await Promise.all([
+        const [pRes, tRes, sRes, lRes] = await Promise.all([
           fetch(`/api/projects/${id}`, auth),
           fetch(`/api/projects/${id}/tours/${tourId}`, auth),
           fetch(`/api/projects/${id}/tours/${tourId}/scenes`, auth),
+          fetch(`/api/projects/${id}/tours/${tourId}/levels`, auth),
         ]);
         const pData = await pRes.json() as ApiResponse<{ access?: { canManage?: boolean; canUpload?: boolean } }>;
         setCanEdit(Boolean(pData.data?.access?.canManage || pData.data?.access?.canUpload));
         const tData = await tRes.json() as ApiResponse<{ name?: string }>;
         if (tData.data?.name) setTourName(tData.data.name);
+        try {
+          const lData = await lRes.json() as ApiResponse<{ levels: Level[] }>;
+          setLevels((lData.data?.levels ?? []).slice().sort((a, b) => a.position - b.position));
+        } catch { setLevels([]); }
         const sData = await sRes.json() as ApiResponse<{ scenes: Scene[] }>;
         const list = (sData.data?.scenes ?? []).slice().sort((a, b) => a.position - b.position);
         setScenes(list);
@@ -162,6 +172,9 @@ export default function TourViewerPage() {
   };
 
   const currentScene = scenes.find((s) => s.id === currentSceneId) ?? null;
+  const currentLevel = currentScene ? levelForScene(levels, currentScene) : null;
+  const currentPlanUrl = (currentLevel && levels.find((l) => l.id === currentLevel.id)?.planUrl) || null;
+  const hasAnyPlan = levels.some((l) => l.planUrl);
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#0f0f0f' }}>
@@ -186,6 +199,41 @@ export default function TourViewerPage() {
             {(!pLoaded || !viewerReady) && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
                 <span className="text-sm text-stone-400">Chargement du viewer…</span>
+              </div>
+            )}
+
+            {/* V4b — mini-carte : plan du niveau courant + marqueurs cliquables */}
+            {hasAnyPlan && (
+              <div className="absolute bottom-4 right-4 z-20 w-64 rounded-lg bg-black/75 p-2 text-white">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[10px] uppercase text-stone-400">Plan{currentLevel ? ` — ${currentLevel.name}` : ''}</span>
+                  <button onClick={() => setShowPlan((v) => !v)} className="text-xs text-stone-300 hover:text-white">{showPlan ? '▾' : '▸'}</button>
+                </div>
+                {showPlan && (
+                  <>
+                    {levels.filter((l) => l.planUrl).length > 1 && (
+                      <div className="mb-1 flex flex-wrap gap-1">
+                        {levels.filter((l) => l.planUrl).map((l) => {
+                          const active = currentLevel?.id === l.id;
+                          const target = scenes.find((s) => s.levelId === l.id);
+                          return (
+                            <button key={l.id} onClick={() => { if (target) goToScene(target.id); }}
+                              className={`rounded px-1.5 py-0.5 text-[10px] ${active ? 'bg-violet-600 text-white' : 'bg-white/15 text-stone-200 hover:bg-white/25'}`}>
+                              {l.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <TourFloorPlan
+                      planUrl={currentPlanUrl}
+                      levelId={currentLevel?.id ?? null}
+                      scenes={scenes}
+                      currentSceneId={currentSceneId}
+                      onMarkerClick={(sid) => goToScene(sid)}
+                    />
+                  </>
+                )}
               </div>
             )}
             {scenes.length > 1 && (
