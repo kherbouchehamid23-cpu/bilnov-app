@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Plus, LogOut, Building2, Home, Wrench, FileText, Compass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
 import NotificationsBell from '@/components/NotificationsBell';
@@ -35,7 +36,6 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--surface)' }}>
-      {/* Barre supérieure (responsive, remplace la sidebar fixe) */}
       <header className="sticky top-0 z-40 glass border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
           <div className="rounded-lg flex items-center justify-center" style={{ width: 32, height: 32, background: 'var(--violet)' }}>
@@ -43,7 +43,7 @@ export default function DashboardPage() {
           </div>
           <span className="font-bold text-base" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Bilnov</span>
           <div className="flex-1" />
-          <Link href="/projects/new" className="btn-primary text-sm" style={{ minHeight: 40 }}>＋ Nouveau projet</Link>
+          <Link href="/projects/new" className="btn-primary text-sm" style={{ minHeight: 40 }}><Plus size={16} /> Nouveau projet</Link>
           <NotificationsBell />
           <div className="flex items-center gap-2 pl-2 ml-1 border-l" style={{ borderColor: 'var(--border)' }}>
             <div className="rounded-full flex items-center justify-center text-xs font-bold text-white"
@@ -51,7 +51,7 @@ export default function DashboardPage() {
               {initials}
             </div>
             <button onClick={handleLogout} className="rounded-lg flex items-center justify-center"
-              style={{ width: 40, height: 40, color: 'var(--text-muted)' }} title="Déconnexion">↪</button>
+              style={{ width: 40, height: 40, color: 'var(--text-muted)' }} title="Déconnexion" aria-label="Déconnexion"><LogOut size={18} /></button>
           </div>
         </div>
       </header>
@@ -74,7 +74,7 @@ export default function DashboardPage() {
           </div>
         ) : projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-5" style={{ background: 'var(--violet-light)' }}>🏗️</div>
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'var(--violet-light)' }}><Building2 size={36} style={{ color: 'var(--violet)' }} /></div>
             <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Aucun projet</h3>
             <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Créez votre premier projet pour commencer.</p>
             <Link href="/projects/new" className="btn-primary">Créer mon premier projet</Link>
@@ -84,8 +84,8 @@ export default function DashboardPage() {
             {projects.map(project => (
               <Link key={project.id} href={'/projects/' + project.id}>
                 <div className="file-card rounded-2xl p-6">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg mb-4" style={{ background: 'var(--violet-light)' }}>
-                    {project.structureType === 'BUILDING' ? '🏠' : '🔧'}
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: 'var(--violet-light)' }}>
+                    {project.structureType === 'BUILDING' ? <Home size={18} style={{ color: 'var(--violet)' }} /> : <Wrench size={18} style={{ color: 'var(--violet)' }} />}
                   </div>
                   <h3 className="font-bold text-base mb-1 truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
                     {project.name}
@@ -96,8 +96,8 @@ export default function DashboardPage() {
                     </span>
                   )}
                   <div className="flex gap-4 mt-3 pt-3 border-t text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-                    <span>📁 {project._count?.files ?? 0}</span>
-                    <span>🌐 {project._count?.tours ?? 0}</span>
+                    <span className="inline-flex items-center gap-1"><FileText size={13} /> {project._count?.files ?? 0}</span>
+                    <span className="inline-flex items-center gap-1"><Compass size={13} /> {project._count?.tours ?? 0}</span>
                   </div>
                 </div>
               </Link>
