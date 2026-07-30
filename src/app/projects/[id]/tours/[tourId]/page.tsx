@@ -421,6 +421,7 @@ export default function TourEditorPage() {
             ← Retour
           </Link>
           <Link href={`/projects/${id}/tours/${tourId}/view`} className="text-stone-400 hover:text-white transition-colors text-sm">👁 Voir</Link>
+          <Link href={`/projects/${id}/tours/${tourId}/overview`} className="text-stone-400 hover:text-white transition-colors text-sm">✓ Qualité</Link>
           <div className="w-px h-4 bg-stone-700" />
           <span className="font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
             {tour?.name}
