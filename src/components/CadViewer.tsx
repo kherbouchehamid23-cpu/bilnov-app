@@ -633,7 +633,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-900">
       {/* Barre d'outils */}
-      <div className="flex items-center justify-between bg-slate-800 px-3 py-2 text-white">
+      <div className="flex items-center justify-between bg-white/5 backdrop-blur-xl border-b border-white/10 px-3 py-2 text-white">
         <span className="truncate text-sm font-medium max-w-[22%]">{fileName}</span>
         <div className="flex items-center gap-1.5 flex-wrap">
           <button className={btn(tool === 'pan')} onClick={() => { setTool('pan'); resetTools(); }}><Hand size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Naviguer</button>
@@ -877,7 +877,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
 
         {/* Barre d'action de placement tactile (zone du pouce, cibles >=44px) */}
         {isTouch && placementTool && !draft && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-2xl bg-slate-800/95 px-3 py-2 shadow-2xl">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-2xl bg-white/10 backdrop-blur-2xl border border-white/15 px-3 py-2 shadow-2xl">
             {tool === 'measure' && (<>
               <button onClick={placeCenterPoint} disabled={measurePts.length >= 2} className="rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-40" style={{ minHeight: 44 }}>＋ Point ({measurePts.length}/2)</button>
               {measureDist !== null && <button onClick={() => void saveDistance()} className="rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white" style={{ minHeight: 44 }}>Enregistrer</button>}
@@ -946,7 +946,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
 
         {/* Panneau calques */}
         {showLayers && !showPanel && layers.length > 0 && (
-          <div className="w-60 shrink-0 overflow-y-auto border-l border-slate-700 bg-slate-800 p-3 text-white">
+          <div className="w-60 shrink-0 overflow-y-auto border-l border-white/10 bg-white/5 backdrop-blur-xl p-3 text-white">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Calques ({layers.length})</p>
             <ul className="space-y-1">
               {layers.map((l) => (
