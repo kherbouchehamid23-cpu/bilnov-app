@@ -10,6 +10,7 @@ import { isBimOr3D } from '@/lib/bim';
 import { uploadFileDirect } from '@/lib/upload';
 import { acceptAttr, uploadHint, type UploadRulesConfig } from '@/lib/uploadRules';
 import { makeThumb, getCachedThumb } from '@/lib/thumbs';
+import { Building2, DoorOpen, Package, Pin, Image as ImageIcon, Globe, FileText, Video, Box, Ruler, Building, Folder, Users, Link2, MessageSquare, Layers, Hourglass, Info, Pencil, Trash2, type LucideIcon } from 'lucide-react';
 
 const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
 const Model3DViewer = dynamic(() => import('@/components/Model3DViewer'), { ssr: false });
@@ -38,13 +39,15 @@ const childTypeOf: Record<string, string> = {
 const nodeTypeLabel: Record<string, string> = {
   floor: 'Étage', room: 'Pièce', zone: 'Zone', custom: 'Espace',
 };
-const nodeTypeIcon: Record<string, string> = {
-  floor: '🏢', room: '🚪', zone: '📦', custom: '📌',
+const NODE_ICON: Record<string, LucideIcon> = {
+  floor: Building2, room: DoorOpen, zone: Package, custom: Pin,
 };
-const icons: Record<string, string> = {
-  IMAGE: '🖼️', IMAGE_360: '🌐', PDF: '📄', VIDEO: '🎥',
-  GLB: '🧊', GLTF: '🧊', OBJ: '🧊', DWG: '📐', DXF: '📐', IFC: '🏗️',
+const FILE_ICON: Record<string, LucideIcon> = {
+  IMAGE: ImageIcon, IMAGE_360: Globe, PDF: FileText, VIDEO: Video,
+  GLB: Box, GLTF: Box, OBJ: Box, DWG: Ruler, DXF: Ruler, IFC: Building,
 };
+function NodeIco({ t, size = 16 }: { t: string; size?: number }) { const C = NODE_ICON[t] ?? Pin; return <C size={size} />; }
+function FileIco({ t, size = 18 }: { t: string; size?: number }) { const C = FILE_ICON[t] ?? Folder; return <C size={size} />; }
 
 export default function ProjectPage() {
   const params = useParams();
@@ -254,7 +257,7 @@ export default function ProjectPage() {
               color: selectedNodeId === node.id ? 'var(--violet)' : 'var(--text)',
               fontWeight: selectedNodeId === node.id ? 600 : 400,
             }}>
-            <span>{nodeTypeIcon[node.nodeType] ?? '📌'}</span>
+            <span><NodeIco t={node.nodeType} size={16} /></span>
             <span className="flex-1 truncate">{node.name}</span>
             <span className="text-xs opacity-60">{node._count.files}</span>
           </button>
@@ -322,7 +325,7 @@ export default function ProjectPage() {
           color: selectedNodeId === null ? 'var(--violet)' : 'var(--text)',
           fontWeight: selectedNodeId === null ? 600 : 400,
         }}>
-        <span>📂</span><span className="flex-1">Tous les fichiers</span>
+        <Folder size={16} /><span className="flex-1">Tous les fichiers</span>
       </button>
       {addingUnder && addingUnder.parentId === null && renderAddForm()}
       {renderNodes(nodes)}
@@ -334,12 +337,12 @@ export default function ProjectPage() {
     </div>
   );
 
-  const tabs: { key: Tab; label: string; icon: string; count?: number }[] = [
-    { key: 'files', label: 'Fichiers', icon: '📁', count: files.length },
-    { key: 'tours', label: 'Visites', icon: '🌐' },
-    { key: 'team', label: 'Équipe', icon: '👥' },
-    { key: 'access', label: 'Partage', icon: '🔗' },
-    { key: 'comments', label: 'Commentaires', icon: '💬' },
+  const tabs: { key: Tab; label: string; Icon: LucideIcon; count?: number }[] = [
+    { key: 'files', label: 'Fichiers', Icon: Folder, count: files.length },
+    { key: 'tours', label: 'Visites', Icon: Globe },
+    { key: 'team', label: 'Équipe', Icon: Users },
+    { key: 'access', label: 'Partage', Icon: Link2 },
+    { key: 'comments', label: 'Commentaires', Icon: MessageSquare },
   ];
 
   const selectedNodeName = selectedNodeId
@@ -396,7 +399,7 @@ export default function ProjectPage() {
             <button key={t.key} onClick={() => setTab(t.key)}
               className="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap"
               style={{ borderColor: tab === t.key ? 'var(--violet)' : 'transparent', color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)' }}>
-              <span>{t.icon}</span>{t.label}
+              <t.Icon size={16} />{t.label}
               {t.count !== undefined && (
                 <span className="px-1.5 py-0.5 rounded-full text-xs"
                   style={{ background: tab === t.key ? 'var(--violet-light)' : 'var(--surface-2)', color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)' }}>{t.count}</span>
@@ -438,7 +441,7 @@ export default function ProjectPage() {
             <>
               <div className="flex items-center gap-2 mb-4">
                 <button onClick={() => setDrawerOpen(true)}
-                  className="md:hidden btn-secondary text-sm" style={{ minHeight: 40 }}>🗂️ Structure</button>
+                  className="md:hidden btn-secondary text-sm" style={{ minHeight: 40 }}><Layers size={15} /> Structure</button>
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   {selectedNodeName ? <><b style={{ color: 'var(--text)' }}>{selectedNodeName}</b> · </> : null}
                   {files.length} fichier{files.length !== 1 ? 's' : ''}
@@ -447,13 +450,13 @@ export default function ProjectPage() {
               {canUpload && uploadAccept && (
                 <p className="text-xs mb-3 inline-flex items-center gap-1 px-2 py-1 rounded-lg"
                   style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>
-                  ℹ️ {uploadMsg}
+                  <Info size={14} /> {uploadMsg}
                 </p>
               )}
 
               {files.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="text-5xl mb-3">📂</div>
+                  <div className="mb-3"><Folder size={48} style={{ color: 'var(--text-light)' }} /></div>
                   <p style={{ color: 'var(--text-muted)' }}>
                     {selectedNodeId ? 'Aucun fichier dans cet espace.' : 'Aucun fichier. Touchez ＋ Fichier pour commencer.'}
                   </p>
@@ -469,7 +472,7 @@ export default function ProjectPage() {
                           {thumbnails[file.id] ? (
                             <img src={thumbnails[file.id]} alt={file.name} className="w-full h-full object-cover" />
                           ) : (
-                            <span style={{ fontSize: 44 }}>{openingId === file.id ? '⏳' : (icons[file.fileType] ?? '📁')}</span>
+                            <span>{openingId === file.id ? <Hourglass size={40} style={{ color: 'var(--text-light)' }} /> : <FileIco t={file.fileType} size={40} />}</span>
                           )}
                         </div>
                         <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{file.name}</p>
@@ -491,11 +494,11 @@ export default function ProjectPage() {
                           style={{ top: 50, right: 14, background: '#fff', border: '1px solid var(--border)', minWidth: 150 }}>
                           <button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44 }}
                             onClick={() => { setEditingFileId(file.id); setEditingFileName(file.name); setMenuFileId(null); }}>
-                            ✎ Renommer
+                            <Pencil size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 6 }} />Renommer
                           </button>
                           <button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44, color: '#EF4444' }}
                             onClick={() => { void deleteFile(file.id); }}>
-                            🗑 Supprimer
+                            <Trash2 size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 6 }} />Supprimer
                           </button>
                         </div>
                       )}
@@ -531,7 +534,7 @@ export default function ProjectPage() {
           {/* TEAM */}
           {tab === 'team' && !canManage && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--surface-2)' }}>👥</div>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--surface-2)' }}><Users size={30} style={{ color: 'var(--violet)' }} /></div>
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                 Seul le propriétaire du projet peut gérer les intervenants.
               </p>
@@ -539,7 +542,7 @@ export default function ProjectPage() {
           )}
           {tab === 'team' && canManage && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--violet-light)' }}>👥</div>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--violet-light)' }}><Users size={30} style={{ color: 'var(--violet)' }} /></div>
               <h3 className="font-bold text-lg mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Gérer les intervenants</h3>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Invitez des collaborateurs et gérez leurs permissions.</p>
               <Link href={`/projects/${id}/team`} className="btn-primary">Gérer les intervenants</Link>
@@ -549,7 +552,7 @@ export default function ProjectPage() {
           {/* ACCESS */}
           {tab === 'access' && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--violet-light)' }}>🔗</div>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--violet-light)' }}><Link2 size={30} style={{ color: 'var(--violet)' }} /></div>
               <h3 className="font-bold text-lg mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Codes de partage</h3>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Créez des codes d&apos;accès sécurisés.</p>
               <Link href={`/projects/${id}/access`} className="btn-primary">Gérer les codes</Link>
@@ -557,7 +560,7 @@ export default function ProjectPage() {
           )}
           {tab === 'comments' && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--violet-light)' }}>💬</div>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'var(--violet-light)' }}><MessageSquare size={30} style={{ color: 'var(--violet)' }} /></div>
               <h3 className="font-bold text-lg mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Commentaires &amp; reserves</h3>
               <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Observations, reserves et non-conformites du projet.</p>
               <Link href={`/projects/${id}/comments`} className="btn-primary">Ouvrir les commentaires</Link>
@@ -573,7 +576,7 @@ export default function ProjectPage() {
           <button key={t.key} onClick={() => setTab(t.key)}
             className="flex flex-col items-center justify-center gap-0.5"
             style={{ minWidth: 64, minHeight: 56, color: tab === t.key ? 'var(--violet)' : 'var(--text-muted)', fontWeight: tab === t.key ? 600 : 400 }}>
-            <span style={{ fontSize: 20 }}>{t.icon}</span>
+            <t.Icon size={20} />
             <span style={{ fontSize: 10 }}>{t.label}</span>
           </button>
         ))}
