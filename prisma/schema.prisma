@@ -235,8 +235,24 @@ model VirtualTour {
   node    ProjectStructureNode? @relation(fields: [nodeId], references: [id])
   createdBy User                @relation(fields: [createdById], references: [id])
   scenes  TourScene[]
+  levels  TourLevel[]
 
   @@map("virtual_tours")
+}
+
+// Niveau/étage d'une visite (V4) : regroupe des scènes et porte un plan 2D.
+model TourLevel {
+  id           String   @id @default(uuid())
+  tourId       String   @map("tour_id")
+  name         String
+  position     Int      @default(0)
+  planImageUrl String?  @map("plan_image_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tour   VirtualTour @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  scenes TourScene[]
+
+  @@map("tour_levels")
 }
 
 enum TourStatus {
@@ -254,7 +270,13 @@ model TourScene {
   imageUrl  String   @map("image_url")
   createdAt DateTime @default(now()) @map("created_at")
 
+  // V4 — rattachement à un niveau + position du marqueur sur le plan 2D (normalisée 0..1).
+  levelId String? @map("level_id")
+  mapX    Float?  @map("map_x")
+  mapY    Float?  @map("map_y")
+
   tour     VirtualTour   @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  level    TourLevel?    @relation(fields: [levelId], references: [id], onDelete: SetNull)
   hotspots TourHotspot[]
 
   @@map("tour_scenes")

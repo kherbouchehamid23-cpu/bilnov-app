@@ -14,6 +14,10 @@ export async function PATCH(
       name?: string;
       isInitial?: boolean;
       position?: number;
+      // V4 — rattachement niveau + position sur le plan 2D.
+      levelId?: string | null;
+      mapX?: number | null;
+      mapY?: number | null;
     };
 
     // Si on définit isInitial = true, retirer isInitial des autres scènes
@@ -24,12 +28,19 @@ export async function PATCH(
       });
     }
 
+    // Bornage des coordonnées de carte (0..1) si fournies.
+    const clamp01 = (n: number | null | undefined): number | null | undefined =>
+      typeof n === 'number' && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : (n === null ? null : undefined);
+
     const scene = await prisma.tourScene.update({
       where: { id: params.sceneId },
       data: {
         name: body.name,
         isInitial: body.isInitial,
         position: body.position,
+        levelId: body.levelId === undefined ? undefined : body.levelId,
+        mapX: clamp01(body.mapX),
+        mapY: clamp01(body.mapY),
       },
     });
 
