@@ -52,7 +52,7 @@ export interface HotspotTypeDef {
 
 /** Registre unique — source de vérité des types. */
 export const HOTSPOT_TYPES: Record<HotspotKind, HotspotTypeDef> = {
-  DIRECTION:   { kind: 'DIRECTION',   label: 'Direction',            description: 'Aller vers une autre scène',       icon: 'arrow', dbType: 'LINK',  cssClass: 'pnlm-hotspot bilnov-dir',  needsTarget: true,  fields: ['targetSceneId', 'title'] },
+  DIRECTION:   { kind: 'DIRECTION',   label: 'Direction',            description: 'Aller vers une autre scène',       icon: 'arrow', dbType: 'LINK',  cssClass: 'pnlm-hotspot bilnov-dir',  needsTarget: true,  fields: ['targetSceneId', 'title', 'returnLink'] },
   IMAGE:       { kind: 'IMAGE',       label: 'Image',                description: 'Afficher une image',               icon: 'image', dbType: 'IMAGE', cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'url', 'caption'] },
   GALLERY:     { kind: 'GALLERY',     label: 'Galerie',              description: 'Plusieurs images',                 icon: 'image', dbType: 'IMAGE', cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'images'] },
   PDF:         { kind: 'PDF',         label: 'PDF',                  description: 'Document PDF',                     icon: 'pdf',   dbType: 'TEXT',  cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'url', 'allowDownload'] },
@@ -235,6 +235,7 @@ const FIELD_META: Record<string, FieldDef> = {
   priority:      { name: 'priority',      label: 'Priorité',       control: 'select', options: [
     { value: 'LOW', label: 'Basse' }, { value: 'NORMAL', label: 'Normale' }, { value: 'HIGH', label: 'Haute' },
   ] },
+  returnLink:    { name: 'returnLink',    label: 'Créer aussi le lien retour (B → A)', control: 'checkbox' },
   openMode:      { name: 'openMode',      label: 'Ouverture',      control: 'select', options: [
     { value: 'newTab', label: 'Nouvel onglet' }, { value: 'panel', label: 'Panneau interne' },
   ] },
@@ -299,4 +300,18 @@ export function buildHotspotPayload(
       content,
     },
   };
+}
+
+
+/** Construit le hotspot RETOUR (B->A) d'un lien bidirectionnel (§22). */
+export function buildReturnPayload(
+  forward: HotspotPayload,
+  sourceSceneId: string,
+  title?: string,
+): HotspotPayload | null {
+  if (!forward.targetSceneId) return null;
+  const yaw = (((forward.positionYaw + 180) % 360) + 360) % 360;
+  const content: Record<string, unknown> = { kind: 'DIRECTION' };
+  if (title && title.trim()) content.title = title.trim().slice(0, 200);
+  return { type: 'LINK', positionYaw: yaw, positionPitch: 0, targetSceneId: sourceSceneId, content };
 }

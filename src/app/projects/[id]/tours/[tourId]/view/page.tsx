@@ -4,10 +4,19 @@ import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { isDirection, hotspotLabel } from '@/lib/tour';
+import { kindFromContent } from '@/lib/tourHotspots';
 
 interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
 interface ApiResponse<T> { data: T; success: boolean; }
+
+function embedUrl(u: string): string | null {
+  const yt = u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
+  const vm = u.match(/vimeo\.com\/(\d+)/);
+  if (vm) return `https://player.vimeo.com/video/${vm[1]}`;
+  return null;
+}
 
 // Mode VISITEUR (lecture seule) : navigation par hotspots, aucune commande d'edition.
 export default function TourViewerPage() {
@@ -139,18 +148,36 @@ export default function TourViewerPage() {
           </div>
         )}
 
-        {infoModal && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60" onClick={() => setInfoModal(null)}>
-            <div className="max-w-sm rounded-xl bg-white p-4 text-slate-800" onClick={(e) => e.stopPropagation()}>
-              {typeof infoModal.content.title === 'string' && <p className="mb-1 font-semibold">{infoModal.content.title}</p>}
-              {infoModal.type === 'TEXT' && <p className="whitespace-pre-wrap text-sm">{String(infoModal.content.text ?? '')}</p>}
+        {infoModal && (() => {
+          const k = kindFromContent(infoModal.type, infoModal.content);
+          const url = String(infoModal.content.url ?? '');
+          const emb = embedUrl(url);
+          return (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4" onClick={() => setInfoModal(null)}>
+            <div className="max-w-md rounded-xl bg-white p-4 text-slate-800" onClick={(e) => e.stopPropagation()}>
+              {typeof infoModal.content.title === 'string' && infoModal.content.title && <p className="mb-2 font-semibold">{infoModal.content.title}</p>}
+              {(k === 'DESCRIPTION' || k === 'INFO' || k === 'COMMENT') && <p className="whitespace-pre-wrap text-sm">{String(infoModal.content.text ?? '')}</p>}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {infoModal.type === 'IMAGE' && <img src={String(infoModal.content.url ?? '')} alt="" className="max-h-64 rounded" />}
-              {infoModal.type === 'VIDEO' && <video src={String(infoModal.content.url ?? '')} controls className="max-h-64 rounded" />}
+              {k === 'IMAGE' && <img src={url} alt={String(infoModal.content.caption ?? '')} className="max-h-72 w-full rounded object-contain" />}
+              {k === 'GALLERY' && (
+                <div className="grid grid-cols-2 gap-2">
+                  {(Array.isArray(infoModal.content.images) ? infoModal.content.images : []).map((u, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={i} src={String(u)} alt="" className="h-28 w-full rounded object-cover" />
+                  ))}
+                </div>
+              )}
+              {k === 'VIDEO' && (emb
+                ? <iframe src={emb} className="aspect-video w-full rounded" allowFullScreen title="Vidéo" />
+                : <video src={url} controls className="max-h-72 w-full rounded" />)}
+              {(k === 'PDF' || k === 'FILE' || k === 'URL' || k === 'AUDIO' || k === 'PRODUCT') && (
+                <a href={url || '#'} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block rounded-lg bg-violet-600 px-3 py-1.5 text-sm text-white">Ouvrir</a>
+              )}
               <button onClick={() => setInfoModal(null)} className="mt-3 w-full rounded bg-slate-200 py-1.5 text-sm">Fermer</button>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import {
   HOTSPOT_TYPES, HOTSPOT_KINDS, isHotspotKind, dbTypeForKind, kindFromContent,
   sanitizeText, isValidUrl, clampHfov, normalizeArrival, validateHotspot, buildContent,
   fieldsFor, buildHotspotPayload,
+  buildReturnPayload,
 } from '../tourHotspots';
 
 describe('registre des types', () => {
@@ -136,5 +137,20 @@ describe('buildHotspotPayload (non-régression du POST)', () => {
     expect(r.ok).toBe(true);
     const arr = r.payload!.content.arrival as { yaw: number };
     expect(arr.yaw).toBe(10);
+  });
+});
+
+describe('lien bidirectionnel', () => {
+  it('construit le hotspot retour (cible inversée, yaw +180)', () => {
+    const f = buildHotspotPayload('DIRECTION', { targetSceneId: 'B' }, { yaw: 30, pitch: 0 }).payload!;
+    const r = buildReturnPayload(f, 'A', 'Salon');
+    expect(r).not.toBeNull();
+    expect(r!.targetSceneId).toBe('A');
+    expect(r!.positionYaw).toBe(210);
+    expect(r!.content.kind).toBe('DIRECTION');
+    expect(r!.content.title).toBe('Salon');
+  });
+  it('null sans cible', () => {
+    expect(buildReturnPayload({ type: 'TEXT', positionYaw: 0, positionPitch: 0, targetSceneId: null, content: {} }, 'A')).toBeNull();
   });
 });

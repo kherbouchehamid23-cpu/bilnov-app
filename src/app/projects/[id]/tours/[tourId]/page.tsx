@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { uploadFileDirect } from '@/lib/upload';
 import { hotspotLabel, isDirection } from '@/lib/tour';
-import { buildHotspotPayload, kindFromContent, type HotspotKind } from '@/lib/tourHotspots';
+import { buildHotspotPayload, buildReturnPayload, kindFromContent, type HotspotKind } from '@/lib/tourHotspots';
 import TourHotspotPanel from '@/components/TourHotspotPanel';
 
 interface Tour { id: string; name: string; status: string; }
@@ -167,6 +167,17 @@ export default function TourEditorPage() {
       });
       const d = await r.json() as ApiResponse<Hotspot>;
       if (d.data) setHotspots((prev) => [...prev, d.data]);
+      if (hsForm.returnLink === true && res.payload.targetSceneId) {
+        const ret = buildReturnPayload(res.payload, currentScene.id, currentScene.name);
+        if (ret) {
+          try {
+            await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${res.payload.targetSceneId}/hotspots`, {
+              method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify(ret),
+            });
+          } catch { alert('Lien créé, mais le lien retour a échoué.'); }
+        }
+      }
       closeHotspotPanel();
     } catch { setHsErrors(["Erreur lors de l'enregistrement, réessayez."]); }
   };
