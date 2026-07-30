@@ -280,3 +280,26 @@ h1, h2, h3, h4 {
 @media (max-width:900px){.lg-authgrid{grid-template-columns:1fr}.lg-authaside{display:none!important}}
 /* === fin BILNOV Liquid Glass (V2/V3) === */
 
+/* === BILNOV Liquid Glass — thème app sombre (.lg-app) === */
+.lg-app{
+  --surface:#070b16; --surface-2:rgba(255,255,255,.06); --border:rgba(255,255,255,.12);
+  --text:#f4f7fd; --text-muted:#9fb0c9; --text-light:#6b7c98;
+  --violet:#8b7bff; --violet-mid:#a493ff; --violet-light:rgba(124,109,255,.18); --violet-dark:#7c6dff;
+  position:relative; isolation:isolate;
+}
+.lg-app::before{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;background:
+  radial-gradient(60% 55% at 82% 6%, rgba(79,70,229,.40), transparent 60%),
+  radial-gradient(50% 45% at 6% 14%, rgba(34,211,238,.26), transparent 60%),
+  radial-gradient(55% 60% at 62% 100%, rgba(139,92,246,.30), transparent 62%),
+  linear-gradient(160deg,#0b1120,#05060c);}
+.lg-app .glass{background:rgba(255,255,255,.055)!important;-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);border-color:rgba(255,255,255,.12)!important;}
+.lg-app .file-card{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12);}
+.lg-app .file-card:hover{border-color:rgba(150,160,255,.5);background:rgba(255,255,255,.085);box-shadow:0 12px 40px rgba(2,6,20,.5);}
+.lg-app .input{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.16);color:var(--text);}
+.lg-app .input::placeholder{color:var(--text-light);}
+.lg-app .input:focus{border-color:#22d3ee;box-shadow:0 0 0 3px rgba(34,211,238,.16);}
+.lg-app .btn-secondary{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16);color:var(--text);}
+.lg-app .btn-secondary:hover{background:rgba(255,255,255,.12);border-color:rgba(150,160,255,.5);color:#fff;}
+.lg-app .skeleton{background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;}
+/* === fin thème app sombre === */
+
