@@ -194,7 +194,7 @@ export default function TeamPage() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--surface)' }}>
+    <div className="lg-app min-h-screen" style={{ background: 'var(--surface)' }}>
       {/* Header */}
       <header className="sticky top-0 z-40 glass border-b px-6 py-4"
         style={{ borderColor: 'var(--border)' }}>
@@ -231,7 +231,7 @@ export default function TeamPage() {
         {/* Invite form */}
         {showInviteForm && (
           <div className="mb-8 p-6 rounded-2xl border animate-fade-up"
-            style={{ background: 'white', borderColor: 'var(--violet-light)' }}>
+            style={{ background: 'rgba(255,255,255,.06)', borderColor: 'var(--violet-light)' }}>
             <h2 className="font-bold text-lg mb-5"
               style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
               Inviter un intervenant
@@ -271,7 +271,7 @@ export default function TeamPage() {
                       className="p-3 rounded-xl border-2 text-left transition-all"
                       style={{
                         borderColor: form[perm.key] ? 'var(--violet)' : 'var(--border)',
-                        background: form[perm.key] ? 'var(--violet-light)' : 'white',
+                        background: form[perm.key] ? 'var(--violet-light)' : 'rgba(255,255,255,.06)',
                       }}>
                       <div className="text-sm font-medium" style={{ color: 'var(--text)' }}>
                         {perm.label}
@@ -348,7 +348,7 @@ export default function TeamPage() {
             <div className="space-y-3">
               {members.map(member => (
                 <div key={member.id}
-                  className="flex items-center gap-4 p-4 rounded-2xl border bg-white"
+                  className="flex items-center gap-4 p-4 rounded-2xl border bg-white/5"
                   style={{ borderColor: 'var(--border)' }}>
                   {/* Avatar */}
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
@@ -400,7 +400,7 @@ export default function TeamPage() {
 
         {/* Panneau d'édition intervenant */}
         {editingMember && (
-          <div className="mt-6 p-5 rounded-2xl border bg-white space-y-4" style={{ borderColor: 'var(--violet-light)' }}>
+          <div className="mt-6 p-5 rounded-2xl border bg-white/5 space-y-4" style={{ borderColor: 'var(--violet-light)' }}>
             <h3 className="font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
               Modifier le partage — {editingMember.user.firstName} {editingMember.user.lastName}
             </h3>
