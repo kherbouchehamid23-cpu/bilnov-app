@@ -4,7 +4,7 @@ import {
   HOTSPOT_TYPES, HOTSPOT_KINDS, isHotspotKind, dbTypeForKind, kindFromContent,
   sanitizeText, isValidUrl, clampHfov, normalizeArrival, validateHotspot, buildContent,
   fieldsFor, buildHotspotPayload,
-  buildReturnPayload,
+  buildReturnPayload, arrivalTarget,
 } from '../tourHotspots';
 
 describe('registre des types', () => {
@@ -152,5 +152,25 @@ describe('lien bidirectionnel', () => {
   });
   it('null sans cible', () => {
     expect(buildReturnPayload({ type: 'TEXT', positionYaw: 0, positionPitch: 0, targetSceneId: null, content: {} }, 'A')).toBeNull();
+  });
+});
+
+describe('orientation d arrivee (multiScene V3b)', () => {
+  it('fige une orientation explicite bornee', () => {
+    const t = arrivalTarget({ arrival: { yaw: 370, pitch: 200, hfov: 999 } });
+    expect(t.targetYaw).toBe(10);
+    expect(t.targetPitch).toBe(85);
+    expect(t.targetHfov).toBe(120);
+  });
+  it('accepte une orientation a plat (yaw seul)', () => {
+    const t = arrivalTarget({ arrival: { yaw: 90 } });
+    expect(t.targetYaw).toBe(90);
+    expect(t.targetPitch).toBe(0);
+  });
+  it('bascule sur sameAzimuth sans donnee (continuite de cap)', () => {
+    expect(arrivalTarget({}).targetYaw).toBe('sameAzimuth');
+    expect(arrivalTarget(null).targetYaw).toBe('sameAzimuth');
+    expect(arrivalTarget({ kind: 'DIRECTION' }).targetYaw).toBe('sameAzimuth');
+    expect(arrivalTarget({}).targetPitch).toBe(0);
   });
 });

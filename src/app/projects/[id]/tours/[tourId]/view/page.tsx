@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { isDirection, hotspotLabel } from '@/lib/tour';
-import { kindFromContent } from '@/lib/tourHotspots';
+import { kindFromContent, arrivalTarget } from '@/lib/tourHotspots';
 
 interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
@@ -18,7 +18,11 @@ function embedUrl(u: string): string | null {
   return null;
 }
 
-// Mode VISITEUR (lecture seule) : navigation par hotspots, aucune commande d'edition.
+// Mode VISITEUR (lecture seule).
+// V3b : Pannellum en mode MULTISCENE — une seule instance conservée, transitions
+// en fondu (sceneFadeDuration) et navigation via hotspots de scène natifs qui
+// portent l'orientation d'arrivée (targetYaw/targetPitch/targetHfov). Fini le
+// destroy/recreate par scène (ancien comportement).
 export default function TourViewerPage() {
   const params = useParams();
   const id = params.id as string;
@@ -27,20 +31,21 @@ export default function TourViewerPage() {
   const [tourName, setTourName] = useState('');
   const [canEdit, setCanEdit] = useState(false);
   const [scenes, setScenes] = useState<Scene[]>([]);
-  const [currentScene, setCurrentScene] = useState<Scene | null>(null);
-  const [hotspots, setHotspots] = useState<Hotspot[]>([]);
+  const [currentSceneId, setCurrentSceneId] = useState<string | null>(null);
+  const [hotspotsByScene, setHotspotsByScene] = useState<Record<string, Hotspot[]>>({});
   const [infoModal, setInfoModal] = useState<Hotspot | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
   const [pLoaded, setPLoaded] = useState(false);
+  const [viewerReady, setViewerReady] = useState(false);
 
   const viewerRef = useRef<HTMLDivElement>(null);
-  const instRef = useRef<{ destroy: () => void } | null>(null);
-  const scenesRef = useRef<Scene[]>([]);
-  useEffect(() => { scenesRef.current = scenes; }, [scenes]);
+  type PViewer = { destroy: () => void; loadScene: (id: string) => void; getScene: () => string; on: (e: string, f: (v: unknown) => void) => void };
+  const instRef = useRef<PViewer | null>(null);
 
   const getToken = (): string => typeof window !== 'undefined' ? localStorage.getItem('bilnov_token') ?? '' : '';
 
-  // Charger Pannellum
+  // Charger Pannellum (CDN)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (window.pannellum) { setPLoaded(true); return; }
@@ -53,59 +58,110 @@ export default function TourViewerPage() {
     document.body.appendChild(script);
   }, []);
 
-  // Charger droits + scenes
+  // Charger droits + scènes + hotspots de TOUTES les scènes (multiScene).
   useEffect(() => {
     void (async () => {
       try {
+        const auth = { headers: { Authorization: `Bearer ${getToken()}` } };
         const [pRes, tRes, sRes] = await Promise.all([
-          fetch(`/api/projects/${id}`, { headers: { Authorization: `Bearer ${getToken()}` } }),
-          fetch(`/api/projects/${id}/tours/${tourId}`, { headers: { Authorization: `Bearer ${getToken()}` } }),
-          fetch(`/api/projects/${id}/tours/${tourId}/scenes`, { headers: { Authorization: `Bearer ${getToken()}` } }),
+          fetch(`/api/projects/${id}`, auth),
+          fetch(`/api/projects/${id}/tours/${tourId}`, auth),
+          fetch(`/api/projects/${id}/tours/${tourId}/scenes`, auth),
         ]);
         const pData = await pRes.json() as ApiResponse<{ access?: { canManage?: boolean; canUpload?: boolean } }>;
         setCanEdit(Boolean(pData.data?.access?.canManage || pData.data?.access?.canUpload));
         const tData = await tRes.json() as ApiResponse<{ name?: string }>;
         if (tData.data?.name) setTourName(tData.data.name);
         const sData = await sRes.json() as ApiResponse<{ scenes: Scene[] }>;
-        const list = sData.data?.scenes ?? [];
+        const list = (sData.data?.scenes ?? []).slice().sort((a, b) => a.position - b.position);
         setScenes(list);
-        setCurrentScene(list.find(s => s.isInitial) ?? list[0] ?? null);
+        const initial = list.find(s => s.isInitial) ?? list[0] ?? null;
+        setCurrentSceneId(initial?.id ?? null);
+
+        // Précharge les hotspots de chaque scène en parallèle.
+        const entries = await Promise.all(list.map(async (s) => {
+          try {
+            const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${s.id}/hotspots`, auth);
+            const d = await r.json() as ApiResponse<{ hotspots: Hotspot[] }>;
+            return [s.id, d.data?.hotspots ?? []] as const;
+          } catch { return [s.id, [] as Hotspot[]] as const; }
+        }));
+        setHotspotsByScene(Object.fromEntries(entries));
+        setDataReady(true);
       } finally { setLoaded(true); }
     })();
   }, [id, tourId]);
 
-  // Charger hotspots de la scene courante
+  // Construire l'instance multiScene UNE fois (données + Pannellum prêts).
   useEffect(() => {
-    if (!currentScene) { setHotspots([]); return; }
-    void (async () => {
-      try {
-        const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots`, { headers: { Authorization: `Bearer ${getToken()}` } });
-        const d = await r.json() as ApiResponse<{ hotspots: Hotspot[] }>;
-        setHotspots(d.data?.hotspots ?? []);
-      } catch { setHotspots([]); }
-    })();
-  }, [currentScene, id, tourId]);
+    if (!pLoaded || !dataReady || !viewerRef.current || scenes.length === 0) return;
+    if (instRef.current) return; // déjà construit — on ne recrée jamais
 
-  // (Re)creer le viewer
-  useEffect(() => {
-    if (!pLoaded || !currentScene || !viewerRef.current) return;
-    if (instRef.current) { try { instRef.current.destroy(); } catch { /* ignore */ } instRef.current = null; }
-    const src = currentScene.panoramaProxy ? `${currentScene.panoramaProxy}?token=${getToken()}` : currentScene.imageUrl;
-    const hs = hotspots.map((h) => ({
-      id: h.id, pitch: h.positionPitch, yaw: h.positionYaw,
-      cssClass: isDirection(h.type) ? 'pnlm-hotspot bilnov-dir' : 'pnlm-hotspot bilnov-info',
-      text: hotspotLabel(h.type, h.content, scenesRef.current.find((s) => s.id === h.targetSceneId)?.name),
-      clickHandlerFunc: () => { if (isDirection(h.type)) { const t = scenesRef.current.find((s) => s.id === h.targetSceneId); if (t) setCurrentScene(t); } else setInfoModal(h); },
-    }));
-    try {
-      instRef.current = window.pannellum.viewer(viewerRef.current, {
-        type: 'equirectangular', panorama: src, autoLoad: true, autoRotate: 0,
-        compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true,
-        hfov: 100, minHfov: 50, maxHfov: 120, pitch: 0, yaw: 0, hotSpots: hs,
+    const token = getToken();
+    const sceneName = (sid: string | null) => scenes.find((s) => s.id === sid)?.name;
+
+    const cfgScenes: Record<string, unknown> = {};
+    for (const s of scenes) {
+      const src = s.panoramaProxy ? `${s.panoramaProxy}?token=${token}` : s.imageUrl;
+      const hs = (hotspotsByScene[s.id] ?? []).map((h) => {
+        if (isDirection(h.type) && h.targetSceneId && scenes.some((t) => t.id === h.targetSceneId)) {
+          const at = arrivalTarget(h.content);
+          return {
+            pitch: h.positionPitch, yaw: h.positionYaw,
+            cssClass: 'pnlm-hotspot bilnov-dir',
+            type: 'scene', sceneId: h.targetSceneId,
+            targetYaw: at.targetYaw, targetPitch: at.targetPitch,
+            ...(at.targetHfov != null ? { targetHfov: at.targetHfov } : {}),
+            text: hotspotLabel(h.type, h.content, sceneName(h.targetSceneId)),
+          };
+        }
+        return {
+          pitch: h.positionPitch, yaw: h.positionYaw,
+          cssClass: 'pnlm-hotspot bilnov-info',
+          text: hotspotLabel(h.type, h.content, sceneName(h.targetSceneId)),
+          clickHandlerFunc: () => setInfoModal(h),
+        };
       });
+      cfgScenes[s.id] = { type: 'equirectangular', panorama: src, hotSpots: hs };
+    }
+
+    const first = currentSceneId ?? scenes[0].id;
+    try {
+      const inst = window.pannellum.viewer(viewerRef.current, {
+        default: {
+          firstScene: first,
+          sceneFadeDuration: 900,
+          autoLoad: true, autoRotate: 0,
+          compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true,
+          hfov: 100, minHfov: 50, maxHfov: 120,
+        },
+        scenes: cfgScenes,
+      }) as unknown as PViewer;
+      instRef.current = inst;
+      // Suivre la scène courante (met à jour le libellé + la vignette active).
+      inst.on('scenechange', (sid: unknown) => { if (typeof sid === 'string') setCurrentSceneId(sid); });
+      setViewerReady(true);
     } catch { /* init failed */ }
-    return () => { if (instRef.current) { try { instRef.current.destroy(); } catch { /* ignore */ } instRef.current = null; } };
-  }, [pLoaded, currentScene, hotspots]);
+
+    return () => {
+      if (instRef.current) { try { instRef.current.destroy(); } catch { /* ignore */ } instRef.current = null; }
+      setViewerReady(false);
+    };
+    // Volontairement SANS currentSceneId : l'instance est bâtie une seule fois ;
+    // les changements de scène passent par loadScene / l'évènement scenechange,
+    // jamais par une reconstruction. Ajouter currentSceneId recréerait le viewer
+    // à chaque navigation (l'inverse du but recherché).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pLoaded, dataReady, scenes, hotspotsByScene]);
+
+  // Navigation par vignette -> transition en fondu via loadScene (pas de recreate).
+  const goToScene = (sid: string) => {
+    if (instRef.current && sid !== currentSceneId) {
+      try { instRef.current.loadScene(sid); } catch { /* ignore */ }
+    }
+  };
+
+  const currentScene = scenes.find((s) => s.id === currentSceneId) ?? null;
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#0f0f0f' }}>
@@ -121,11 +177,13 @@ export default function TourViewerPage() {
       </header>
 
       <div className="flex-1 flex flex-col relative">
-        {currentScene ? (
+        {scenes.length > 0 ? (
           <>
             <div ref={viewerRef} className="flex-1" style={{ minHeight: '500px', background: '#000' }} />
-            <div className="absolute top-4 left-4 z-10 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-black/60 pointer-events-none">{currentScene.name}</div>
-            {!pLoaded && (
+            {currentScene && (
+              <div className="absolute top-4 left-4 z-10 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-black/60 pointer-events-none">{currentScene.name}</div>
+            )}
+            {(!pLoaded || !viewerReady) && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
                 <span className="text-sm text-stone-400">Chargement du viewer…</span>
               </div>
@@ -133,8 +191,8 @@ export default function TourViewerPage() {
             {scenes.length > 1 && (
               <div className="flex gap-2 overflow-x-auto px-4 py-3 border-t border-stone-800 bg-black/40">
                 {scenes.map((s) => (
-                  <button key={s.id} onClick={() => setCurrentScene(s)}
-                    className={`flex-shrink-0 rounded-lg overflow-hidden border-2 ${currentScene.id === s.id ? 'border-violet-500' : 'border-transparent'}`}>
+                  <button key={s.id} onClick={() => goToScene(s.id)}
+                    className={`flex-shrink-0 rounded-lg overflow-hidden border-2 ${currentSceneId === s.id ? 'border-violet-500' : 'border-transparent'}`}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={s.imageUrl} alt={s.name} className="h-14 w-24 object-cover" />
                   </button>

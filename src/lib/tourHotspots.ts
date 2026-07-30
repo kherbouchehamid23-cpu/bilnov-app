@@ -140,6 +140,30 @@ export function normalizeArrival(content: unknown): ArrivalView | null {
   return { yaw, pitch, hfov };
 }
 
+/**
+ * Cible d'orientation d'arrivée pour un hotspot de scène Pannellum (§23, V3b).
+ * `targetYaw` peut être un nombre (orientation figée) ou 'sameAzimuth'
+ * (continuité de cap : le visiteur garde son azimut en franchissant la porte).
+ */
+export interface SceneArrivalTarget {
+  targetYaw: number | 'sameAzimuth';
+  targetPitch: number;
+  targetHfov?: number;
+}
+
+/**
+ * Déduit la cible d'orientation d'arrivée depuis le content d'un lien Direction.
+ * - Si une orientation d'arrivée explicite est enregistrée -> on la fige.
+ * - Sinon -> 'sameAzimuth' : conserve le cap courant à l'arrivée (naturel dans
+ *   l'enfilade d'une porte), plutôt que de réinitialiser à yaw 0 (ancien défaut).
+ * Fonction PURE -> testable.
+ */
+export function arrivalTarget(content: unknown): SceneArrivalTarget {
+  const a = normalizeArrival(content);
+  if (a) return { targetYaw: a.yaw, targetPitch: a.pitch, targetHfov: a.hfov };
+  return { targetYaw: 'sameAzimuth', targetPitch: 0 };
+}
+
 export interface ValidationResult {
   ok: boolean;
   errors: string[];
