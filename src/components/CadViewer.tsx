@@ -100,6 +100,11 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   // Accrochage
   const [snapHover, setSnapHover] = useState<{ x: number; y: number; type: SnapType } | null>(null);
   const [measureCursor, setMeasureCursor] = useState<Pt | null>(null);
+  // §mobile (correction validation point) : dernière position accrochée figée + drapeau "armé"
+  const snapHoverRef = useRef<{ x: number; y: number; type: SnapType } | null>(null);
+  useEffect(() => { snapHoverRef.current = snapHover; }, [snapHover]);
+  const armedRef = useRef(false);
+  const dragRef = useRef<{ kind: 'measure' | 'area'; index: number } | null>(null);
   const [quickResult, setQuickResult] = useState<{ res: QuickResult; cursor: Pt } | null>(null);
   const [orthoAxis, setOrthoAxis] = useState<'H' | 'V' | null>(null);
 
@@ -337,7 +342,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     }));
   }
   function fitView() { const v = viewerRef.current; if (!v) return; const b = v.GetBounds(); if (b) v.FitView(b.minX, b.maxX, b.minY, b.maxY, 0.1); }
-  function resetTools() { setMeasurePts([]); setDraft(null); setAreaPts([]); setAreaClosed(false); setEditingId(null); setQuickResult(null); }
+  function resetTools() { armedRef.current = false; setMeasurePts([]); setDraft(null); setAreaPts([]); setAreaClosed(false); setEditingId(null); setQuickResult(null); }
   async function saveQuick(from: Pt, to: Pt) {
     const dworld = segLen(from, to);
     try {
@@ -355,7 +360,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   useEffect(() => {
     const cont = containerRef.current; if (!cont) return;
     const active = new Map<number, { x: number; y: number }>();
-    let single: { x: number; y: number; moved: boolean } | null = null;
+    let single: { x: number; y: number; moved: boolean; confirm: boolean } | null = null;
     let multi = false; // vrai des >=2 pointeurs, jusqu'a 0 (WAITING_FOR_ALL_TOUCHES_RELEASED)
     const placement = () => { const t = toolRef.current; return t === 'measure' || t === 'area' || t === 'quick' || (t === 'annotate' && canAnnotate); };
     // §mobile n°1 : le curseur est décalé au-dessus du doigt (≈1 cm, selon devicePixelRatio)
@@ -375,18 +380,23 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
         setQuickResult({ res: quickMeasure(segIndexRef.current.query(r.world.x, r.world.y, rad), r.world), cursor: r.world });
       }
     };
-    const commit = (cx: number, cy: number) => {
-      const r = resolve(cx, cy); if (!r) return; const w = r.placed; const t = toolRef.current;
+    const place = (w: Pt) => {
+      const t = toolRef.current;
       if (t === 'measure') setMeasurePts((c) => (c.length >= 2 ? [w] : [...c, w]));
       else if (t === 'area') { if (areaClosedRef.current) return; const c = areaPtsRef.current; if (c.length >= 3) { const sF = worldToScreen(c[0].x, c[0].y); const sC = worldToScreen(w.x, w.y); if (sF && sC && Math.hypot(sF.px - sC.px, sF.py - sC.py) <= 16) { setAreaClosed(true); return; } } setAreaPts([...c, w]); }
       else if (t === 'annotate') { setDraft(w); setDTitle(''); setDText(''); setDPriority('NORMAL'); setDAssignee(''); setDDue(''); }
     };
+    const commit = (cx: number, cy: number) => { const r = resolve(cx, cy); if (!r) return; place(r.placed); };
+    // §correction : valider la dernière position accrochée (figée) SANS recalcul de Snap ni déplacement du curseur.
+    const placeFrozen = () => { const sh = snapHoverRef.current; if (!sh) return; place({ x: sh.x, y: sh.y }); };
     const down = (e: PointerEvent) => {
       if (e.pointerType === 'mouse') return;
       active.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (active.size >= 2) { multi = true; single = null; return; }            // 2e doigt : navigation native, tap annule
       if (!placement()) return;
-      single = { x: e.clientX, y: e.clientY, moved: false }; moveCursor(e.clientX, e.clientY);
+      const confirmTouch = armedRef.current;                                     // un point figé attend un toucher de confirmation
+      single = { x: e.clientX, y: e.clientY, moved: false, confirm: confirmTouch };
+      if (!confirmTouch) moveCursor(e.clientX, e.clientY);                        // confirmation : aucun saut du curseur, aucun recalcul de Snap
     };
     const mv = (e: PointerEvent) => {
       if (e.pointerType === 'mouse') return;
@@ -394,14 +404,23 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
       if (active.size >= 2 || multi) return;                                     // navigation : curseur suspendu
       if (!single || !placement()) return;
       e.stopPropagation(); if (e.cancelable) e.preventDefault();                 // 1 doigt en mesure : on bloque le pan du plan
-      if (Math.hypot(e.clientX - single.x, e.clientY - single.y) > 8) single.moved = true;
+      const movedNow = Math.hypot(e.clientX - single.x, e.clientY - single.y) > 8;
+      if (movedNow) single.moved = true;
+      if (single.confirm) {                                                      // toucher de confirmation en cours
+        if (!movedNow) return;                                                   // micro-mouvement : le curseur ne bouge pas
+        single.confirm = false; armedRef.current = false;                        // vrai déplacement : on reprend le positionnement
+      }
       moveCursor(e.clientX, e.clientY);
     };
     const up = (e: PointerEvent) => {
       if (e.pointerType === 'mouse') return;
       const wasSingle = !!single && !multi && active.size === 1;
       active.delete(e.pointerId);
-      if (wasSingle && single && !single.moved && placement()) commit(single.x, single.y);
+      if (wasSingle && single && placement()) {
+        if (single.confirm && !single.moved) { placeFrozen(); armedRef.current = false; }         // 2e toucher = validation du point figé
+        else if (!single.moved && !armedRef.current) commit(single.x, single.y);                  // tap direct = pose au réticule
+        else if (single.moved && !dragRef.current) armedRef.current = true;                        // déplacement puis lever = point figé en attente de confirmation
+      }
       single = null;
       if (active.size === 0) multi = false;                                      // reset uniquement quand TOUT est relache
     };
@@ -431,13 +450,13 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   }
   function placeCenterPoint() {
     const p = centerWorld(); if (!p) return;
+    armedRef.current = false;
     if (tool === 'measure') setMeasurePts((cur) => (cur.length >= 2 ? [p] : [...cur, p]));
     else if (tool === 'area') { if (!areaClosed) setAreaPts((cur) => [...cur, p]); }
     else if (tool === 'annotate') { setDraft(p); setDTitle(''); setDText(''); setDPriority('NORMAL'); setDAssignee(''); setDDue(''); }
   }
 
-  // Édition des points déjà posés : glisser un sommet le déplace (avec ré-accrochage OSNAP).
-  const dragRef = useRef<{ kind: 'measure' | 'area'; index: number } | null>(null);
+  // Édition des points déjà posés : glisser un sommet le déplace (avec ré-accrochage OSNAP). dragRef remonté plus haut.
   const moveVertex = useCallback((clientX: number, clientY: number) => {
     const d = dragRef.current; const cont = containerRef.current; if (!d || !cont) return;
     const rect = cont.getBoundingClientRect();
