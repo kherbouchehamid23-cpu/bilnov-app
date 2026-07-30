@@ -35,7 +35,7 @@ export default function DashboardPage() {
   const initials = user ? user.firstName[0] + user.lastName[0] : 'U';
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--surface)' }}>
+    <div className="lg-app min-h-screen" style={{ background: 'var(--surface)' }}>
       <header className="sticky top-0 z-40 glass border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
           <div className="rounded-lg flex items-center justify-center" style={{ width: 32, height: 32, background: 'var(--violet)' }}>
