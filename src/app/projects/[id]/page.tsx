@@ -10,7 +10,7 @@ import { isBimOr3D } from '@/lib/bim';
 import { uploadFileDirect } from '@/lib/upload';
 import { acceptAttr, uploadHint, type UploadRulesConfig } from '@/lib/uploadRules';
 import { makeThumb, getCachedThumb } from '@/lib/thumbs';
-import { Building2, DoorOpen, Package, Pin, Image as ImageIcon, Globe, FileText, Video, Box, Ruler, Building, Folder, Users, Link2, MessageSquare, Layers, Hourglass, Info, Pencil, Trash2, type LucideIcon } from 'lucide-react';
+import { Building2, DoorOpen, Package, Pin, Image as ImageIcon, Globe, FileText, Video, Box, Ruler, Building, Folder, Users, Link2, MessageSquare, Layers, Hourglass, Info, Pencil, Trash2, Plus, type LucideIcon } from 'lucide-react';
 
 const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
 const Model3DViewer = dynamic(() => import('@/components/Model3DViewer'), { ssr: false });
@@ -362,7 +362,7 @@ export default function ProjectPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--surface)' }}>
+    <div className="lg-app min-h-screen flex flex-col" style={{ background: 'var(--surface)' }}>
       {/* Header */}
       <header className="sticky top-0 z-40 glass border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-7xl mx-auto flex items-center gap-2">
@@ -384,7 +384,7 @@ export default function ProjectPage() {
           <div className="flex-1" />
           {tab === 'files' && canUpload && (
             <label className={`btn-primary text-sm cursor-pointer ${uploading ? 'opacity-60' : ''}`} style={{ minHeight: 40 }}>
-              {uploading ? 'Upload...' : '＋ Fichier'}
+              {uploading ? 'Upload...' : (<><Plus size={15} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Fichier</>)}
               <input type="file" multiple accept={uploadAccept} title={uploadMsg} className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
             </label>
           )}
@@ -393,7 +393,7 @@ export default function ProjectPage() {
       </header>
 
       {/* Tabs (desktop) */}
-      <div className="border-b hidden md:block" style={{ background: 'white', borderColor: 'var(--border)' }}>
+      <div className="border-b hidden md:block" style={{ background: 'rgba(255,255,255,.04)', borderColor: 'var(--border)' }}>
         <div className="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto">
           {tabs.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
@@ -414,7 +414,7 @@ export default function ProjectPage() {
         {/* Sidebar desktop (toujours visible, persistante) */}
         {tab === 'files' && (
           <aside className="hidden md:block w-64 flex-shrink-0 border-r overflow-auto"
-            style={{ background: 'white', borderColor: 'var(--border)' }}>
+            style={{ background: 'rgba(255,255,255,.04)', borderColor: 'var(--border)' }}>
             {StructurePanel}
           </aside>
         )}
@@ -425,7 +425,7 @@ export default function ProjectPage() {
             <div className="md:hidden fixed inset-0 z-40" style={{ background: 'rgba(28,25,23,.45)' }}
               onClick={() => setDrawerOpen(false)} />
             <aside className="md:hidden fixed left-0 top-0 bottom-0 z-50 w-4/5 max-w-xs overflow-auto shadow-xl"
-              style={{ background: 'white' }}>
+              style={{ background: '#0b1120' }}>
               <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: 'var(--border)' }}>
                 <span className="font-semibold">Structure</span>
                 <button onClick={() => setDrawerOpen(false)} style={{ width: 40, height: 40 }}>✕</button>
@@ -485,13 +485,13 @@ export default function ProjectPage() {
                       <button type="button"
                         onClick={e => { e.stopPropagation(); setMenuFileId(menuFileId === file.id ? null : file.id); }}
                         className="absolute rounded-lg flex items-center justify-center"
-                        style={{ top: 14, right: 14, width: 34, height: 34, background: 'rgba(255,255,255,.92)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                        style={{ top: 14, right: 14, width: 34, height: 34, background: 'rgba(15,22,38,.82)', border: '1px solid var(--border)', color: 'var(--text)' }}>
                         ⋯
                       </button>
 
                       {menuFileId === file.id && editingFileId !== file.id && (
                         <div className="absolute z-10 rounded-xl shadow-lg overflow-hidden"
-                          style={{ top: 50, right: 14, background: '#fff', border: '1px solid var(--border)', minWidth: 150 }}>
+                          style={{ top: 50, right: 14, background: '#0f1626', border: '1px solid var(--border)', minWidth: 150 }}>
                           <button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44 }}
                             onClick={() => { setEditingFileId(file.id); setEditingFileName(file.name); setMenuFileId(null); }}>
                             <Pencil size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 6 }} />Renommer
@@ -571,7 +571,7 @@ export default function ProjectPage() {
 
       {/* Bottom nav mobile */}
       <nav className="md:hidden fixed left-0 right-0 bottom-0 z-30 flex justify-around border-t"
-        style={{ background: 'white', borderColor: 'var(--border)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        style={{ background: '#0b1120', borderColor: 'var(--border)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className="flex flex-col items-center justify-center gap-0.5"
