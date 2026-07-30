@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { fetchWithAuth } from '@/lib/auth-client';
+import { Globe, Landmark, Eye, Trash2, Pencil } from 'lucide-react';
 
 interface Tour360 { id: string; name: string; status: string; }
 interface KrpanoTour {
@@ -161,12 +162,12 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
                 style={{ background: '#fff', border: '1px solid var(--border)', minWidth: 240 }}>
                 <button className="block w-full text-left px-4 py-3 text-sm hover:bg-stone-50"
                   onClick={() => { setMenuOpen(false); setShow360Form(true); }}>
-                  🌐 <b>Créer une visite 360°</b>
+                  <Globe size={15} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 6 }} /><b>Créer une visite 360°</b>
                   <span className="block text-xs" style={{ color: 'var(--text-light)' }}>Ajouter vos panoramas un par un</span>
                 </button>
                 <button className="block w-full text-left px-4 py-3 text-sm hover:bg-stone-50 border-t" style={{ borderColor: 'var(--border)' }}
                   onClick={() => { setMenuOpen(false); fileInput.current?.click(); }}>
-                  🏛️ <b>Importer une archive krpano</b>
+                  <Landmark size={15} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 6 }} /><b>Importer une archive krpano</b>
                   <span className="block text-xs" style={{ color: 'var(--text-light)' }}>Fichier .zip krpano / Pano2VR</span>
                 </button>
               </div>
@@ -211,7 +212,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
         <p style={{ color: 'var(--text-light)' }}>Chargement…</p>
       ) : total === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-4" style={{ background: 'var(--violet-light)' }}>🌐</div>
+          <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'var(--violet-light)' }}><Globe size={32} style={{ color: 'var(--violet)' }} /></div>
           <h3 className="text-lg font-bold mb-1" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Aucune visite virtuelle</h3>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {canManage ? 'Créez une visite 360° ou importez une archive krpano.' : 'Aucune visite pour ce projet.'}
@@ -224,7 +225,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
             <div key={`t360-${t.id}`} className="file-card rounded-2xl p-5">
               <Link href={`/projects/${projectId}/tours/${t.id}/view`} className="block">
                 <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'var(--violet-light)' }}>🌐</div>
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet-light)' }}><Globe size={24} style={{ color: 'var(--violet)' }} /></div>
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>360°</span>
                 </div>
                 <h3 className="font-bold text-base mb-1 truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{t.name}</h3>
@@ -234,7 +235,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
                 </span>
               </Link>
               {canManage && (
-                <Link href={`/projects/${projectId}/tours/${t.id}`} className="mt-3 inline-block text-xs hover:underline" style={{ color: 'var(--violet)' }}>✎ Modifier</Link>
+                <Link href={`/projects/${projectId}/tours/${t.id}`} className="mt-3 inline-block text-xs hover:underline" style={{ color: 'var(--violet)' }}><Pencil size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Modifier</Link>
               )}
             </div>
           ))}
@@ -243,7 +244,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
           {krpano.map(t => (
             <div key={`kp-${t.id}`} className="file-card rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'var(--violet-light)' }}>🏛️</div>
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet-light)' }}><Landmark size={24} style={{ color: 'var(--violet)' }} /></div>
                 <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#EEF2FF', color: '#4F46E5' }}>krpano</span>
               </div>
               <h3 className="font-bold text-base mb-1 truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{t.name}</h3>
@@ -253,7 +254,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
               </p>
               <div className="flex gap-2">
                 {t.status === 'READY' && (
-                  <button className="btn-primary text-xs flex-1" style={{ minHeight: 38 }} onClick={() => setViewing(t)}>👁 Visualiser</button>
+                  <button className="btn-primary text-xs flex-1" style={{ minHeight: 38 }} onClick={() => setViewing(t)}><Eye size={13} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Visualiser</button>
                 )}
                 {t.status === 'ERROR' && canManage && (
                   <button className="btn-secondary text-xs flex-1" style={{ minHeight: 38 }} onClick={() => void retryProcess(t.id)}>↻ Reprendre</button>
@@ -261,7 +262,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
                 {canManage && (
                   <button className="btn-secondary text-xs" style={{ minHeight: 38, color: '#EF4444' }}
                     disabled={deletingId === t.id} onClick={() => void deleteKrpano(t)}>
-                    {deletingId === t.id ? '…' : '🗑'}
+                    {deletingId === t.id ? '…' : <Trash2 size={14} />}
                   </button>
                 )}
               </div>

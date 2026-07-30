@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from 'react';
+import { Smartphone, MessageSquare } from 'lucide-react';
 import { isIfc, bimLocationMetadata, cameraState } from '@/lib/bim';
 
 interface Props {
@@ -186,7 +187,7 @@ export default function Model3DViewer({ fileId, fileName, token, projectId, canC
           <button className={secBtn('z')} onClick={() => updateSection({ axis: section.axis === 'z' ? null : 'z' })}>Z</button>
           {section.axis && <input type="range" min={0} max={1} step={0.01} value={section.t} onChange={(e) => updateSection({ t: Number(e.target.value) })} className="w-24" />}
           {section.axis && <button className="rounded bg-slate-200 px-2 py-0.5 text-[11px] text-slate-700" onClick={() => updateSection({ flip: !section.flip })}>⇄</button>}
-          {arSupported && <button onClick={() => void enterAR()} className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20">📱 AR</button>}
+          {arSupported && <button onClick={() => void enterAR()} className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20"><Smartphone size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />AR</button>}
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={onClose}>Fermer</button>
         </div>
       </div>
@@ -213,7 +214,7 @@ export default function Model3DViewer({ fileId, fileName, token, projectId, canC
                 </tbody></table>
               </div>
             )}
-            {canComment && projectId && <button disabled={busy} onClick={() => void commentObject()} className="mt-2 w-full rounded bg-violet-600 py-1 text-xs text-white disabled:opacity-40">💬 Commenter cet objet</button>}
+            {canComment && projectId && <button disabled={busy} onClick={() => void commentObject()} className="mt-2 w-full rounded bg-violet-600 py-1 text-xs text-white disabled:opacity-40"><MessageSquare size={13} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Commenter cet objet</button>}
             {saved && <p className="mt-1 text-[10px] text-emerald-600">{saved}</p>}
           </div>
         )}

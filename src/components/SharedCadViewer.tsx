@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { Hand, Ruler, Square, Layers } from 'lucide-react';
 import { toDxfObjectUrl } from '@/lib/cad';
 import { SnapIndex } from '@/lib/snap';
 import { UNIT_MM, unitFromInsUnits, lengthFactor, distance as segLen, polygonArea, polygonPerimeter, centroid as polyCentroid, formatMeasure } from '@/lib/cadMeasure';
@@ -259,9 +260,9 @@ export default function SharedCadViewer({ shareId, code, fileId, fileName, canMe
         <div className="flex items-center gap-1.5 flex-wrap">
           {canMeasure ? (
             <>
-              <button className={btn(tool === 'pan')} onClick={() => { setTool('pan'); resetTools(); }}>✋ Naviguer</button>
-              <button className={btn(tool === 'measure')} onClick={() => { setTool('measure'); resetTools(); }}>📏 Mesurer</button>
-              <button className={btn(tool === 'area')} onClick={() => { setTool('area'); resetTools(); }}>📐 Superficie</button>
+              <button className={btn(tool === 'pan')} onClick={() => { setTool('pan'); resetTools(); }}><Hand size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Naviguer</button>
+              <button className={btn(tool === 'measure')} onClick={() => { setTool('measure'); resetTools(); }}><Ruler size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Mesurer</button>
+              <button className={btn(tool === 'area')} onClick={() => { setTool('area'); resetTools(); }}><Square size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Superficie</button>
               <label className="ml-1 flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-sm" title="Unité de mesure">
                 <span className="opacity-70">Unité</span>
                 <select value={unit} onChange={(e) => setUnit(e.target.value)} className="bg-slate-700 rounded px-1 py-0.5 text-sm">
@@ -272,7 +273,7 @@ export default function SharedCadViewer({ shareId, code, fileId, fileName, canMe
           ) : (
             <span className="text-xs text-slate-300">Lecture seule</span>
           )}
-          <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={() => setShowPanel((s) => !s)}>🗂️ Commentaires ({comments.length})</button>
+          <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={() => setShowPanel((s) => !s)}><Layers size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Commentaires ({comments.length})</button>
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={fitView}>Ajuster</button>
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={onClose}>Fermer</button>
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { Hand, Ruler, Square, Zap, MessageSquare, Layers, FileText, Image as ImageIcon } from 'lucide-react';
 import { toDxfObjectUrl } from '@/lib/cad';
 import { SnapIndex } from '@/lib/snap';
 import { SegmentIndex, segmentsFromFloat32, snap as snapSegments, applyOrtho, type SnapType } from '@/lib/snapEngine';
@@ -635,19 +636,19 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
       <div className="flex items-center justify-between bg-slate-800 px-3 py-2 text-white">
         <span className="truncate text-sm font-medium max-w-[22%]">{fileName}</span>
         <div className="flex items-center gap-1.5 flex-wrap">
-          <button className={btn(tool === 'pan')} onClick={() => { setTool('pan'); resetTools(); }}>✋ Naviguer</button>
-          <button className={btn(tool === 'measure')} onClick={() => { setTool('measure'); resetTools(); }}>📏 Mesurer</button>
-          <button className={btn(tool === 'area')} onClick={() => { setTool('area'); resetTools(); }}>📐 Superficie</button>
-          <button className={btn(tool === 'quick')} onClick={() => { setTool('quick'); resetTools(); }}>⚡ Mesure rapide</button>
-          {canAnnotate && <button className={btn(tool === 'annotate')} onClick={() => { setTool('annotate'); resetTools(); }}>💬 Commenter</button>}
+          <button className={btn(tool === 'pan')} onClick={() => { setTool('pan'); resetTools(); }}><Hand size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Naviguer</button>
+          <button className={btn(tool === 'measure')} onClick={() => { setTool('measure'); resetTools(); }}><Ruler size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Mesurer</button>
+          <button className={btn(tool === 'area')} onClick={() => { setTool('area'); resetTools(); }}><Square size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Superficie</button>
+          <button className={btn(tool === 'quick')} onClick={() => { setTool('quick'); resetTools(); }}><Zap size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Mesure rapide</button>
+          {canAnnotate && <button className={btn(tool === 'annotate')} onClick={() => { setTool('annotate'); resetTools(); }}><MessageSquare size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Commenter</button>}
           <label className="ml-1 flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-sm" title="Unité de mesure — modifiable à tout moment">
             <span className="opacity-70">Unité</span>
             <select value={unit} onChange={(e) => void changeUnit(e.target.value)} className="bg-slate-700 rounded px-1 py-0.5 text-sm">
               <option value="u">u</option><option value="mm">mm</option><option value="cm">cm</option><option value="m">m</option><option value="in">in</option><option value="ft">ft</option>
             </select>
           </label>
-          <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={() => setShowPanel((s) => !s)}>🗂️ Commentaires ({comments.length})</button>
-          <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={genReport}>📄 Rapport</button>
+          <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={() => setShowPanel((s) => !s)}><Layers size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Commentaires ({comments.length})</button>
+          <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={genReport}><FileText size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 5 }} />Rapport</button>
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={fitView}>Ajuster</button>
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={() => setShowLayers((s) => !s)}>Calques</button>
           <button className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20" onClick={onClose}>Fermer</button>
@@ -919,7 +920,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
                     {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
                   </select>
                 </div>
-                {visibleComments.length === 0 && <p className="text-xs text-slate-400 mt-4 text-center">Aucun commentaire. Utilisez « 💬 Commenter » pour en créer.</p>}
+                {visibleComments.length === 0 && <p className="text-xs text-slate-400 mt-4 text-center">Aucun commentaire. Utilisez « Commenter » pour en créer.</p>}
                 <ul className="space-y-1.5">
                   {visibleComments.map((c) => (
                     <li key={c.id}>
@@ -1084,7 +1085,7 @@ function CommentDetail(props: {
               <div key={a.id} className="rounded border bg-white p-1 text-[10px] relative group">
                 {a.kind === 'PHOTO' && attUrls[a.id]
                   ? <img src={attUrls[a.id]} alt={a.name} className="w-full h-20 object-cover rounded" />
-                  : <div className="w-full h-20 flex items-center justify-center bg-slate-100 rounded text-2xl">{a.kind === 'PDF' ? '📄' : '🖼️'}</div>}
+                  : <div className="w-full h-20 flex items-center justify-center bg-slate-100 rounded text-2xl">{a.kind === 'PDF' ? <FileText size={22} /> : <ImageIcon size={22} />}</div>}
                 <p className="truncate mt-0.5">{a.name}</p>
                 <p className="text-slate-400">{(a.sizeBytes / 1024).toFixed(0)} Ko</p>
                 <div className="flex gap-1 mt-0.5">

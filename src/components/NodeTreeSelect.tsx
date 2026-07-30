@@ -1,5 +1,6 @@
 'use client';
 import React, { useMemo, useState, useCallback } from 'react';
+import { Building2, DoorOpen, Package, Pin, Image as ImageIcon, Globe, FileText, Video, Box, Ruler, Building, Folder, Layers, type LucideIcon } from 'lucide-react';
 
 export const ROOT_TOKEN = '__root__';
 
@@ -27,11 +28,13 @@ interface Props {
   rootFilesCount?: number;
 }
 
-const icon: Record<string, string> = { floor: '🏢', room: '🚪', zone: '📦', custom: '📌' };
-const fileIcon: Record<string, string> = {
-  IMAGE: '🖼️', IMAGE_360: '🌐', PDF: '📄', VIDEO: '🎥',
-  DWG: '📐', DXF: '📐', IFC: '🏗️', GLB: '🧊', GLTF: '🧊', OBJ: '🧊',
+const icon: Record<string, LucideIcon> = { floor: Building2, room: DoorOpen, zone: Package, custom: Pin };
+const fileIcon: Record<string, LucideIcon> = {
+  IMAGE: ImageIcon, IMAGE_360: Globe, PDF: FileText, VIDEO: Video,
+  DWG: Ruler, DXF: Ruler, IFC: Building, GLB: Box, GLTF: Box, OBJ: Box,
 };
+function NodeIco({ t, size = 16 }: { t: string; size?: number }) { const C = icon[t] ?? Pin; return <C size={size} />; }
+function FileIco({ t, size = 15 }: { t: string; size?: number }) { const C = fileIcon[t] ?? FileText; return <C size={size} />; }
 
 function collectSelfAndDesc(node: TreeNode, acc: string[] = []): string[] {
   acc.push(node.id);
@@ -148,7 +151,7 @@ export default function NodeTreeSelect({ projectId, nodes, value, onChange, getT
             <input type="checkbox" checked={st === 'on'}
               ref={el => { if (el) el.indeterminate = st === 'partial'; }}
               onChange={() => toggleNode(node)} />
-            <span>{icon[node.nodeType] ?? '📌'}</span>
+            <span><NodeIco t={node.nodeType} size={16} /></span>
             <span className="flex-1 truncate text-sm" style={{ color: 'var(--text)' }}>{node.name}</span>
             <span className="text-xs" style={{ color: 'var(--text-light)' }}>{count}</span>
           </label>
@@ -163,7 +166,7 @@ export default function NodeTreeSelect({ projectId, nodes, value, onChange, getT
             ) : (filesByNode[node.id] ?? []).map(file => (
               <label key={file.id} className="flex items-center gap-2 rounded-lg cursor-pointer px-2" style={{ minHeight: 32 }}>
                 <input type="checkbox" checked={fileChecked(file, node)} onChange={() => toggleFile(file, node)} />
-                <span>{fileIcon[file.fileType] ?? '📄'}</span>
+                <span><FileIco t={file.fileType} size={15} /></span>
                 <span className="flex-1 truncate text-xs" style={{ color: 'var(--text-muted)' }}>{file.name}</span>
               </label>
             ))}
@@ -180,7 +183,7 @@ export default function NodeTreeSelect({ projectId, nodes, value, onChange, getT
       <label className="flex items-center gap-2 px-3 border-b cursor-pointer"
         style={{ minHeight: 44, borderColor: 'var(--border)', background: allMode ? 'var(--violet-light)' : 'transparent' }}>
         <input type="checkbox" checked={allMode} onChange={setAll} />
-        <span>📂</span>
+        <span><Folder size={16} /></span>
         <span className="flex-1 text-sm font-semibold" style={{ color: allMode ? 'var(--violet)' : 'var(--text)' }}>Tout le projet</span>
       </label>
 
@@ -188,7 +191,7 @@ export default function NodeTreeSelect({ projectId, nodes, value, onChange, getT
         {rootFilesCount > 0 && (
           <label className="flex items-center gap-2 px-2 rounded-lg cursor-pointer" style={{ minHeight: 40 }}>
             <input type="checkbox" checked={allMode || nodeSet.has(ROOT_TOKEN)} disabled={allMode} onChange={toggleRoot} />
-            <span>🗂️</span>
+            <span><Layers size={16} /></span>
             <span className="flex-1 truncate text-sm" style={{ color: 'var(--text)' }}>Fichiers à la racine</span>
             <span className="text-xs" style={{ color: 'var(--text-light)' }}>{rootFilesCount}</span>
           </label>
