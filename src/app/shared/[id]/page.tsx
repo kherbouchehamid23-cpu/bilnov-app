@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import { Image as ImageIcon, Globe, FileText, Video, Box, Folder, Eye, Download, Hourglass, type LucideIcon } from 'lucide-react';
 
 const SharedCadViewer = dynamic(() => import('@/components/SharedCadViewer'), { ssr: false });
 
@@ -106,10 +107,11 @@ export default function SharedProjectPage() {
     finally { setOpeningId(null); }
   };
 
-  const icons: Record<string, string> = {
-    IMAGE: '🖼️', IMAGE_360: '🌐', PDF: '📄',
-    VIDEO: '🎥', GLB: '🧊', GLTF: '🧊', OBJ: '🧊',
+  const ICONS: Record<string, LucideIcon> = {
+    IMAGE: ImageIcon, IMAGE_360: Globe, PDF: FileText,
+    VIDEO: Video, GLB: Box, GLTF: Box, OBJ: Box,
   };
+  const FileIco = ({ t, size = 40 }: { t: string; size?: number }) => { const C = ICONS[t] ?? Folder; return <C size={size} style={{ color: 'var(--text-muted)' }} />; };
 
   if (loading) {
     return (
@@ -146,13 +148,13 @@ export default function SharedProjectPage() {
             {accessData?.permissions.canView && (
               <span className="text-xs px-2 py-1 rounded-full"
                 style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>
-                👁️ Lecture
+                <Eye size={13} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Lecture
               </span>
             )}
             {accessData?.permissions.canDownload && (
               <span className="text-xs px-2 py-1 rounded-full"
                 style={{ background: '#ECFDF5', color: '#10B981' }}>
-                ⬇️ Téléchargement
+                <Download size={13} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Téléchargement
               </span>
             )}
           </div>
@@ -166,7 +168,7 @@ export default function SharedProjectPage() {
 
         {files.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="text-4xl mb-3">📂</div>
+            <div className="mb-3"><Folder size={40} style={{ color: 'var(--text-light)' }} /></div>
             <p style={{ color: 'var(--text-muted)' }}>Aucun fichier disponible.</p>
           </div>
         ) : (
@@ -188,7 +190,7 @@ export default function SharedProjectPage() {
                     />
                   ) : (
                     <span className="text-4xl">
-                      {openingId === file.id ? '⏳' : (icons[file.fileType] ?? '📁')}
+                      {openingId === file.id ? <Hourglass size={36} style={{ color: 'var(--text-light)' }} /> : <FileIco t={file.fileType} size={36} />}
                     </span>
                   )}
                 </div>
