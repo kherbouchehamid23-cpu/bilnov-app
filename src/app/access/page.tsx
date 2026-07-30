@@ -1,26 +1,14 @@
 'use client';
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Lock, Delete } from 'lucide-react';
 
 interface AccessData {
-  project: {
-    id: string;
-    name: string;
-    sector: string | null;
-  };
-  permissions: {
-    canView: boolean;
-    canDownload: boolean;
-    canUpload: boolean;
-    canShare: boolean;
-  };
+  project: { id: string; name: string; sector: string | null; };
+  permissions: { canView: boolean; canDownload: boolean; canUpload: boolean; canShare: boolean; };
 }
 
-interface ApiResponse {
-  success: boolean;
-  data?: AccessData;
-  error?: { message: string };
-}
+interface ApiResponse { success: boolean; data?: AccessData; error?: { message: string }; }
 
 function AccessInner() {
   const router = useRouter();
@@ -54,7 +42,6 @@ function AccessInner() {
     }
   }, [router]);
 
-  // Lien partageable : /access?code=123456 -> validation automatique
   useEffect(() => {
     const c = searchParams.get('code');
     if (c && /^\d{6}$/.test(c)) {
@@ -78,109 +65,60 @@ function AccessInner() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6"
-      style={{ background: 'var(--surface)' }}>
-
-      {/* Logo */}
-      <div className="flex items-center gap-2 mb-12">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: 'var(--violet)' }}>
-          <span className="text-white font-bold text-lg">B</span>
-        </div>
-        <span className="font-bold text-xl" style={{ fontFamily: 'Syne, sans-serif' }}>Bilnov</span>
+    <div className="lg-immersif" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div className="flex items-center gap-2.5 mb-12">
+        <span aria-hidden style={{ width: 14, height: 14, borderRadius: '4px 4px 4px 1px', background: 'linear-gradient(135deg,#22d3ee,#4F46E5)', boxShadow: '0 0 18px rgba(79,70,229,.9)' }} />
+        <span className="font-bold text-xl" style={{ fontFamily: 'Syne, sans-serif', letterSpacing: '.14em', color: '#f4f7fd' }}>BILNOV</span>
       </div>
 
-      {/* Card */}
-      <div className="w-full max-w-sm">
+      <div className="w-full" style={{ maxWidth: 340 }}>
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4"
-            style={{ background: 'var(--violet-light)' }}>
-            🔐
+          <div style={{ width: 64, height: 64, borderRadius: 20, margin: '0 auto 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,.11)', border: '1px solid rgba(255,255,255,.2)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45)' }}>
+            <Lock size={26} color="#9fe6ff" strokeWidth={1.7} />
           </div>
-          <h1 className="text-2xl font-bold mb-2"
-            style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
-            Accès sécurisé
-          </h1>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Saisissez votre code à 6 chiffres
-          </p>
+          <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 24, fontWeight: 700, color: '#f4f7fd', margin: '0 0 8px' }}>Accès sécurisé</h1>
+          <p style={{ fontSize: 14, color: '#9fb0c9' }}>Saisissez votre code à 6 chiffres</p>
         </div>
 
-        {/* Code display */}
         <div className="flex justify-center gap-3 mb-6">
           {[0, 1, 2, 3, 4, 5].map(i => (
-            <div key={i}
-              className="w-11 h-14 rounded-xl border-2 flex items-center justify-center text-xl font-bold transition-all"
-              style={{
-                borderColor: i < digits.length ? 'var(--violet)' : 'var(--border)',
-                background: i < digits.length ? 'var(--violet-light)' : 'white',
-                color: 'var(--violet)',
-              }}>
+            <div key={i} style={{ width: 44, height: 56, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, transition: 'all .15s',
+              border: `2px solid ${i < digits.length ? '#22d3ee' : 'rgba(255,255,255,.2)'}`,
+              background: i < digits.length ? 'rgba(34,211,238,.12)' : 'rgba(255,255,255,.05)',
+              color: '#7ef0ff' }}>
               {digits[i] ? '•' : ''}
             </div>
           ))}
         </div>
 
-        {/* Error */}
         {error && (
-          <div className="mb-6 p-3 rounded-xl text-sm text-center animate-fade-up"
-            style={{ background: '#FEF2F2', color: '#EF4444', border: '1px solid #FECACA' }}>
-            {error}
-          </div>
+          <div className="lg-error mb-6 animate-fade-up" style={{ textAlign: 'center' }}>{error}</div>
         )}
 
-        {/* Loading */}
         {loading && (
           <div className="mb-6 text-center">
-            <div className="inline-flex items-center gap-2 text-sm"
-              style={{ color: 'var(--violet)' }}>
+            <div className="inline-flex items-center gap-2 text-sm" style={{ color: '#7ef0ff' }}>
               <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
               Vérification...
             </div>
           </div>
         )}
 
-        {/* Numpad */}
         <div className="grid grid-cols-3 gap-3">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
-            <button
-              key={n}
-              onClick={() => handleDigit(String(n))}
-              disabled={loading || digits.length >= 6}
-              className="h-16 rounded-2xl text-xl font-bold transition-all active:scale-95"
-              style={{
-                background: 'white',
-                color: 'var(--text)',
-                border: '1.5px solid var(--border)',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-              }}>
+            <button key={n} onClick={() => handleDigit(String(n))} disabled={loading || digits.length >= 6}
+              className="lg-key" style={{ height: 64, fontSize: 20, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
               {n}
             </button>
           ))}
-          {/* Empty + 0 + Delete */}
           <div />
-          <button
-            onClick={() => handleDigit('0')}
-            disabled={loading || digits.length >= 6}
-            className="h-16 rounded-2xl text-xl font-bold transition-all active:scale-95"
-            style={{
-              background: 'white',
-              color: 'var(--text)',
-              border: '1.5px solid var(--border)',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-            }}>
+          <button onClick={() => handleDigit('0')} disabled={loading || digits.length >= 6}
+            className="lg-key" style={{ height: 64, fontSize: 20, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
             0
           </button>
-          <button
-            onClick={handleDelete}
-            disabled={loading || digits.length === 0}
-            className="h-16 rounded-2xl text-xl transition-all active:scale-95"
-            style={{
-              background: 'var(--surface-2)',
-              color: 'var(--text-muted)',
-              border: '1.5px solid var(--border)',
-            }}>
-            ⌫
+          <button onClick={handleDelete} disabled={loading || digits.length === 0}
+            className="lg-key" style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Effacer">
+            <Delete size={22} strokeWidth={1.7} />
           </button>
         </div>
       </div>
@@ -190,7 +128,7 @@ function AccessInner() {
 
 export default function AccessPage() {
   return (
-    <Suspense fallback={<div style={{ minHeight: '100vh' }} />}>
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#05060c' }} />}>
       <AccessInner />
     </Suspense>
   );
