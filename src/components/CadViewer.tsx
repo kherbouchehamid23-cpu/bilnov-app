@@ -5,6 +5,7 @@ import { toDxfObjectUrl } from '@/lib/cad';
 import { SnapIndex } from '@/lib/snap';
 import { SegmentIndex, segmentsFromFloat32, snap as snapSegments, applyOrtho, type SnapType } from '@/lib/snapEngine';
 import { quickMeasure, type QuickResult } from '@/lib/quickMeasure';
+import { cursorOffsetPx } from '@/lib/cadCursor';
 import {
   UNIT_MM, unitFromInsUnits, lengthFactor, distance as segLen,
   polygonArea, polygonPerimeter, centroid as polyCentroid, formatMeasure,
@@ -50,6 +51,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const THREERef = useRef<any>(null);
   const snapIndexRef = useRef<SnapIndex | null>(null);
   const segIndexRef = useRef<SegmentIndex | null>(null);
+  const orthoAxisRef = useRef<'H' | 'V' | null>(null);
   const objectUrlRef = useRef<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -98,6 +100,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const [snapHover, setSnapHover] = useState<{ x: number; y: number; type: SnapType } | null>(null);
   const [measureCursor, setMeasureCursor] = useState<Pt | null>(null);
   const [quickResult, setQuickResult] = useState<{ res: QuickResult; cursor: Pt } | null>(null);
+  const [orthoAxis, setOrthoAxis] = useState<'H' | 'V' | null>(null);
 
   // Collaboration : commentaires-fiches
   const [comments, setComments] = useState<Comment[]>([]);
@@ -181,11 +184,12 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   }, [worldPerPixel]);
   const snapWorld = useCallback((p: Pt): Pt => {
     const r = snapResolve(p);
-    if (r.type !== 'NONE') return { x: r.x, y: r.y };
+    if (r.type !== 'NONE') { orthoAxisRef.current = null; return { x: r.x, y: r.y }; }
     const t = toolRef.current;
     const mp = measurePtsRef.current, ap = areaPtsRef.current;
     const from = t === 'measure' && mp.length === 1 ? mp[0] : (t === 'area' && ap.length >= 1 && !areaClosedRef.current ? ap[ap.length - 1] : null);
-    if (from) { const o = applyOrtho(from, p); if (o.locked) return { x: o.x, y: o.y }; }
+    if (from) { const o = applyOrtho(from, p, 5); if (o.locked) { orthoAxisRef.current = o.axis; return { x: o.x, y: o.y }; } }
+    orthoAxisRef.current = null;
     return p;
   }, [snapResolve]);
 
@@ -309,6 +313,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
       const typed = snapResolve(world);
       const placed = snapWorld(world);
       setSnapHover({ x: placed.x, y: placed.y, type: typed.type });
+      setOrthoAxis(orthoAxisRef.current);
       const mp = measurePtsRef.current;
       setMeasureCursor(t === 'measure' && mp.length === 1 ? placed : null);
       if (t === 'quick' && segIndexRef.current) {
@@ -352,11 +357,23 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     let single: { x: number; y: number; moved: boolean } | null = null;
     let multi = false; // vrai des >=2 pointeurs, jusqu'a 0 (WAITING_FOR_ALL_TOUCHES_RELEASED)
     const placement = () => { const t = toolRef.current; return t === 'measure' || t === 'area' || t === 'quick' || (t === 'annotate' && canAnnotate); };
-    const resolve = (cx: number, cy: number): { placed: Pt; type: SnapType } | null => {
-      const r = cont.getBoundingClientRect(); const w = screenToWorld(cx - r.left, cy - r.top); if (!w) return null;
-      return { placed: snapWorld(w), type: snapResolve(w).type };
+    // §mobile n°1 : le curseur est décalé au-dessus du doigt (≈1 cm, selon devicePixelRatio)
+    const offY = () => cursorOffsetPx(typeof window !== 'undefined' ? window.devicePixelRatio : 1);
+    const resolve = (cx: number, cy: number): { placed: Pt; world: Pt; type: SnapType } | null => {
+      const r = cont.getBoundingClientRect(); const w = screenToWorld(cx - r.left, cy - offY() - r.top); if (!w) return null;
+      return { placed: snapWorld(w), world: w, type: snapResolve(w).type };
     };
-    const moveCursor = (cx: number, cy: number) => { const r = resolve(cx, cy); if (!r) return; setSnapHover({ x: r.placed.x, y: r.placed.y, type: r.type }); setMeasureCursor(toolRef.current === 'measure' && measurePtsRef.current.length === 1 ? r.placed : null); };
+    const moveCursor = (cx: number, cy: number) => {
+      const r = resolve(cx, cy); if (!r) return;
+      setSnapHover({ x: r.placed.x, y: r.placed.y, type: r.type });
+      setMeasureCursor(toolRef.current === 'measure' && measurePtsRef.current.length === 1 ? r.placed : null);
+      setOrthoAxis(orthoAxisRef.current);
+      // §mobile n°2 : mesure rapide recalculée aussi au tactile (le chemin souris ne s'exécute pas)
+      if (toolRef.current === 'quick' && segIndexRef.current) {
+        const rad = (worldPerPixel() ?? 1) * Math.max(cont.clientWidth, cont.clientHeight);
+        setQuickResult({ res: quickMeasure(segIndexRef.current.query(r.world.x, r.world.y, rad), r.world), cursor: r.world });
+      }
+    };
     const commit = (cx: number, cy: number) => {
       const r = resolve(cx, cy); if (!r) return; const w = r.placed; const t = toolRef.current;
       if (t === 'measure') setMeasurePts((c) => (c.length >= 2 ? [w] : [...c, w]));
@@ -403,7 +420,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
     cont.addEventListener('touchstart', touchGuard, capNP);
     cont.addEventListener('touchmove', touchGuard, capNP);
     return () => { cont.removeEventListener('pointerdown', down, cap); cont.removeEventListener('pointermove', mv, cap); cont.removeEventListener('pointerup', up, cap); cont.removeEventListener('pointercancel', cancel, cap); cont.removeEventListener('touchstart', touchGuard, capNP); cont.removeEventListener('touchmove', touchGuard, capNP); };
-  }, [screenToWorld, snapWorld, snapResolve, worldToScreen, canAnnotate]);
+  }, [screenToWorld, snapWorld, snapResolve, worldToScreen, canAnnotate, worldPerPixel]);
 
   function centerWorld(): Pt | null {
     if (snapHover) return { x: snapHover.x, y: snapHover.y };
@@ -732,9 +749,11 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
             const a = worldToScreen(measurePts[0].x, measurePts[0].y); const b = worldToScreen(measureCursor.x, measureCursor.y);
             if (!a || !b) return null; const midX = (a.px + b.px) / 2, midY = (a.py + b.py) / 2;
             const dprev = segLen(measurePts[0], measureCursor) * lenFactor;
+            const locked = orthoAxis !== null; const lineCol = locked ? '#16A34A' : '#2563EB';
             return (<>
-              <svg className="absolute inset-0 w-full h-full pointer-events-none"><line x1={a.px} y1={a.py} x2={b.px} y2={b.py} stroke="#2563EB" strokeWidth={1.5} strokeDasharray="4 3" /></svg>
-              <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-blue-600 px-1.5 py-0.5 text-[11px] text-white font-semibold whitespace-nowrap pointer-events-none" style={{ left: midX, top: midY - 14 }}>{fmt(dprev)} {unitLabel}</div>
+              <svg className="absolute inset-0 w-full h-full pointer-events-none"><line x1={a.px} y1={a.py} x2={b.px} y2={b.py} stroke={lineCol} strokeWidth={locked ? 2 : 1.5} strokeDasharray="4 3" /></svg>
+              <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[11px] text-white font-semibold whitespace-nowrap pointer-events-none" style={{ left: midX, top: midY - 14, background: lineCol }}>{fmt(dprev)} {unitLabel}</div>
+              {locked && <div className="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-green-600 px-1 py-0.5 text-[10px] text-white font-bold pointer-events-none" style={{ left: b.px + 22, top: b.py - 20 }} title="Verrouillage orthogonal">{orthoAxis === 'H' ? '— Ortho' : '| Ortho'}</div>}
             </>);
           })()}
           {measurePts.length === 2 && (() => {
