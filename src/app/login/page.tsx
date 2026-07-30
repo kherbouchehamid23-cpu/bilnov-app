@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Compass, ArrowRight } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
 
@@ -9,14 +10,8 @@ interface AuthResponse {
   data: {
     accessToken: string;
     user: {
-      id: string;
-      email: string;
-      firstName: string;
-      lastName: string;
-      avatarUrl: string | null;
-      organizationId: string;
-      organizationName: string;
-      plan: string;
+      id: string; email: string; firstName: string; lastName: string;
+      avatarUrl: string | null; organizationId: string; organizationName: string; plan: string;
     };
   };
 }
@@ -46,89 +41,44 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex" style={{ background: 'var(--surface)' }}>
-      <div className="flex-1 flex flex-col items-center justify-center p-8 max-w-md mx-auto w-full">
-        <div className="w-full">
-          <div className="flex items-center gap-2 mb-10">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-              style={{ background: 'var(--violet)' }}>
-              <span className="text-white font-bold">B</span>
-            </div>
-            <span className="font-bold text-lg" style={{ fontFamily: 'Syne, sans-serif' }}>Bilnov</span>
+    <div className="lg-immersif lg-authgrid">
+      <div className="flex flex-col items-center justify-center p-8">
+        <div className="w-full" style={{ maxWidth: 380 }}>
+          <div className="flex items-center gap-2.5 mb-10">
+            <span aria-hidden style={{ width: 13, height: 13, borderRadius: '4px 4px 4px 1px', background: 'linear-gradient(135deg,#22d3ee,#4F46E5)', boxShadow: '0 0 18px rgba(79,70,229,.9)' }} />
+            <span className="font-bold" style={{ fontFamily: 'Syne, sans-serif', letterSpacing: '.14em', color: '#f4f7fd' }}>BILNOV</span>
           </div>
-
-          <h1 className="text-3xl font-bold mb-2"
-            style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
-            Bon retour 👋
-          </h1>
-          <p className="text-sm mb-8" style={{ color: 'var(--text-muted)' }}>
-            Connectez-vous à votre espace Bilnov
-          </p>
-
+          <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 32, fontWeight: 700, color: '#f4f7fd', margin: '0 0 8px' }}>Bon retour</h1>
+          <p style={{ color: '#9fb0c9', fontSize: 14, marginBottom: 28 }}>Connectez-vous à votre espace BILNOV</p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-                required
-                className="input"
-                placeholder="vous@exemple.com"
-              />
+              <label className="lg-label">Email</label>
+              <input type="email" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)} required className="lg-input" placeholder="vous@exemple.com" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>
-                Mot de passe
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
-                required
-                className="input"
-                placeholder="••••••••"
-              />
+              <label className="lg-label">Mot de passe</label>
+              <input type="password" value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)} required className="lg-input" placeholder="••••••••" />
             </div>
-
-            {error && (
-              <div className="p-3 rounded-xl text-sm"
-                style={{ background: '#FEF2F2', color: '#EF4444', border: '1px solid #FECACA' }}>
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full justify-center py-3 text-base">
-              {loading ? 'Connexion...' : 'Se connecter →'}
+            {error && (<div className="lg-error">{error}</div>)}
+            <button type="submit" disabled={loading} className="lg-pill-solid" style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px', borderRadius: 13, fontWeight: 500, fontSize: 15, border: 0, cursor: 'pointer' }}>
+              {loading ? 'Connexion...' : (<>Se connecter <ArrowRight size={17} /></>)}
             </button>
           </form>
-
-          <p className="text-center text-sm mt-6" style={{ color: 'var(--text-muted)' }}>
+          <p style={{ textAlign: 'center', fontSize: 14, marginTop: 24, color: '#9fb0c9' }}>
             Pas encore de compte ?{' '}
-            <Link href="/register" style={{ color: 'var(--violet)', fontWeight: 500 }}>
-              Créer un compte
-            </Link>
+            <Link href="/register" style={{ color: '#7ef0ff', fontWeight: 500 }}>Créer un compte</Link>
           </p>
         </div>
       </div>
-
-      <div className="hidden lg:flex flex-1 items-center justify-center"
-        style={{ background: 'var(--violet-dark)' }}>
-        <div className="text-center text-white">
-          <div className="text-8xl mb-6">🌐</div>
-          <h2 className="text-3xl font-bold mb-3" style={{ fontFamily: 'Syne, sans-serif' }}>
-            Visites 360°
-          </h2>
-          <p style={{ color: '#C4B5FD', maxWidth: '240px', fontSize: '14px', lineHeight: '1.6' }}>
-            Créez des expériences immersives pour vos clients et collaborateurs.
-          </p>
+      <aside className="lg-authaside" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <div className="lg-card" style={{ textAlign: 'center', padding: '44px 36px', maxWidth: 340 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 20, margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,.11)', border: '1px solid rgba(255,255,255,.2)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45)' }}>
+            <Compass size={30} color="#9fe6ff" strokeWidth={1.6} />
+          </div>
+          <h2 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 700, color: '#f4f7fd', margin: '0 0 10px' }}>Visites 360°</h2>
+          <p style={{ color: '#9fb0c9', fontSize: 14, lineHeight: 1.6, maxWidth: 240, margin: '0 auto' }}>Créez des expériences immersives pour vos clients et collaborateurs.</p>
         </div>
-      </div>
+      </aside>
     </div>
   );
 }
