@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { Ruler, Compass, Share2, Play, ArrowRight } from 'lucide-react';
 
 const FEATURES = [
-  { Icon: Ruler, k: 'F\u00b701', title: 'Mesure accroch\u00e9e', desc: 'Distances, surfaces, cotation. Accrochage extr\u00e9mit\u00e9 / milieu / intersection, verrouillage orthogonal.' },
-  { Icon: Compass, k: 'F\u00b702', title: 'Visites 360\u00b0', desc: "L'ouvrage b\u00e2ti, hotspots directionnels, mini-plan synchronis\u00e9, partage par lien." },
-  { Icon: Share2, k: 'F\u00b703', title: 'Partage s\u00e9curis\u00e9', desc: "Codes d'acc\u00e8s \u00e0 permissions granulaires. Vos clients visualisent, vous gardez la main." },
+  { Icon: Ruler, k: 'F·01', title: 'Mesure accrochée', desc: 'Distances, surfaces, cotation. Accrochage extrémité / milieu / intersection, verrouillage orthogonal.' },
+  { Icon: Compass, k: 'F·02', title: 'Visites 360°', desc: "L'ouvrage bâti, hotspots directionnels, mini-plan synchronisé, partage par lien." },
+  { Icon: Share2, k: 'F·03', title: 'Partage sécurisé', desc: "Codes d'accès à permissions granulaires. Vos clients visualisent, vous gardez la main." },
 ];
 
 export default function HomePage() {
@@ -27,24 +27,24 @@ export default function HomePage() {
       <section className="px-6 sm:px-10 pt-20 pb-16 mx-auto" style={{ maxWidth: 1180 }}>
         <div className="lg-hero">
           <div>
-            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, letterSpacing: '.16em', color: '#93dcf2', textTransform: 'uppercase' }}>Du plan mesur\u00e9 au r\u00e9el b\u00e2ti</p>
+            <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, letterSpacing: '.16em', color: '#93dcf2', textTransform: 'uppercase' }}>Du plan mesuré au réel bâti</p>
             <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 'clamp(38px,6vw,58px)', fontWeight: 700, lineHeight: 1.02, letterSpacing: '-.02em', margin: '16px 0 18px', color: '#f4f7fd' }}>
-              G\u00e9rez vos projets<br /><span className="lg-grad">en toute clart\u00e9.</span>
+              Gérez vos projets<br /><span className="lg-grad">en toute clarté.</span>
             </h1>
             <p style={{ color: '#9fb0c9', fontSize: 17, lineHeight: 1.6, maxWidth: '46ch' }}>
-              BILNOV centralise vos fichiers, la mesure au millim\u00e8tre sur plan DWG et vos visites 360\u00b0 \u2014 dans une seule surface. Importez, mesurez, partagez.
+              BILNOV centralise vos fichiers, la mesure au millimètre sur plan DWG et vos visites 360° — dans une seule surface. Importez, mesurez, partagez.
             </p>
             <div className="flex flex-wrap items-center gap-3.5" style={{ marginTop: 26 }}>
-              <Link href="/register" className="lg-pill-solid" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '13px 22px', borderRadius: 13, fontWeight: 500, fontSize: 15 }}>D\u00e9marrer gratuitement <ArrowRight size={17} /></Link>
-              <Link href="/login" className="lg-pill-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '13px 22px', borderRadius: 13, fontWeight: 500, fontSize: 15 }}><Play size={15} /> Voir la d\u00e9mo</Link>
+              <Link href="/register" className="lg-pill-solid" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '13px 22px', borderRadius: 13, fontWeight: 500, fontSize: 15 }}>Démarrer gratuitement <ArrowRight size={17} /></Link>
+              <Link href="/login" className="lg-pill-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '13px 22px', borderRadius: 13, fontWeight: 500, fontSize: 15 }}><Play size={15} /> Voir la démo</Link>
             </div>
             <div className="flex gap-8" style={{ marginTop: 30 }}>
-              <div><b style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 22, fontWeight: 500, color: '#f4f7fd' }}>\u00b13 mm</b><span style={{ display: 'block', color: '#6b7c98', fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', marginTop: 4 }}>Pr\u00e9cision snap</span></div>
-              <div><b style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 22, fontWeight: 500, color: '#f4f7fd' }}>DWG \u00b7 360</b><span style={{ display: 'block', color: '#6b7c98', fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', marginTop: 4 }}>Formats lus</span></div>
+              <div><b style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 22, fontWeight: 500, color: '#f4f7fd' }}>±3 mm</b><span style={{ display: 'block', color: '#6b7c98', fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', marginTop: 4 }}>Précision snap</span></div>
+              <div><b style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 22, fontWeight: 500, color: '#f4f7fd' }}>DWG · 360</b><span style={{ display: 'block', color: '#6b7c98', fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', marginTop: 4 }}>Formats lus</span></div>
             </div>
           </div>
 
-          {/* Aper\u00e7u verre : plan + cote (cote rouge fonctionnelle conserv\u00e9e) */}
+          {/* Aperçu verre : plan + cote (cote rouge fonctionnelle conservée) */}
           <div className="lg-preview" style={{ borderRadius: 26, overflow: 'hidden', border: '1px solid rgba(255,255,255,.2)', boxShadow: '0 18px 50px rgba(2,6,20,.55), inset 0 1px 0 rgba(255,255,255,.45)', background: 'radial-gradient(120% 120% at 20% 10%,rgba(34,211,238,.16),transparent 55%),linear-gradient(160deg,#0c1830,#0a1122)' }}>
             <div aria-hidden style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.1) 1px,transparent 1px)', backgroundSize: '34px 34px', opacity: .5 }} />
             <div aria-hidden style={{ position: 'absolute', left: '9%', top: '16%', width: '64%', height: '58%', border: '2.5px solid rgba(233,240,255,.85)', borderRadius: 3 }} />
@@ -52,12 +52,12 @@ export default function HomePage() {
               <span style={{ position: 'absolute', left: '50%', top: -11, transform: 'translateX(-50%)', background: '#ff5647', color: '#fff', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, padding: '2px 8px', borderRadius: 6 }}>4 250 mm</span>
             </div>
             <div className="lg-glass-sm" style={{ position: 'absolute', right: '6%', top: '12%', width: 150, padding: '14px 16px', borderRadius: 16 }}>
-              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#9fb0c9' }}>S\u00e9jour \u00b7 largeur</div>
+              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#9fb0c9' }}>Séjour · largeur</div>
               <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 20, marginTop: 3, color: '#f4f7fd' }}>4 250 mm</div>
             </div>
             <div className="lg-glass-sm" style={{ position: 'absolute', right: '12%', bottom: '9%', display: 'flex', alignItems: 'center', gap: 9, padding: '10px 14px', borderRadius: 14 }}>
               <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', background: '#39e6a8', boxShadow: '0 0 12px #39e6a8' }} />
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#f4f7fd' }}>\u2014 Ortho verrouill\u00e9</span>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#f4f7fd' }}>— Ortho verrouillé</span>
             </div>
           </div>
         </div>
@@ -80,7 +80,7 @@ export default function HomePage() {
       </section>
 
       <footer className="px-6 sm:px-10 pb-10 mx-auto" style={{ maxWidth: 1180, borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 28, display: 'flex', justifyContent: 'space-between', color: '#6b7c98', fontSize: 12, fontFamily: 'JetBrains Mono, monospace' }}>
-        <span>BILNOV \u2014 le plan, la mesure, la pi\u00e8ce. \u00a9 2026</span>
+        <span>BILNOV — le plan, la mesure, la pièce. © 2026</span>
         <span>Liquid Glass</span>
       </footer>
     </main>
