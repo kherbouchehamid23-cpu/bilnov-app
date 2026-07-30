@@ -1,0 +1,204 @@
+'use client';
+// src/app/public/[token]/page.tsx
+// Bilnov 360 — V6 : visionneuse PUBLIQUE (lien / iframe), sans authentification.
+// Lecture seule. Récupère les données via /api/public/tours/[token].
+import { useParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import { isDirection, hotspotLabel } from '@/lib/tour';
+import { kindFromContent, arrivalTarget } from '@/lib/tourHotspots';
+import { levelForScene, type LevelLite } from '@/lib/tourMap';
+import TourFloorPlan from '@/components/TourFloorPlan';
+
+interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; levelId?: string | null; mapX?: number | null; mapY?: number | null; hotspots: Hotspot[]; }
+interface Level extends LevelLite { planUrl?: string | null; }
+interface ApiResponse<T> { data: T; success: boolean; }
+
+function embedUrl(u: string): string | null {
+  const yt = u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
+  const vm = u.match(/vimeo\.com\/(\d+)/);
+  if (vm) return `https://player.vimeo.com/video/${vm[1]}`;
+  return null;
+}
+
+export default function PublicTourPage() {
+  const params = useParams();
+  const token = params.token as string;
+
+  const [tourName, setTourName] = useState('');
+  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [currentSceneId, setCurrentSceneId] = useState<string | null>(null);
+  const [infoModal, setInfoModal] = useState<Hotspot | null>(null);
+  const [showPlan, setShowPlan] = useState(true);
+  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
+  const [pLoaded, setPLoaded] = useState(false);
+  const [viewerReady, setViewerReady] = useState(false);
+
+  const viewerRef = useRef<HTMLDivElement>(null);
+  type PViewer = { destroy: () => void; loadScene: (id: string) => void; on: (e: string, f: (v: unknown) => void) => void };
+  const instRef = useRef<PViewer | null>(null);
+
+  // Charger Pannellum
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.pannellum) { setPLoaded(true); return; }
+    const link = document.createElement('link');
+    link.rel = 'stylesheet'; link.href = 'https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css';
+    document.head.appendChild(link);
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js';
+    script.onload = () => setPLoaded(true);
+    document.body.appendChild(script);
+  }, []);
+
+  // Charger les données publiques
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await fetch(`/api/public/tours/${encodeURIComponent(token)}`);
+        if (!r.ok) { setStatus('error'); return; }
+        const d = await r.json() as ApiResponse<{ name: string; scenes: Scene[]; levels: Level[] }>;
+        const list = (d.data?.scenes ?? []).slice().sort((a, b) => a.position - b.position);
+        setTourName(d.data?.name ?? '');
+        setScenes(list);
+        setLevels((d.data?.levels ?? []).slice().sort((a, b) => a.position - b.position));
+        setCurrentSceneId((list.find((s) => s.isInitial) ?? list[0])?.id ?? null);
+        setStatus('ok');
+      } catch { setStatus('error'); }
+    })();
+  }, [token]);
+
+  // Construire l'instance multiScene UNE fois
+  useEffect(() => {
+    if (!pLoaded || status !== 'ok' || !viewerRef.current || scenes.length === 0) return;
+    if (instRef.current) return;
+    const sceneName = (sid: string | null) => scenes.find((s) => s.id === sid)?.name;
+    const cfgScenes: Record<string, unknown> = {};
+    for (const s of scenes) {
+      const hs = (s.hotspots ?? []).map((h) => {
+        if (isDirection(h.type) && h.targetSceneId && scenes.some((t) => t.id === h.targetSceneId)) {
+          const at = arrivalTarget(h.content);
+          return {
+            pitch: h.positionPitch, yaw: h.positionYaw, cssClass: 'pnlm-hotspot bilnov-dir',
+            type: 'scene', sceneId: h.targetSceneId, targetYaw: at.targetYaw, targetPitch: at.targetPitch,
+            ...(at.targetHfov != null ? { targetHfov: at.targetHfov } : {}),
+            text: hotspotLabel(h.type, h.content, sceneName(h.targetSceneId)),
+          };
+        }
+        return { pitch: h.positionPitch, yaw: h.positionYaw, cssClass: 'pnlm-hotspot bilnov-info', text: hotspotLabel(h.type, h.content, sceneName(h.targetSceneId)), clickHandlerFunc: () => setInfoModal(h) };
+      });
+      cfgScenes[s.id] = { type: 'equirectangular', panorama: s.imageUrl, hotSpots: hs };
+    }
+    const first = currentSceneId ?? scenes[0].id;
+    try {
+      const inst = window.pannellum.viewer(viewerRef.current, {
+        default: { firstScene: first, sceneFadeDuration: 900, autoLoad: true, autoRotate: 0, compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true, hfov: 100, minHfov: 50, maxHfov: 120 },
+        scenes: cfgScenes,
+      }) as unknown as PViewer;
+      instRef.current = inst;
+      inst.on('scenechange', (sid: unknown) => { if (typeof sid === 'string') setCurrentSceneId(sid); });
+      setViewerReady(true);
+    } catch { /* init failed */ }
+    return () => { if (instRef.current) { try { instRef.current.destroy(); } catch { /* ignore */ } instRef.current = null; } setViewerReady(false); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pLoaded, status, scenes]);
+
+  const goToScene = (sid: string) => { if (instRef.current && sid !== currentSceneId) { try { instRef.current.loadScene(sid); } catch { /* ignore */ } } };
+
+  const currentScene = scenes.find((s) => s.id === currentSceneId) ?? null;
+  const currentLevel = currentScene ? levelForScene(levels, currentScene) : null;
+  const currentPlanUrl = (currentLevel && levels.find((l) => l.id === currentLevel.id)?.planUrl) || null;
+  const hasAnyPlan = levels.some((l) => l.planUrl);
+
+  if (status === 'error') {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0f0f0f' }}>
+        <p className="text-sm text-stone-400">Cette visite n’est pas disponible ou n’est plus partagée.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ background: '#0f0f0f' }}>
+      <div className="flex-1 flex flex-col relative">
+        {scenes.length > 0 ? (
+          <>
+            <div ref={viewerRef} className="flex-1" style={{ minHeight: '100vh', background: '#000' }} />
+            {currentScene && (
+              <div className="absolute top-4 left-4 z-10 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-black/60 pointer-events-none">{currentScene.name}</div>
+            )}
+            {tourName && (
+              <div className="absolute top-4 right-4 z-10 px-3 py-1.5 rounded-lg text-xs text-stone-200 bg-black/50 pointer-events-none">{tourName}</div>
+            )}
+            {(!pLoaded || !viewerReady) && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
+                <span className="text-sm text-stone-400">Chargement…</span>
+              </div>
+            )}
+
+            {hasAnyPlan && (
+              <div className="absolute bottom-4 right-4 z-20 w-60 rounded-lg bg-black/75 p-2 text-white">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[10px] uppercase text-stone-400">Plan{currentLevel ? ` — ${currentLevel.name}` : ''}</span>
+                  <button onClick={() => setShowPlan((v) => !v)} className="text-xs text-stone-300 hover:text-white">{showPlan ? '▾' : '▸'}</button>
+                </div>
+                {showPlan && (
+                  <>
+                    {levels.filter((l) => l.planUrl).length > 1 && (
+                      <div className="mb-1 flex flex-wrap gap-1">
+                        {levels.filter((l) => l.planUrl).map((l) => {
+                          const active = currentLevel?.id === l.id;
+                          const target = scenes.find((s) => s.levelId === l.id);
+                          return (
+                            <button key={l.id} onClick={() => { if (target) goToScene(target.id); }}
+                              className={`rounded px-1.5 py-0.5 text-[10px] ${active ? 'bg-violet-600 text-white' : 'bg-white/15 text-stone-200 hover:bg-white/25'}`}>{l.name}</button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <TourFloorPlan planUrl={currentPlanUrl} levelId={currentLevel?.id ?? null} scenes={scenes} currentSceneId={currentSceneId} onMarkerClick={(sid) => goToScene(sid)} />
+                  </>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-center p-8">
+            <p className="text-sm text-stone-400">{status === 'loading' ? 'Chargement…' : 'Cette visite ne contient aucune scène.'}</p>
+          </div>
+        )}
+
+        {infoModal && (() => {
+          const k = kindFromContent(infoModal.type, infoModal.content);
+          const url = String(infoModal.content.url ?? '');
+          const emb = embedUrl(url);
+          return (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4" onClick={() => setInfoModal(null)}>
+            <div className="max-w-md rounded-xl bg-white p-4 text-slate-800" onClick={(e) => e.stopPropagation()}>
+              {typeof infoModal.content.title === 'string' && infoModal.content.title && <p className="mb-2 font-semibold">{infoModal.content.title}</p>}
+              {(k === 'DESCRIPTION' || k === 'INFO' || k === 'COMMENT') && <p className="whitespace-pre-wrap text-sm">{String(infoModal.content.text ?? '')}</p>}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {k === 'IMAGE' && <img src={url} alt={String(infoModal.content.caption ?? '')} className="max-h-72 w-full rounded object-contain" />}
+              {k === 'GALLERY' && (
+                <div className="grid grid-cols-2 gap-2">
+                  {(Array.isArray(infoModal.content.images) ? infoModal.content.images : []).map((u, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={i} src={String(u)} alt="" className="h-28 w-full rounded object-cover" />
+                  ))}
+                </div>
+              )}
+              {k === 'VIDEO' && (emb ? <iframe src={emb} className="aspect-video w-full rounded" allowFullScreen title="Vidéo" /> : <video src={url} controls className="max-h-72 w-full rounded" />)}
+              {(k === 'PDF' || k === 'FILE' || k === 'URL' || k === 'AUDIO' || k === 'PRODUCT') && (
+                <a href={url || '#'} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block rounded-lg bg-violet-600 px-3 py-1.5 text-sm text-white">Ouvrir</a>
+              )}
+              <button onClick={() => setInfoModal(null)} className="mt-3 w-full rounded bg-slate-200 py-1.5 text-sm">Fermer</button>
+            </div>
+          </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}

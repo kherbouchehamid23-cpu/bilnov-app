@@ -6,6 +6,7 @@ import { uploadFileDirect } from '@/lib/upload';
 import { hotspotLabel, isDirection } from '@/lib/tour';
 import { buildHotspotPayload, buildReturnPayload, kindFromContent, type HotspotKind } from '@/lib/tourHotspots';
 import { levelForScene, type LevelLite } from '@/lib/tourMap';
+import { buildShareUrl, buildEmbedCode } from '@/lib/tourShare';
 import TourHotspotPanel from '@/components/TourHotspotPanel';
 import TourFloorPlan from '@/components/TourFloorPlan';
 
@@ -75,6 +76,12 @@ export default function TourEditorPage() {
   const [newLevelName, setNewLevelName] = useState('');
   const [placing, setPlacing] = useState(false);
   const [planBusy, setPlanBusy] = useState<string | null>(null);
+
+  // V6 — partage public.
+  const [showShare, setShowShare] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const scenesRef = useRef<Scene[]>([]);
   const addModeRef = useRef(false);
@@ -265,6 +272,36 @@ export default function TourEditorPage() {
     try { await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sid}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ mapX: x, mapY: y }) }); } catch { /* noop */ }
   };
 
+  // --- V6 : partage public ---
+  const loadShare = async (): Promise<void> => {
+    try {
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/share`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const d = await r.json() as ApiResponse<{ isPublic: boolean; token: string | null }>;
+      setShareToken(d.data?.isPublic ? d.data.token : null);
+    } catch { /* noop */ }
+  };
+  const enableShare = async (): Promise<void> => {
+    setShareBusy(true);
+    try {
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/share`, { method: 'POST', headers: authJson });
+      const d = await r.json() as ApiResponse<{ token: string | null }>;
+      setShareToken(d.data?.token ?? null);
+    } catch { alert('Erreur lors de l’activation du partage.'); }
+    finally { setShareBusy(false); }
+  };
+  const disableShare = async (): Promise<void> => {
+    if (!confirm('Désactiver le partage ? Le lien public actuel cessera de fonctionner.')) return;
+    setShareBusy(true);
+    try {
+      await fetch(`/api/projects/${id}/tours/${tourId}/share`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } });
+      setShareToken(null);
+    } catch { alert('Erreur.'); }
+    finally { setShareBusy(false); }
+  };
+  const copyText = (label: string, text: string): void => {
+    try { void navigator.clipboard.writeText(text); setCopied(label); setTimeout(() => setCopied(null), 1800); } catch { /* noop */ }
+  };
+
   useEffect(() => {
     void (async () => {
       try {
@@ -284,6 +321,7 @@ export default function TourEditorPage() {
         setScenes(list);
         if (list.length > 0) setCurrentScene(list[0]);
         void loadLevels();
+        void loadShare();
       } finally {
         setLoading(false);
       }
@@ -439,6 +477,10 @@ export default function TourEditorPage() {
           <button onClick={() => setShowLevels(true)}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-stone-800 hover:bg-stone-700 text-white transition-colors">
             🗺 Niveaux &amp; plans{levels.length > 0 ? ` (${levels.length})` : ''}
+          </button>
+          <button onClick={() => setShowShare(true)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${shareToken ? 'bg-emerald-700 hover:bg-emerald-600 text-white' : 'bg-stone-800 hover:bg-stone-700 text-white'}`}>
+            {shareToken ? '🔗 Partagé' : '🔗 Partager'}
           </button>
           <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${uploading ? 'opacity-60 bg-stone-700 text-stone-300' : 'bg-violet-600 hover:bg-violet-500 text-white'}`}>
             {uploading ? (
@@ -733,6 +775,52 @@ export default function TourEditorPage() {
           </div>
         </aside>
       </div>
+
+      {/* V6 — Modale de partage public */}
+      {showShare && (() => {
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        const url = shareToken ? buildShareUrl(origin, shareToken) : '';
+        const embed = shareToken ? buildEmbedCode(origin, shareToken, { title: tour?.name }) : '';
+        return (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowShare(false)}>
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 text-slate-800" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-semibold">Partage public</h3>
+                <button onClick={() => setShowShare(false)} className="text-stone-400 hover:text-slate-800">✕</button>
+              </div>
+              {!shareToken ? (
+                <>
+                  <p className="mb-4 text-sm text-stone-600">Générez un lien public : toute personne disposant du lien pourra visiter la visite, sans compte. Vous pouvez le désactiver à tout moment.</p>
+                  <button onClick={() => void enableShare()} disabled={shareBusy}
+                    className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50">
+                    {shareBusy ? 'Activation…' : 'Activer le partage'}
+                  </button>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-stone-500">Lien public</p>
+                    <div className="flex gap-2">
+                      <input readOnly value={url} className="flex-1 rounded-lg border border-stone-300 px-3 py-2 text-sm" onFocus={(e) => e.currentTarget.select()} />
+                      <button onClick={() => copyText('url', url)} className="rounded-lg bg-stone-800 px-3 py-2 text-xs text-white hover:bg-stone-700">{copied === 'url' ? '✓ Copié' : 'Copier'}</button>
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-violet-600 px-3 py-2 text-xs text-white hover:bg-violet-500">Ouvrir</a>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-stone-500">Intégration (iframe)</p>
+                    <textarea readOnly value={embed} rows={3} className="w-full rounded-lg border border-stone-300 px-3 py-2 font-mono text-[11px]" onFocus={(e) => e.currentTarget.select()} />
+                    <button onClick={() => copyText('embed', embed)} className="mt-1 rounded-lg bg-stone-800 px-3 py-1.5 text-xs text-white hover:bg-stone-700">{copied === 'embed' ? '✓ Copié' : 'Copier le code'}</button>
+                  </div>
+                  <button onClick={() => void disableShare()} disabled={shareBusy}
+                    className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-50">
+                    Désactiver le partage
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* V4b — Modale de gestion des niveaux & plans */}
       {showLevels && (
