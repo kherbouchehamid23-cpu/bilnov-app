@@ -7,6 +7,7 @@ const config: Config = {
       fontFamily: {
         sans: ['DM Sans', 'system-ui', 'sans-serif'],
         display: ['Syne', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
       colors: {
         primary: {
@@ -20,6 +21,11 @@ const config: Config = {
           700: '#6B46C1',
           800: '#5B21B6',
           900: '#4C1D95',
+        },
+        glass: {
+          ink: '#4F46E5',
+          cyan: '#22D3EE',
+          violet: '#8B5CF6',
         },
         stone: {
           50: '#FAFAF9',
