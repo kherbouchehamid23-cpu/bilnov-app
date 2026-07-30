@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { isDirection, hotspotLabel } from '@/lib/tour';
 import { kindFromContent, arrivalTarget } from '@/lib/tourHotspots';
 import { levelForScene, type LevelLite } from '@/lib/tourMap';
+import { viewerKeyAction, neighborSceneId, preloadUrls } from '@/lib/tourViewer';
 import TourFloorPlan from '@/components/TourFloorPlan';
 
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
@@ -35,9 +36,17 @@ export default function PublicTourPage() {
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
   const [pLoaded, setPLoaded] = useState(false);
   const [viewerReady, setViewerReady] = useState(false);
+  const [gyroOn, setGyroOn] = useState(false);
+  const [gyroSupported, setGyroSupported] = useState(false);
+  const [isFs, setIsFs] = useState(false);
 
   const viewerRef = useRef<HTMLDivElement>(null);
-  type PViewer = { destroy: () => void; loadScene: (id: string) => void; on: (e: string, f: (v: unknown) => void) => void };
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+  type PViewer = {
+    destroy: () => void; loadScene: (id: string) => void; on: (e: string, f: (v: unknown) => void) => void;
+    startOrientation?: () => void; stopOrientation?: () => void; isOrientationSupported?: () => boolean;
+  };
   const instRef = useRef<PViewer | null>(null);
 
   // Charger Pannellum
@@ -100,12 +109,75 @@ export default function PublicTourPage() {
       instRef.current = inst;
       inst.on('scenechange', (sid: unknown) => { if (typeof sid === 'string') setCurrentSceneId(sid); });
       setViewerReady(true);
+      try { setGyroSupported(Boolean(inst.isOrientationSupported?.())); } catch { /* ignore */ }
     } catch { /* init failed */ }
     return () => { if (instRef.current) { try { instRef.current.destroy(); } catch { /* ignore */ } instRef.current = null; } setViewerReady(false); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pLoaded, status, scenes]);
 
   const goToScene = (sid: string) => { if (instRef.current && sid !== currentSceneId) { try { instRef.current.loadScene(sid); } catch { /* ignore */ } } };
+
+  // V6b — gyroscope mobile.
+  const toggleGyro = () => {
+    const inst = instRef.current;
+    if (!inst || !inst.isOrientationSupported?.()) return;
+    try {
+      if (gyroOn) { inst.stopOrientation?.(); setGyroOn(false); }
+      else { inst.startOrientation?.(); setGyroOn(true); }
+    } catch { /* ignore */ }
+  };
+
+  // V6b — plein écran conteneur.
+  const toggleFullscreen = () => {
+    const el = wrapRef.current;
+    if (typeof document === 'undefined') return;
+    try {
+      if (document.fullscreenElement) void document.exitFullscreen();
+      else if (el?.requestFullscreen) void el.requestFullscreen();
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onFs = () => setIsFs(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+
+  // V6b — navigation clavier.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const action = viewerKeyAction(e.key);
+      if (!action) return;
+      if (infoModal) { if (action === 'closeModal') { e.preventDefault(); setInfoModal(null); } return; }
+      if (action === 'closeModal') return;
+      e.preventDefault();
+      if (action === 'next') { const n = neighborSceneId(currentSceneId, scenes, 1); if (n) goToScene(n); }
+      else if (action === 'prev') { const p = neighborSceneId(currentSceneId, scenes, -1); if (p) goToScene(p); }
+      else if (action === 'toggleFullscreen') toggleFullscreen();
+      else if (action === 'toggleGyro') toggleGyro();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSceneId, scenes, infoModal, gyroOn]);
+
+  // V6b — préchargement des panoramas voisins (fluidité).
+  useEffect(() => {
+    if (typeof window === 'undefined' || status !== 'ok' || !currentSceneId) return;
+    const hsByScene = Object.fromEntries(scenes.map((s) => [s.id, s.hotspots ?? []]));
+    const urls = preloadUrls(currentSceneId, scenes, hsByScene, { max: 4 });
+    const imgs = urls.map((u) => { const im = new Image(); im.src = u; return im; });
+    return () => { imgs.forEach((im) => { im.src = ''; }); };
+  }, [currentSceneId, scenes, status]);
+
+  // V6b — focus la fermeture à l'ouverture de la modale.
+  useEffect(() => {
+    if (infoModal) closeBtnRef.current?.focus();
+  }, [infoModal]);
 
   const currentScene = scenes.find((s) => s.id === currentSceneId) ?? null;
   const currentLevel = currentScene ? levelForScene(levels, currentScene) : null;
@@ -122,16 +194,26 @@ export default function PublicTourPage() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#0f0f0f' }}>
-      <div className="flex-1 flex flex-col relative">
+      <div ref={wrapRef} className="flex-1 flex flex-col relative" style={{ background: '#0f0f0f' }}>
         {scenes.length > 0 ? (
           <>
-            <div ref={viewerRef} className="flex-1" style={{ minHeight: '100vh', background: '#000' }} />
+            <div ref={viewerRef} className="flex-1" role="application" aria-label={`Visite virtuelle 360° — ${currentScene?.name ?? tourName}. Flèches gauche/droite pour changer de scène.`} style={{ minHeight: '100vh', background: '#000' }} />
             {currentScene && (
               <div className="absolute top-4 left-4 z-10 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-black/60 pointer-events-none">{currentScene.name}</div>
             )}
-            {tourName && (
-              <div className="absolute top-4 right-4 z-10 px-3 py-1.5 rounded-lg text-xs text-stone-200 bg-black/50 pointer-events-none">{tourName}</div>
-            )}
+            <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
+              <div className="flex gap-2">
+                {gyroSupported && (
+                  <button onClick={toggleGyro} aria-pressed={gyroOn} aria-label={gyroOn ? 'Désactiver le gyroscope' : 'Activer le gyroscope'} title="Gyroscope (g)"
+                    className={`rounded-lg px-2.5 py-1.5 text-sm ${gyroOn ? 'bg-violet-600 text-white' : 'bg-black/60 text-stone-200 hover:bg-black/80'}`}>🧭</button>
+                )}
+                <button onClick={toggleFullscreen} aria-pressed={isFs} aria-label={isFs ? 'Quitter le plein écran' : 'Plein écran'} title="Plein écran (f)"
+                  className="rounded-lg px-2.5 py-1.5 text-sm bg-black/60 text-stone-200 hover:bg-black/80">{isFs ? '🡼' : '⛶'}</button>
+              </div>
+              {tourName && (
+                <div className="px-3 py-1.5 rounded-lg text-xs text-stone-200 bg-black/50 pointer-events-none">{tourName}</div>
+              )}
+            </div>
             {(!pLoaded || !viewerReady) && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
                 <span className="text-sm text-stone-400">Chargement…</span>
@@ -175,7 +257,7 @@ export default function PublicTourPage() {
           const url = String(infoModal.content.url ?? '');
           const emb = embedUrl(url);
           return (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4" onClick={() => setInfoModal(null)}>
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label={typeof infoModal.content.title === 'string' && infoModal.content.title ? infoModal.content.title : 'Information'} onClick={() => setInfoModal(null)}>
             <div className="max-w-md rounded-xl bg-white p-4 text-slate-800" onClick={(e) => e.stopPropagation()}>
               {typeof infoModal.content.title === 'string' && infoModal.content.title && <p className="mb-2 font-semibold">{infoModal.content.title}</p>}
               {(k === 'DESCRIPTION' || k === 'INFO' || k === 'COMMENT') && <p className="whitespace-pre-wrap text-sm">{String(infoModal.content.text ?? '')}</p>}
@@ -193,7 +275,7 @@ export default function PublicTourPage() {
               {(k === 'PDF' || k === 'FILE' || k === 'URL' || k === 'AUDIO' || k === 'PRODUCT') && (
                 <a href={url || '#'} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block rounded-lg bg-violet-600 px-3 py-1.5 text-sm text-white">Ouvrir</a>
               )}
-              <button onClick={() => setInfoModal(null)} className="mt-3 w-full rounded bg-slate-200 py-1.5 text-sm">Fermer</button>
+              <button ref={closeBtnRef} onClick={() => setInfoModal(null)} className="mt-3 w-full rounded bg-slate-200 py-1.5 text-sm">Fermer</button>
             </div>
           </div>
           );
