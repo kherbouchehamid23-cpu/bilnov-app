@@ -345,7 +345,7 @@ export default function TourViewerPage() {
           const emb = embedUrl(url);
           return (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label={typeof infoModal.content.title === 'string' && infoModal.content.title ? infoModal.content.title : 'Information'} onClick={() => setInfoModal(null)}>
-            <div className="max-w-md rounded-xl bg-white p-4 text-slate-800" onClick={(e) => e.stopPropagation()}>
+            <div className={`${k === 'PDF' ? 'max-w-4xl' : 'max-w-md'} w-full rounded-xl bg-white p-4 text-slate-800`} onClick={(e) => e.stopPropagation()}>
               {typeof infoModal.content.title === 'string' && infoModal.content.title && <p className="mb-2 font-semibold">{infoModal.content.title}</p>}
               {(k === 'DESCRIPTION' || k === 'INFO' || k === 'COMMENT') && <p className="whitespace-pre-wrap text-sm">{String(infoModal.content.text ?? '')}</p>}
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -361,7 +361,17 @@ export default function TourViewerPage() {
               {k === 'VIDEO' && (emb
                 ? <iframe src={emb} className="aspect-video w-full rounded" allowFullScreen title="Vidéo" />
                 : <video src={url} controls className="max-h-72 w-full rounded" />)}
-              {(k === 'PDF' || k === 'FILE' || k === 'URL' || k === 'AUDIO' || k === 'PRODUCT') && (
+              {k === 'PDF' && url && (
+                <div className="space-y-2">
+                  <iframe src={`${url}#toolbar=1&navpanes=0`} className="h-[65vh] w-full rounded border border-slate-200" title={typeof infoModal.content.title === 'string' && infoModal.content.title ? infoModal.content.title : 'Document PDF'} />
+                  {infoModal.content.allowDownload === true && (
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg bg-violet-600 px-3 py-1.5 text-sm text-white">Télécharger</a>
+                  )}
+                </div>
+              )}
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              {k === 'AUDIO' && url && <audio src={url} controls className="mt-1 w-full" />}
+              {(k === 'FILE' || k === 'URL' || k === 'PRODUCT') && (
                 <a href={url || '#'} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block rounded-lg bg-violet-600 px-3 py-1.5 text-sm text-white">Ouvrir</a>
               )}
               <button ref={closeBtnRef} onClick={() => setInfoModal(null)} className="mt-3 w-full rounded bg-slate-200 py-1.5 text-sm">Fermer</button>
