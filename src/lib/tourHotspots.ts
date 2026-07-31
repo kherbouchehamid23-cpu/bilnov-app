@@ -68,6 +68,11 @@ export const HOTSPOT_TYPES: Record<HotspotKind, HotspotTypeDef> = {
 
 export const HOTSPOT_KINDS = Object.keys(HOTSPOT_TYPES) as HotspotKind[];
 
+// §9 : liste PRINCIPALE proposée à la création (7 types conservés, ordre du cahier des charges).
+// Les autres types (GALLERY, DESCRIPTION, FILE, PRODUCT, INFO) restent définis pour le rendu et
+// l'édition des hotspots existants, mais ne sont plus offerts à la création.
+export const HOTSPOT_KINDS_PRIMARY: HotspotKind[] = ['DIRECTION', 'IMAGE', 'PDF', 'COMMENT', 'URL', 'VIDEO', 'AUDIO'];
+
 export function isHotspotKind(v: unknown): v is HotspotKind {
   return typeof v === 'string' && Object.prototype.hasOwnProperty.call(HOTSPOT_TYPES, v);
 }
