@@ -18,6 +18,15 @@ export async function PATCH(
       levelId?: string | null;
       mapX?: number | null;
       mapY?: number | null;
+      // Doc 1 §6.4/§7 — additif : métadonnées scène + panorama mono/stéréo + orientation initiale.
+      panoramaType?: string | null;
+      stereoLayout?: string | null;
+      spaceName?: string | null;
+      hidden?: boolean;
+      status?: string | null;
+      initialYaw?: number | null;
+      initialPitch?: number | null;
+      initialFov?: number | null;
     };
 
     // Si on définit isInitial = true, retirer isInitial des autres scènes
@@ -41,6 +50,14 @@ export async function PATCH(
         levelId: body.levelId === undefined ? undefined : body.levelId,
         mapX: clamp01(body.mapX),
         mapY: clamp01(body.mapY),
+        panoramaType: body.panoramaType === undefined ? undefined : body.panoramaType,
+        stereoLayout: body.stereoLayout === undefined ? undefined : body.stereoLayout,
+        spaceName: body.spaceName === undefined ? undefined : body.spaceName,
+        hidden: typeof body.hidden === 'boolean' ? body.hidden : undefined,
+        status: body.status === undefined ? undefined : body.status,
+        initialYaw: body.initialYaw === undefined ? undefined : body.initialYaw,
+        initialPitch: body.initialPitch === undefined ? undefined : body.initialPitch,
+        initialFov: body.initialFov === undefined ? undefined : body.initialFov,
       },
     });
 
