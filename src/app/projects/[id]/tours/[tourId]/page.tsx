@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { uploadFileDirect } from '@/lib/upload';
 import { hotspotLabel, isDirection } from '@/lib/tour';
 import { buildHotspotPayload, buildReturnPayload, kindFromContent, type HotspotKind } from '@/lib/tourHotspots';
+import { qualityReport, type DirectionLink } from '@/lib/tourQuality';
+import { defaultIconFor } from '@/lib/tourIcons';
 import { levelForScene, type LevelLite } from '@/lib/tourMap';
 import { buildShareUrl, buildEmbedCode } from '@/lib/tourShare';
 import {
@@ -16,7 +18,7 @@ import TourHotspotPanel from '@/components/TourHotspotPanel';
 import TourFloorPlan from '@/components/TourFloorPlan';
 
 interface Tour { id: string; name: string; status: string; }
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; }
 interface Level extends LevelLite { planUrl?: string | null; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
 interface ApiResponse<T> { data: T; success: boolean; }
@@ -171,6 +173,7 @@ export default function TourEditorPage() {
     const f: Record<string, unknown> = {};
     if (k === 'COMMENT') { f.status = 'NEW'; f.priority = 'NORMAL'; }
     if (k === 'URL') f.openMode = 'newTab';
+    f.iconId = defaultIconFor(k); // §10 — icône par défaut selon le type (personnalisable dans le panneau)
     return f;
   };
   const openHotspotPanel = (): void => {
@@ -191,10 +194,16 @@ export default function TourEditorPage() {
     if (!hsKind || !currentScene) return;
     const res = buildHotspotPayload(hsKind, hsForm, draft);
     if (!res.ok || !res.payload) { setHsErrors(res.errors); return; }
+    // §10 — personnalisation d'icône transmise à part du contenu.
+    const iconFields = {
+      iconId: typeof hsForm.iconId === 'string' ? hsForm.iconId : undefined,
+      iconColor: typeof hsForm.iconColor === 'string' ? hsForm.iconColor : undefined,
+      iconScale: typeof hsForm.iconScale === 'number' ? hsForm.iconScale : undefined,
+    };
     try {
       const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots`, {
         method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(res.payload),
+        body: JSON.stringify({ ...res.payload, ...iconFields }),
       });
       const d = await r.json() as ApiResponse<Hotspot>;
       if (d.data) {
@@ -208,7 +217,7 @@ export default function TourEditorPage() {
           try {
             await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${res.payload.targetSceneId}/hotspots`, {
               method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify(ret),
+              body: JSON.stringify({ ...ret, iconId: 'arrow-back' }),
             });
           } catch { alert('Lien créé, mais le lien retour a échoué.'); }
         }
@@ -354,6 +363,14 @@ export default function TourEditorPage() {
     setCurrentScene((prev) => prev ? { ...prev, mapX: x, mapY: y } : null);
     setPlacing(false);
     try { await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sid}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ mapX: x, mapY: y }) }); } catch { /* noop */ }
+  };
+  // §7 — type de panorama (mono / stéréo haut-bas / stéréo côte-à-côte) persisté par scène.
+  const setScenePanorama = async (panoramaType: string, stereoLayout: string | null): Promise<void> => {
+    if (!currentScene) return;
+    const sid = currentScene.id;
+    setScenes((prev) => prev.map((s) => s.id === sid ? { ...s, panoramaType, stereoLayout } : s));
+    setCurrentScene((prev) => prev ? { ...prev, panoramaType, stereoLayout } : null);
+    try { await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sid}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ panoramaType, stereoLayout }) }); } catch { /* noop */ }
   };
 
   // --- V6 : partage public ---
@@ -514,8 +531,38 @@ export default function TourEditorPage() {
     } catch { await loadScenes(); }
   };
 
+  // §21.2 — récupère tous les liens Direction (hotspots de toutes les scènes) pour le contrôle.
+  const collectAllLinks = async (): Promise<DirectionLink[]> => {
+    const links: DirectionLink[] = [];
+    await Promise.all(scenes.map(async (s) => {
+      try {
+        const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${s.id}/hotspots`, { headers: { Authorization: `Bearer ${getToken()}` } });
+        const d = await r.json() as ApiResponse<{ hotspots: Hotspot[] }>;
+        for (const h of d.data?.hotspots ?? []) {
+          if (isDirection(h.type) && h.targetSceneId) links.push({ fromSceneId: s.id, toSceneId: h.targetSceneId });
+        }
+      } catch { /* noop */ }
+    }));
+    return links;
+  };
+
   const handlePublish = async (): Promise<void> => {
     try {
+      // §21.2 — vérification bloquante avant publication (scène de départ, liens cassés, scènes inatteignables).
+      if (!published) {
+        const links = await collectAllLinks();
+        const nodes = scenes.map((s) => ({ id: s.id, name: s.name, isInitial: s.isInitial, levelId: s.levelId ?? null, mapX: s.mapX ?? null, mapY: s.mapY ?? null }));
+        const report = qualityReport(nodes, links, levels.map((l) => ({ id: l.id, name: l.name, planImageUrl: l.planUrl ?? null })));
+        const errors = report.issues.filter((i) => i.level === 'error');
+        if (errors.length > 0) {
+          const ok = window.confirm(
+            `Publication — ${errors.length} problème(s) bloquant(s) détecté(s) :\n\n`
+            + errors.map((e) => '• ' + e.message).join('\n')
+            + `\n\nCorrigez-les depuis « ✓ Qualité ». Publier quand même ?`
+          );
+          if (!ok) return;
+        }
+      }
       await fetch(`/api/projects/${id}/tours/${tourId}/publish`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}` },
@@ -616,6 +663,23 @@ export default function TourEditorPage() {
               {currentScene && (
                 <button onClick={openHotspotPanel} className={`absolute top-4 right-4 z-20 rounded-lg px-3 py-1.5 text-sm font-medium ${addMode ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}>{addMode ? 'Placement…' : '＋ Hotspot'}</button>
               )}
+              {/* §7 — type de panorama de la scène courante (mono / stéréo) */}
+              <div className="absolute top-4 left-4 z-20 flex items-center gap-1 rounded-lg bg-black/60 p-1 text-white">
+                <span className="px-1.5 text-[10px] uppercase text-stone-400">Panorama</span>
+                {([
+                  { pt: 'MONO', sl: null, label: 'Mono', title: 'Panorama monoscopique' },
+                  { pt: 'STEREO', sl: 'TB', label: 'Stéréo ⬍', title: 'Stéréoscopique haut/bas' },
+                  { pt: 'STEREO', sl: 'SBS', label: 'Stéréo ⬌', title: 'Stéréoscopique côte à côte' },
+                ] as const).map((o) => {
+                  const active = (currentScene.panoramaType ?? 'MONO') === o.pt && (o.pt === 'MONO' || (currentScene.stereoLayout ?? 'TB') === o.sl);
+                  return (
+                    <button key={o.label} title={o.title}
+                      onClick={() => void setScenePanorama(o.pt, o.sl)}
+                      className={`rounded-md px-2 py-1 text-[11px] font-medium ${active ? 'bg-violet-600 text-white' : 'bg-stone-800 text-stone-300 hover:bg-stone-700'}`}>{o.label}</button>
+                  );
+                })}
+              </div>
+
               {hotspots.length > 0 && (
                 <div className="absolute bottom-4 left-4 z-20 max-h-40 w-56 overflow-y-auto rounded-lg bg-black/70 p-2 text-white">
                   <p className="mb-1 text-[10px] uppercase text-stone-400">Hotspots ({hotspots.length})</p>
@@ -662,12 +726,16 @@ export default function TourEditorPage() {
                 </div>
               )}
 
-              {/* Panneau de création de hotspot (§9) */}
+              {/* Panneau de création de hotspot (§9, §10 icônes, §11.2 miniatures) */}
               <TourHotspotPanel
                 open={hsOpen}
                 step={hsStep}
                 kind={hsKind}
-                scenes={scenes}
+                scenes={scenes.map((s) => ({
+                  id: s.id, name: s.name, imageUrl: s.imageUrl,
+                  levelName: s.levelId ? (levels.find((l) => l.id === s.levelId)?.name ?? null) : null,
+                  alreadyLinked: hotspots.some((h) => isDirection(h.type) && h.targetSceneId === s.id),
+                }))}
                 currentSceneId={currentScene.id}
                 form={hsForm}
                 errors={hsErrors}
