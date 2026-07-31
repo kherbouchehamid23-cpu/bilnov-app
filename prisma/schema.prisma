@@ -279,6 +279,16 @@ model TourScene {
   mapX    Float?  @map("map_x")
   mapY    Float?  @map("map_y")
 
+  // Doc 1 (§6.4, §7) — additif nullable : métadonnées de scène + panorama mono/stéréo persisté.
+  panoramaType String?  @default("MONO") @map("panorama_type") // MONO | STEREO
+  stereoLayout String?  @map("stereo_layout")                  // TB (top/bottom) | SBS (side-by-side) | null
+  spaceName    String?  @map("space_name")                     // espace / pièce
+  hidden       Boolean  @default(false) @map("hidden")         // masquée de la galerie / du partage
+  status       String?  @default("PUBLISHED") @map("status")   // DRAFT | PUBLISHED
+  initialYaw   Float?   @map("initial_yaw")
+  initialPitch Float?   @map("initial_pitch")
+  initialFov   Float?   @map("initial_fov")
+
   tour     VirtualTour   @relation(fields: [tourId], references: [id], onDelete: Cascade)
   level    TourLevel?    @relation(fields: [levelId], references: [id], onDelete: SetNull)
   hotspots TourHotspot[]
@@ -295,6 +305,14 @@ model TourHotspot {
   targetSceneId String?     @map("target_scene_id")
   content       Json
   createdAt     DateTime    @default(now()) @map("created_at")
+
+  // Doc 1 (§10, §19, §14) — additif nullable : icône choisie + personnalisation + visibilité + lien commentaire transversal.
+  iconId      String?  @map("icon_id")
+  iconColor   String?  @map("icon_color")
+  iconScale   Float?   @map("icon_scale")
+  iconOpacity Float?   @map("icon_opacity")
+  visible     Boolean  @default(true) @map("visible")
+  commentId   String?  @map("comment_id") // Comment.id (système transversal Bilnov), sans relation formelle (additif)
 
   scene TourScene @relation(fields: [sceneId], references: [id], onDelete: Cascade)
 
