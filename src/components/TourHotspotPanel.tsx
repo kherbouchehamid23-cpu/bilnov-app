@@ -5,7 +5,7 @@
 // l'état (étape, type, formulaire). S'appuie sur le moteur src/lib/tourHotspots.
 import React from 'react';
 import {
-  HOTSPOT_KINDS, HOTSPOT_TYPES, fieldsFor,
+  HOTSPOT_KINDS_PRIMARY, HOTSPOT_TYPES, fieldsFor,
   type HotspotKind, type FieldDef,
 } from '@/lib/tourHotspots';
 
@@ -160,7 +160,7 @@ export default function TourHotspotPanel(props: Props) {
         <div className="flex-1 overflow-y-auto p-4">
           {step === 'type' && (
             <div className="grid grid-cols-2 gap-2">
-              {HOTSPOT_KINDS.map((k) => {
+              {HOTSPOT_KINDS_PRIMARY.map((k) => {
                 const d = HOTSPOT_TYPES[k];
                 return (
                   <button key={k} onClick={() => props.onPickKind(k)}
