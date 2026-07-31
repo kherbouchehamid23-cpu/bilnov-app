@@ -10,12 +10,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
     const hs = await prisma.tourHotspot.findFirst({ where: { id: params.hotspotId, sceneId: params.sceneId, scene: { tourId: params.tourId, tour: { projectId: params.id } } }, select: { id: true } });
     if (!hs) return apiError('Hotspot introuvable', 'NOT_FOUND', 404);
-    const body = await req.json() as { positionYaw?: number; positionPitch?: number; targetSceneId?: string | null; content?: unknown };
+    const body = await req.json() as {
+      positionYaw?: number; positionPitch?: number; targetSceneId?: string | null; content?: unknown;
+      iconId?: string | null; iconColor?: string | null; iconScale?: number | null; iconOpacity?: number | null;
+      visible?: boolean; commentId?: string | null;
+    };
     const data: Record<string, unknown> = {};
     if (typeof body.positionYaw === 'number') data.positionYaw = body.positionYaw;
     if (typeof body.positionPitch === 'number') data.positionPitch = body.positionPitch;
     if (body.targetSceneId !== undefined) data.targetSceneId = body.targetSceneId;
     if (body.content !== undefined) data.content = body.content as Prisma.InputJsonValue;
+    if (body.iconId !== undefined) data.iconId = body.iconId;
+    if (body.iconColor !== undefined) data.iconColor = body.iconColor;
+    if (body.iconScale !== undefined) data.iconScale = body.iconScale;
+    if (body.iconOpacity !== undefined) data.iconOpacity = body.iconOpacity;
+    if (typeof body.visible === 'boolean') data.visible = body.visible;
+    if (body.commentId !== undefined) data.commentId = body.commentId;
     const updated = await prisma.tourHotspot.update({ where: { id: params.hotspotId }, data });
     return apiSuccess(updated);
   } catch (e) {
