@@ -258,9 +258,12 @@ export default function TourViewerPage() {
           <div className="w-px h-4 bg-stone-700" />
           <span className="font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>{tourName || 'Visite virtuelle'}</span>
         </div>
-        {canEdit && (
-          <Link href={`/projects/${id}/tours/${tourId}`} className="px-4 py-2 rounded-lg text-sm font-medium bg-stone-800 hover:bg-stone-700 text-white">✎ Modifier</Link>
-        )}
+        <div className="flex items-center gap-2">
+          <Link href={`/projects/${id}/tours/${tourId}/view-psv`} className="px-4 py-2 rounded-lg text-sm font-medium bg-white/10 backdrop-blur-md border border-white/15 text-stone-100 hover:bg-white/20" title="Nouveau moteur immersif : transitions fondu, mono/stéréo, VR">360° immersif ✦</Link>
+          {canEdit && (
+            <Link href={`/projects/${id}/tours/${tourId}`} className="px-4 py-2 rounded-lg text-sm font-medium bg-stone-800 hover:bg-stone-700 text-white">✎ Modifier</Link>
+          )}
+        </div>
       </header>
 
       <div ref={wrapRef} className="flex-1 flex flex-col relative" style={{ background: '#0f0f0f' }}>
