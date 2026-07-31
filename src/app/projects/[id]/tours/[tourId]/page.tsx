@@ -200,10 +200,30 @@ export default function TourEditorPage() {
       iconColor: typeof hsForm.iconColor === 'string' ? hsForm.iconColor : undefined,
       iconScale: typeof hsForm.iconScale === 'number' ? hsForm.iconScale : undefined,
     };
+    // §14 — le hotspot Commentaire crée un vrai commentaire dans le système transversal Bilnov
+    // (CommentLocation PANORAMA_360 → scène ; metadata yaw/pitch). Le hotspot ne stocke que le lien.
+    let linkedCommentId: string | undefined;
+    if (hsKind === 'COMMENT') {
+      try {
+        const title = typeof hsForm.title === 'string' ? hsForm.title : '';
+        const text = typeof hsForm.text === 'string' ? hsForm.text : '';
+        const description = (text.trim() || title.trim() || 'Commentaire — visite 360°');
+        const cRes = await fetch(`/api/projects/${id}/comments`, {
+          method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: title || undefined, description,
+            priority: typeof hsForm.priority === 'string' ? hsForm.priority : 'NORMAL',
+            locations: [{ locationType: 'PANORAMA_360', resourceType: 'tour_scene', resourceId: currentScene.id, title: currentScene.name, metadata: { tourId, yaw: draft?.yaw, pitch: draft?.pitch } }],
+          }),
+        });
+        const cData = await cRes.json() as ApiResponse<{ id: string }>;
+        if (cData.data?.id) linkedCommentId = cData.data.id;
+      } catch { /* le commentaire transversal est optionnel : on n'empêche pas la pose du hotspot */ }
+    }
     try {
       const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots`, {
         method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...res.payload, ...iconFields }),
+        body: JSON.stringify({ ...res.payload, ...iconFields, commentId: linkedCommentId }),
       });
       const d = await r.json() as ApiResponse<Hotspot>;
       if (d.data) {
