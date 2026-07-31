@@ -26,7 +26,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string;
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
     const scene = await sceneInProject(params.sceneId, params.tourId, params.id);
     if (!scene) return apiError('Scène introuvable', 'NOT_FOUND', 404);
-    const body = await req.json() as { type?: string; positionYaw?: number; positionPitch?: number; targetSceneId?: string | null; content?: unknown };
+    const body = await req.json() as {
+      type?: string; positionYaw?: number; positionPitch?: number; targetSceneId?: string | null; content?: unknown;
+      // Doc 1 §10/§19/§14 — additif : icône choisie + personnalisation + visibilité + lien commentaire transversal.
+      iconId?: string | null; iconColor?: string | null; iconScale?: number | null; iconOpacity?: number | null;
+      visible?: boolean; commentId?: string | null;
+    };
     const type = (['LINK', 'TEXT', 'IMAGE', 'VIDEO'].includes(body.type ?? '') ? body.type : 'TEXT') as HotspotType;
     if (typeof body.positionYaw !== 'number' || typeof body.positionPitch !== 'number') return apiError('Position requise', 'VALIDATION_ERROR', 400);
     const created = await prisma.tourHotspot.create({
@@ -35,6 +40,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string;
         positionYaw: body.positionYaw, positionPitch: body.positionPitch,
         targetSceneId: type === 'LINK' ? (body.targetSceneId ?? null) : null,
         content: (body.content ?? {}) as Prisma.InputJsonValue,
+        iconId: body.iconId ?? undefined,
+        iconColor: body.iconColor ?? undefined,
+        iconScale: typeof body.iconScale === 'number' ? body.iconScale : undefined,
+        iconOpacity: typeof body.iconOpacity === 'number' ? body.iconOpacity : undefined,
+        visible: typeof body.visible === 'boolean' ? body.visible : undefined,
+        commentId: body.commentId ?? undefined,
       },
     });
     return apiSuccess(created, 201);
