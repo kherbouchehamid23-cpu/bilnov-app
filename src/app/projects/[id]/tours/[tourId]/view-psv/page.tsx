@@ -99,6 +99,8 @@ export default function TourViewerPsvPage() {
   const [projection, setProjection] = useState<Projection>('mono');
   const [vrOn, setVrOn] = useState(false);
   const [autorotate, setAutorotate] = useState(false);
+  const [sceneLoading, setSceneLoading] = useState(false);   // §23 — indicateur de chargement de scène
+  const [loadError, setLoadError] = useState<string | null>(null); // §23 — id de scène à réessayer
 
   const hostRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<any>(null);
@@ -139,12 +141,15 @@ export default function TourViewerPsvPage() {
   const goScene = useCallback(async (sceneId: string) => {
     const s = dataRef.current.scenes.find((x) => x.id === sceneId);
     if (!s || !viewerRef.current) return;
+    // §23 — la scène précédente reste affichée pendant la préparation ; indicateur discret, jamais d'écran vide.
+    setSceneLoading(true); setLoadError(null);
     try {
       await viewerRef.current.setPanorama(panoUrl(s), { showLoader: false, transition: true, panoData: panoDataFor(projFromScene(s, projRef.current)) });
       markersRef.current?.setMarkers(markersFor(sceneId));
       curRef.current = sceneId;
       setCurrentSceneId(sceneId);
-    } catch { /* noop */ }
+    } catch { setLoadError(sceneId); }             // §23 — échec réseau : proposer un réessai
+    finally { setSceneLoading(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markersFor]);
 
@@ -303,6 +308,21 @@ export default function TourViewerPsvPage() {
             ) : (
               <span className="text-sm" style={{ color: '#9fb0c9' }}>Chargement du moteur 360…</span>
             )}
+          </div>
+        )}
+
+        {/* §23 — indicateur de chargement discret (la scène précédente reste visible dessous) */}
+        {sceneLoading && status === 'ready' && !loadError && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full px-3 py-1.5" style={{ background: 'rgba(5,6,12,.7)', backdropFilter: 'blur(8px)' }}>
+            <span className="inline-block h-3 w-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            <span className="text-xs" style={{ color: '#c7d3e6' }}>Chargement de la scène…</span>
+          </div>
+        )}
+        {/* §23 — échec réseau : réessai sans écran vide */}
+        {loadError && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 rounded-full px-3 py-1.5" style={{ background: 'rgba(60,10,20,.85)', backdropFilter: 'blur(8px)' }}>
+            <span className="text-xs" style={{ color: '#ffb4ab' }}>Chargement impossible.</span>
+            <button onClick={() => { const t = loadError; setLoadError(null); if (t) void goScene(t); }} className="rounded-full px-2 py-0.5 text-xs" style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}>Réessayer</button>
           </div>
         )}
 
