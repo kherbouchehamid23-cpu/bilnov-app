@@ -8,8 +8,9 @@ import {
   HOTSPOT_KINDS_PRIMARY, HOTSPOT_TYPES, fieldsFor,
   type HotspotKind, type FieldDef,
 } from '@/lib/tourHotspots';
+import { iconsForFamily, familiesForKind, iconSvg, defaultIconFor } from '@/lib/tourIcons';
 
-export interface SceneLite { id: string; name: string; }
+export interface SceneLite { id: string; name: string; imageUrl?: string; levelName?: string | null; alreadyLinked?: boolean; }
 
 interface Props {
   open: boolean;
@@ -55,18 +56,8 @@ function Field({ f, scenes, currentSceneId, value, onChange }: {
 }) {
   const base = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-violet-500';
   if (f.control === 'scene') {
-    return (
-      <label className="block">
-        <span className="mb-1 block text-xs font-medium text-stone-500">{f.label}</span>
-        <select className={base} value={typeof value === 'string' ? value : ''}
-          onChange={(e) => onChange(f.name, e.target.value)}>
-          <option value="">Choisir une scène…</option>
-          {scenes.filter((s) => s.id !== currentSceneId).map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
-      </label>
-    );
+    // §11.2 / §20 — sélection de la scène cible par MINIATURES (cartes) + recherche.
+    return <SceneThumbPicker f={f} scenes={scenes} currentSceneId={currentSceneId} value={value} onChange={onChange} />;
   }
   if (f.control === 'select') {
     return (
@@ -117,6 +108,81 @@ function Field({ f, scenes, currentSceneId, value, onChange }: {
         value={typeof value === 'string' ? value : ''}
         onChange={(e) => onChange(f.name, e.target.value)} />
     </label>
+  );
+}
+
+// §11.2 / §20 — sélection de la scène cible sous forme de cartes visuelles (miniature, nom, niveau,
+// indicateur « déjà relié ») avec recherche. Remplace la liste déroulante seule.
+function SceneThumbPicker({ f, scenes, currentSceneId, value, onChange }: {
+  f: FieldDef; scenes: SceneLite[]; currentSceneId: string | null;
+  value: unknown; onChange: (name: string, value: unknown) => void;
+}) {
+  const [q, setQ] = React.useState('');
+  const selected = typeof value === 'string' ? value : '';
+  const list = scenes.filter((s) => s.id !== currentSceneId)
+    .filter((s) => !q || s.name.toLowerCase().includes(q.toLowerCase()) || (s.levelName ?? '').toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="block">
+      <span className="mb-1 block text-xs font-medium text-stone-500">{f.label}</span>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher une scène…"
+        className="mb-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm text-slate-800 outline-none focus:border-violet-500" />
+      <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+        {list.length === 0 && <p className="col-span-2 py-4 text-center text-xs text-stone-400">Aucune scène.</p>}
+        {list.map((s) => (
+          <button key={s.id} type="button" onClick={() => onChange(f.name, s.id)}
+            className={`relative overflow-hidden rounded-lg border text-left ${selected === s.id ? 'border-violet-500 ring-2 ring-violet-300' : 'border-stone-200 hover:border-violet-300'}`}>
+            <span className="block h-20 w-full bg-stone-100">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {s.imageUrl ? <img src={s.imageUrl} alt={s.name} className="h-full w-full object-cover" /> : null}
+            </span>
+            <span className="block px-2 py-1">
+              <span className="block truncate text-xs font-medium text-slate-800">{s.name}</span>
+              {s.levelName && <span className="block truncate text-[10px] text-stone-400">{s.levelName}</span>}
+            </span>
+            {s.alreadyLinked && <span className="absolute right-1 top-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[9px] font-medium text-white">relié</span>}
+            {selected === s.id && <span className="absolute left-1 top-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[9px] font-medium text-white">✓</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// §10 — sélecteur d'icône (familles) + couleur + taille, avec aperçu.
+function IconPicker({ kind, form, onChange }: {
+  kind: HotspotKind; form: Record<string, unknown>; onChange: (name: string, value: unknown) => void;
+}) {
+  const current = typeof form.iconId === 'string' ? form.iconId : defaultIconFor(kind);
+  const color = typeof form.iconColor === 'string' ? form.iconColor : '#7c6dff';
+  const scale = typeof form.iconScale === 'number' ? form.iconScale : 1;
+  const fams = familiesForKind(kind);
+  return (
+    <div className="rounded-lg border border-stone-200 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-medium text-stone-500">Icône</span>
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-stone-200"
+          dangerouslySetInnerHTML={{ __html: iconSvg(current, { color, size: Math.round(20 * scale) }) }} />
+      </div>
+      <div className="max-h-28 overflow-y-auto">
+        {fams.map((fam) => (
+          <div key={fam} className="mb-1 grid grid-cols-6 gap-1">
+            {iconsForFamily(fam).map((ic) => (
+              <button key={ic.id} type="button" title={ic.label} onClick={() => onChange('iconId', ic.id)}
+                className={`flex items-center justify-center rounded-md border p-1.5 ${current === ic.id ? 'border-violet-500 bg-violet-50' : 'border-stone-200 hover:border-violet-300'}`}
+                dangerouslySetInnerHTML={{ __html: iconSvg(ic.id, { color: '#475569', size: 18 }) }} />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center gap-3">
+        <label className="flex items-center gap-1 text-[11px] text-stone-500">Couleur
+          <input type="color" value={color} onChange={(e) => onChange('iconColor', e.target.value)} className="h-6 w-8 cursor-pointer rounded border border-stone-200" />
+        </label>
+        <label className="flex flex-1 items-center gap-2 text-[11px] text-stone-500">Taille
+          <input type="range" min="0.6" max="2" step="0.1" value={scale} onChange={(e) => onChange('iconScale', Number(e.target.value))} className="flex-1" />
+        </label>
+      </div>
+    </div>
   );
 }
 
@@ -180,6 +246,7 @@ export default function TourHotspotPanel(props: Props) {
                 <Field key={f.name} f={f} scenes={scenes} currentSceneId={currentSceneId}
                   value={form[f.name]} onChange={props.onChange} />
               ))}
+              <IconPicker kind={kind} form={form} onChange={props.onChange} />
               {errors.length > 0 && (
                 <ul className="rounded-lg bg-red-50 p-2 text-xs text-red-600">
                   {errors.map((e, i) => <li key={i}>• {e}</li>)}
