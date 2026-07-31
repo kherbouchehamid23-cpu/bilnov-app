@@ -14,9 +14,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import Link from 'next/link';
 import { isDirection } from '@/lib/tour';
+import { iconSvg } from '@/lib/tourIcons';
 
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; }
-interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; panoramaType?: string | null; stereoLayout?: string | null; }
+interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; iconId?: string | null; iconColor?: string | null; iconScale?: number | null; iconOpacity?: number | null; visible?: boolean; }
 interface ApiResponse<T> { data: T; success: boolean; }
 type Projection = 'mono' | 'ou' | 'sbs';
 
@@ -67,6 +68,17 @@ function loadPSV(): Promise<any> {
 
 // V4 mono/stéréo : forme fonction de panoData (reçoit l'image chargée -> dimensions natives).
 // mono = sphère complète ; ou = moitié haute ; sbs = moitié gauche. Aucun champ DB requis.
+// §7 : projection déduite de la scène (panoramaType/stereoLayout) ; sinon réglage manuel.
+function projFromScene(s: Scene, manual: Projection): Projection {
+  const pt = (s.panoramaType || '').toUpperCase();
+  if (pt === 'STEREO') {
+    const lay = (s.stereoLayout || 'TB').toUpperCase();
+    return (lay === 'SBS' || lay === 'LR') ? 'sbs' : 'ou';
+  }
+  if (pt === 'MONO') return 'mono';
+  return manual;
+}
+
 function panoDataFor(proj: Projection): ((img: any) => any) | undefined {
   if (proj === 'ou') return (img: any) => ({ fullWidth: img.width, fullHeight: img.width / 2, croppedWidth: img.width, croppedHeight: img.height / 2, croppedX: 0, croppedY: 0 });
   if (proj === 'sbs') return (img: any) => ({ fullWidth: img.width / 2, fullHeight: img.height, croppedWidth: img.width / 2, croppedHeight: img.height, croppedX: 0, croppedY: 0 });
@@ -103,13 +115,19 @@ export default function TourViewerPsvPage() {
 
   const markersFor = useCallback((sceneId: string) => {
     const hs = dataRef.current.hs[sceneId] ?? [];
-    return hs.map((h) => {
+    return hs.filter((h) => h.visible !== false).map((h) => {
       const dir = isDirection(h.type);
       const title = typeof h.content?.title === 'string' ? h.content.title as string : '';
+      // §10 : icône choisie + couleur/taille/opacité ; défaut selon direction/info.
+      const scale = typeof h.iconScale === 'number' && h.iconScale > 0 ? h.iconScale : 1;
+      const color = h.iconColor || '#eaf3ff';
+      const glyphPx = Math.round((dir ? 26 : 20) * scale);
+      const wrapPx = Math.round((dir ? 44 : 32) * scale);
+      const svg = iconSvg(h.iconId || (dir ? 'arrow-forward' : 'info'), { color, size: glyphPx, opacity: h.iconOpacity ?? 1 });
       return {
         id: h.id,
         position: { yaw: `${h.positionYaw}deg`, pitch: `${h.positionPitch}deg` },
-        html: dir ? '<div class="psv-hs psv-dir">›</div>' : '<div class="psv-hs psv-info">i</div>',
+        html: `<div class="psv-hs" style="width:${wrapPx}px;height:${wrapPx}px">${svg}</div>`,
         anchor: 'center center',
         tooltip: title || (dir ? 'Aller à la scène' : 'Information'),
         data: { dir, targetSceneId: h.targetSceneId, hid: h.id },
@@ -122,7 +140,7 @@ export default function TourViewerPsvPage() {
     const s = dataRef.current.scenes.find((x) => x.id === sceneId);
     if (!s || !viewerRef.current) return;
     try {
-      await viewerRef.current.setPanorama(panoUrl(s), { showLoader: false, transition: true, panoData: panoDataFor(projRef.current) });
+      await viewerRef.current.setPanorama(panoUrl(s), { showLoader: false, transition: true, panoData: panoDataFor(projFromScene(s, projRef.current)) });
       markersRef.current?.setMarkers(markersFor(sceneId));
       curRef.current = sceneId;
       setCurrentSceneId(sceneId);
@@ -180,7 +198,7 @@ export default function TourViewerPsvPage() {
         const viewer = new Viewer({
           container: hostRef.current,
           panorama: panoUrl(s0),
-          panoData: panoDataFor(projRef.current),
+          panoData: panoDataFor(projFromScene(s0, projRef.current)),
           navbar: ['zoom', 'move', 'fullscreen'],
           defaultZoomLvl: 30, minFov: 30, maxFov: 100,
           plugins: [
@@ -223,7 +241,7 @@ export default function TourViewerPsvPage() {
   useEffect(() => {
     const s = dataRef.current.scenes.find((x) => x.id === curRef.current);
     if (!s || !viewerRef.current) return;
-    try { void viewerRef.current.setPanorama(panoUrl(s), { showLoader: false, transition: false, panoData: panoDataFor(projection) }); } catch { /* noop */ }
+    try { void viewerRef.current.setPanorama(panoUrl(s), { showLoader: false, transition: false, panoData: panoDataFor(projFromScene(s, projection)) }); } catch { /* noop */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projection]);
 
