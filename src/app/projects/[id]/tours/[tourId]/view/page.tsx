@@ -12,7 +12,7 @@ import TourFloorPlan from '@/components/TourFloorPlan';
 
 interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; }
 interface Level extends LevelLite { planUrl?: string | null; }
-interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
+interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; commentId?: string | null; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
 function embedUrl(u: string): string | null {
@@ -348,6 +348,9 @@ export default function TourViewerPage() {
             <div className={`${k === 'PDF' ? 'max-w-4xl' : 'max-w-md'} w-full rounded-xl bg-white p-4 text-slate-800`} onClick={(e) => e.stopPropagation()}>
               {typeof infoModal.content.title === 'string' && infoModal.content.title && <p className="mb-2 font-semibold">{infoModal.content.title}</p>}
               {(k === 'DESCRIPTION' || k === 'INFO' || k === 'COMMENT') && <p className="whitespace-pre-wrap text-sm">{String(infoModal.content.text ?? '')}</p>}
+              {k === 'COMMENT' && infoModal.commentId && (
+                <a href={`/projects/${id}/comments`} className="mt-2 inline-block rounded-lg bg-violet-600 px-3 py-1.5 text-sm text-white">Ouvrir dans les commentaires Bilnov</a>
+              )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {k === 'IMAGE' && <img src={url} alt={String(infoModal.content.caption ?? '')} className="max-h-72 w-full rounded object-contain" />}
               {k === 'GALLERY' && (
