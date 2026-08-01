@@ -258,6 +258,25 @@ export default function PublicTourPage() {
               </div>
             )}
 
+            {/* Barre de navigation entre scènes — indispensable sur mobile (pas de clavier)
+                et quand la visite n'a ni flèche de direction ni plan. */}
+            {scenes.length > 1 && (
+              <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 max-w-[calc(100%-2rem)] overflow-x-auto rounded-full bg-black/70 px-2 py-1.5">
+                <div className="flex items-center gap-1">
+                  {scenes.map((s) => {
+                    const active = s.id === currentSceneId;
+                    return (
+                      <button key={s.id} onClick={() => goToScene(s.id)} title={s.name}
+                        aria-label={`Aller à la scène ${s.name}`} aria-current={active ? 'true' : undefined}
+                        className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium transition-colors ${active ? 'bg-violet-600 text-white' : 'bg-white/10 text-stone-200 hover:bg-white/20'}`}>
+                        {s.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {hasAnyPlan && (
               <div className="absolute bottom-4 right-4 z-20 w-60 rounded-lg bg-black/75 p-2 text-white">
                 <div className="mb-1 flex items-center justify-between">
