@@ -20,11 +20,13 @@ export async function GET(
       select: {
         id: true, name: true,
         scenes: {
+          // §22.2 — le partage public masque les scènes cachées et les hotspots non visibles.
+          where: { hidden: false },
           orderBy: { position: 'asc' },
           select: {
             id: true, name: true, isInitial: true, position: true, imageUrl: true,
             levelId: true, mapX: true, mapY: true,
-            hotspots: { select: { id: true, type: true, positionYaw: true, positionPitch: true, targetSceneId: true, content: true } },
+            hotspots: { where: { visible: true }, select: { id: true, type: true, positionYaw: true, positionPitch: true, targetSceneId: true, content: true, iconId: true, iconColor: true, iconScale: true } },
           },
         },
         levels: { orderBy: { position: 'asc' }, select: { id: true, name: true, position: true, planImageUrl: true } },
