@@ -18,7 +18,7 @@ import TourHotspotPanel from '@/components/TourHotspotPanel';
 import TourFloorPlan from '@/components/TourFloorPlan';
 
 interface Tour { id: string; name: string; status: string; }
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; hidden?: boolean; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; hidden?: boolean; thumbnailUrl?: string | null; previewUrl?: string | null; derivStatus?: string | null; }
 interface Level extends LevelLite { planUrl?: string | null; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
 interface ApiResponse<T> { data: T; success: boolean; }
@@ -181,7 +181,7 @@ export default function TourEditorPage() {
     }));
     try {
       pannellumInstanceRef.current = window.pannellum.viewer(viewerRef.current, {
-        type: 'equirectangular', panorama: currentScene.panoramaProxy ? `${currentScene.panoramaProxy}?token=${getToken()}` : currentScene.imageUrl, autoLoad: true, autoRotate: 0,
+        type: 'equirectangular', panorama: currentScene.previewUrl ? currentScene.previewUrl : (currentScene.panoramaProxy ? `${currentScene.panoramaProxy}?token=${getToken()}` : currentScene.imageUrl), autoLoad: true, autoRotate: 0,
         compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true,
         hfov: 100, minHfov: 50, maxHfov: 120, pitch: 0, yaw: 0, hotSpots: hs,
       });
@@ -198,7 +198,7 @@ export default function TourEditorPage() {
     };
     el.addEventListener('click', onClick);
     return () => { el.removeEventListener('click', onClick); if (pannellumInstanceRef.current) { try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ } pannellumInstanceRef.current = null; } };
-  }, [pannellumLoaded, currentScene?.imageUrl, hotspots]);
+  }, [pannellumLoaded, currentScene?.imageUrl, currentScene?.previewUrl, hotspots]);
 
   useEffect(() => {
     if (!currentScene) { setHotspots([]); return; }
@@ -535,6 +535,35 @@ export default function TourEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, tourId]);
 
+  // Vague 2 — déclenche la génération miniature+aperçu puis rafraîchit les URLs signées.
+  const processScene = async (sceneId: string): Promise<void> => {
+    setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'PROCESSING' } : s));
+    try {
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sceneId}/process`, { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` } });
+      if (!r.ok) { setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'FAILED' } : s)); return; }
+      const sr = await fetch(`/api/projects/${id}/tours/${tourId}/scenes`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const sd = await sr.json() as ApiResponse<{ scenes: Scene[] }>;
+      const fresh = (sd.data?.scenes ?? []).find(x => x.id === sceneId);
+      if (fresh) {
+        const patch = { thumbnailUrl: fresh.thumbnailUrl, previewUrl: fresh.previewUrl, derivStatus: fresh.derivStatus };
+        setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, ...patch } : s));
+        setCurrentScene(prev => prev && prev.id === sceneId ? { ...prev, ...patch } : prev);
+      }
+    } catch { setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'FAILED' } : s)); }
+  };
+
+  // Vague 2 — auto-optimisation des scènes existantes (créées avant le pipeline) : une passe,
+  // séquentielle (pas de rafale), pour que les visites déjà réalisées bénéficient de l'aperçu léger.
+  const autoHealedRef = useRef(false);
+  useEffect(() => {
+    if (autoHealedRef.current || loading || scenes.length === 0) return;
+    autoHealedRef.current = true;
+    const todo = scenes.filter(s => !s.previewUrl && s.derivStatus !== 'READY' && s.derivStatus !== 'PROCESSING');
+    if (todo.length === 0) return;
+    void (async () => { for (const s of todo) { await processScene(s.id); } })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, scenes.length]);
+
   const handleUpload360 = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
@@ -557,7 +586,7 @@ export default function TourEditorPage() {
           body: JSON.stringify({ fileId, name: file.name.replace(/\.[^.]+$/, '') }),
         });
         const sceneData = await sceneRes.json() as ApiResponse<Scene>;
-        if (sceneData.data) { const sc = sceneData.data; created.push(sc); setScenes(prev => [...prev, sc]); }
+        if (sceneData.data) { const sc = sceneData.data; created.push(sc); setScenes(prev => [...prev, sc]); void processScene(sc.id); }
         else failed.push(file.name);
       } catch { failed.push(file.name); }
     }
@@ -981,13 +1010,19 @@ export default function TourEditorPage() {
                   {/* Thumbnail */}
                   <button
                     onClick={() => setCurrentScene(scene)}
-                    className="w-16 h-12 rounded-lg overflow-hidden flex-shrink-0"
+                    className="relative w-16 h-12 rounded-lg overflow-hidden flex-shrink-0"
                     style={{ background: '#0a0a0a' }}>
-                    {scene.imageUrl ? (
-                      <img src={scene.imageUrl} alt={scene.name}
+                    {(scene.thumbnailUrl || scene.imageUrl) ? (
+                      <img src={scene.thumbnailUrl ?? scene.imageUrl} alt={scene.name}
+                        loading="lazy" decoding="async"
                         className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-stone-600 text-xs">🌐</div>
+                    )}
+                    {(scene.derivStatus === 'PROCESSING' || scene.derivStatus === 'PENDING') && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                        <span className="w-3.5 h-3.5 border border-white border-t-transparent rounded-full animate-spin" />
+                      </div>
                     )}
                   </button>
 
