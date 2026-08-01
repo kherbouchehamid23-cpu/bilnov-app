@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { uploadFileDirect } from '@/lib/upload';
 import { hotspotLabel, isDirection } from '@/lib/tour';
-import { buildHotspotPayload, buildReturnPayload, kindFromContent, type HotspotKind } from '@/lib/tourHotspots';
+import { buildHotspotPayload, buildReturnPayload, kindFromContent, type HotspotKind, type HotspotPayload } from '@/lib/tourHotspots';
 import { qualityReport, type DirectionLink } from '@/lib/tourQuality';
 import { defaultIconFor } from '@/lib/tourIcons';
 import { levelForScene, type LevelLite } from '@/lib/tourMap';
@@ -18,7 +18,7 @@ import TourHotspotPanel from '@/components/TourHotspotPanel';
 import TourFloorPlan from '@/components/TourFloorPlan';
 
 interface Tour { id: string; name: string; status: string; }
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; hidden?: boolean; }
 interface Level extends LevelLite { planUrl?: string | null; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
 interface ApiResponse<T> { data: T; success: boolean; }
@@ -47,6 +47,45 @@ function embedUrl(u: string): string | null {
   return null;
 }
 
+// §17/§18.1 — plans PDF : pdf.js chargé via <script type="module"> (imports CDN en string →
+// build Vercel toujours vert). On rastérise la 1re page en PNG pour garder TourFloorPlan (image) inchangé.
+const PDFJS_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs';
+const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs';
+function loadPdfjs(): Promise<any> {
+  const w = window as unknown as { __pdfjs?: any; __pdfjsPromise?: Promise<any> };
+  if (w.__pdfjs) return Promise.resolve(w.__pdfjs);
+  if (w.__pdfjsPromise) return w.__pdfjsPromise;
+  w.__pdfjsPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.type = 'module';
+    s.textContent =
+      `import * as pdfjs from '${PDFJS_URL}';\n` +
+      `pdfjs.GlobalWorkerOptions.workerSrc = '${PDFJS_WORKER}';\n` +
+      `window.__pdfjs = pdfjs;\n` +
+      `window.dispatchEvent(new Event('pdfjs-ready'));`;
+    window.addEventListener('pdfjs-ready', () => resolve(w.__pdfjs), { once: true });
+    s.onerror = () => reject(new Error('pdfjs-load-failed'));
+    document.head.appendChild(s);
+    setTimeout(() => { if (!w.__pdfjs) reject(new Error('pdfjs-timeout')); }, 15000);
+  });
+  return w.__pdfjsPromise;
+}
+async function rasterizePdfFirstPage(file: File): Promise<File> {
+  const pdfjs = await loadPdfjs();
+  const data = await file.arrayBuffer();
+  const doc = await pdfjs.getDocument({ data }).promise;
+  const page = await doc.getPage(1);
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(3, Math.max(1, 1800 / base.width)); // vise ~1800px de large
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+  const ctx = canvas.getContext('2d');
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  const blob: Blob = await new Promise((res) => canvas.toBlob((b) => res(b as Blob), 'image/png'));
+  return new File([blob], (file.name.replace(/\.pdf$/i, '') || 'plan') + '.png', { type: 'image/png' });
+}
+
 export default function TourEditorPage() {
   const params = useParams();
   const id = params.id as string;
@@ -70,6 +109,8 @@ export default function TourEditorPage() {
   const [addMode, setAddMode] = useState(false);
   const [draft, setDraft] = useState<{ yaw: number; pitch: number } | null>(null);
   const [infoModal, setInfoModal] = useState<Hotspot | null>(null);
+  // §11.4 — placement guidé de la flèche de retour (aller-retour) sur la scène cible.
+  const [pendingReturn, setPendingReturn] = useState<{ forward: HotspotPayload; sourceSceneId: string; sourceSceneName: string; targetSceneId: string } | null>(null);
 
   // Panneau de création de hotspot (§9) — remplace l'ancienne modale/popup.
   const [hsOpen, setHsOpen] = useState(false);
@@ -232,19 +273,41 @@ export default function TourEditorPage() {
         setHistory((h) => pushAction(h, { kind: 'create', hotspot: toSnapshot(created, currentScene.id) }));
       }
       if (hsForm.returnLink === true && res.payload.targetSceneId) {
-        const ret = buildReturnPayload(res.payload, currentScene.id, currentScene.name);
-        if (ret) {
-          try {
-            await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${res.payload.targetSceneId}/hotspots`, {
-              method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ...ret, iconId: 'arrow-back' }),
-            });
-          } catch { alert('Lien créé, mais le lien retour a échoué.'); }
-        }
+        // §11.4 — au lieu d'auto-placer le retour, on bascule sur la scène cible pour le positionner séparément.
+        const fwd = res.payload;
+        const tgt = fwd.targetSceneId as string;
+        const target = scenes.find((s) => s.id === tgt) ?? null;
+        setPendingReturn({ forward: fwd, sourceSceneId: currentScene.id, sourceSceneName: currentScene.name, targetSceneId: tgt });
+        closeHotspotPanel();
+        if (target) setCurrentScene(target);
+        setDraft(null); setAddMode(true);
+        return;
       }
       closeHotspotPanel();
     } catch { setHsErrors(["Erreur lors de l'enregistrement, réessayez."]); }
   };
+
+  // §11.4 — crée la flèche de retour à la position placée (ou par défaut opposée).
+  const confirmReturn = async (useDefault: boolean): Promise<void> => {
+    const pr = pendingReturn; if (!pr) return;
+    const ret = buildReturnPayload(pr.forward, pr.sourceSceneId, pr.sourceSceneName);
+    if (!ret) { setPendingReturn(null); setAddMode(false); setDraft(null); return; }
+    if (!useDefault && draft) { ret.positionYaw = draft.yaw; ret.positionPitch = draft.pitch; }
+    try {
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${pr.targetSceneId}/hotspots`, {
+        method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...ret, iconId: 'arrow-back' }),
+      });
+      const d = await r.json() as ApiResponse<Hotspot>;
+      if (d.data && currentScene?.id === pr.targetSceneId) {
+        const created = d.data;
+        setHotspots((prev) => [...prev, created]);
+        setHistory((h) => pushAction(h, { kind: 'create', hotspot: toSnapshot(created, pr.targetSceneId) }));
+      }
+    } catch { alert('Le lien retour a échoué.'); }
+    setPendingReturn(null); setAddMode(false); setDraft(null);
+  };
+  const cancelReturn = (): void => { setPendingReturn(null); setAddMode(false); setDraft(null); };
 
   const deleteHotspot = async (hid: string): Promise<void> => {
     const snap = hotspots.find((h) => h.id === hid);
@@ -359,11 +422,16 @@ export default function TourEditorPage() {
     } catch { alert('Erreur suppression'); }
   };
   const uploadPlan = async (levelId: string, e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     setPlanBusy(levelId);
     try {
+      // §17 — plan PDF : rastérisation de la 1re page en PNG (DWG = conversion serveur requise, non gérée ici).
+      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+        try { file = await rasterizePdfFirstPage(file); }
+        catch { alert("Impossible de convertir ce PDF en plan. Importez une image (PNG/JPG)."); setPlanBusy(null); return; }
+      }
       const { storageKey } = await uploadFileDirect(file, id, getToken(), null);
       const r = await fetch(`/api/projects/${id}/tours/${tourId}/levels/${levelId}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ planImageUrl: storageKey }) });
       const d = await r.json() as ApiResponse<Level>;
@@ -391,6 +459,14 @@ export default function TourEditorPage() {
     setScenes((prev) => prev.map((s) => s.id === sid ? { ...s, panoramaType, stereoLayout } : s));
     setCurrentScene((prev) => prev ? { ...prev, panoramaType, stereoLayout } : null);
     try { await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sid}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ panoramaType, stereoLayout }) }); } catch { /* noop */ }
+  };
+  // §22.2 — masquer/afficher la scène pour les visites partagées (persisté).
+  const toggleSceneHidden = async (): Promise<void> => {
+    if (!currentScene) return;
+    const sid = currentScene.id; const next = !currentScene.hidden;
+    setScenes((prev) => prev.map((s) => s.id === sid ? { ...s, hidden: next } : s));
+    setCurrentScene((prev) => prev ? { ...prev, hidden: next } : null);
+    try { await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sid}`, { method: 'PATCH', headers: authJson, body: JSON.stringify({ hidden: next }) }); } catch { /* noop */ }
   };
 
   // --- V6 : partage public ---
@@ -698,6 +774,9 @@ export default function TourEditorPage() {
                       className={`rounded-md px-2 py-1 text-[11px] font-medium ${active ? 'bg-violet-600 text-white' : 'bg-stone-800 text-stone-300 hover:bg-stone-700'}`}>{o.label}</button>
                   );
                 })}
+                <span className="mx-1 h-4 w-px bg-stone-700" />
+                <button onClick={() => void toggleSceneHidden()} title="Masquer cette scène dans les visites partagées (§22)"
+                  className={`rounded-md px-2 py-1 text-[11px] font-medium ${currentScene.hidden ? 'bg-amber-600 text-white' : 'bg-stone-800 text-stone-300 hover:bg-stone-700'}`}>{currentScene.hidden ? '🚫 Masquée' : '👁 Visible'}</button>
               </div>
 
               {hotspots.length > 0 && (
@@ -743,6 +822,18 @@ export default function TourEditorPage() {
                       />
                     </>
                   )}
+                </div>
+              )}
+
+              {/* §11.4 — barre de placement guidé de la flèche de retour (aller-retour) */}
+              {pendingReturn && (
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-slate-900/90 px-4 py-2.5 text-white shadow-xl backdrop-blur">
+                  <span className="text-amber-400">↩</span>
+                  <span className="text-sm">Placez la flèche de retour vers « {pendingReturn.sourceSceneName} »</span>
+                  <button onClick={() => void confirmReturn(false)} disabled={!draft}
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${draft ? 'bg-violet-600 hover:bg-violet-500' : 'bg-white/10 text-stone-400 cursor-not-allowed'}`}>Placer ici</button>
+                  <button onClick={() => void confirmReturn(true)} className="rounded-full bg-white/15 px-3 py-1 text-xs hover:bg-white/25">Position auto</button>
+                  <button onClick={cancelReturn} className="rounded-full bg-white/15 px-3 py-1 text-xs hover:bg-white/25">Annuler</button>
                 </div>
               )}
 
@@ -1051,8 +1142,8 @@ export default function TourEditorPage() {
                         <div className="flex h-14 w-20 items-center justify-center rounded bg-stone-100 text-[10px] text-stone-400">Pas de plan</div>
                       )}
                       <label className="cursor-pointer rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-stone-200">
-                        {planBusy === l.id ? 'Envoi…' : (l.planUrl ? 'Remplacer le plan' : 'Importer un plan')}
-                        <input type="file" accept="image/*" className="hidden" disabled={planBusy === l.id}
+                        {planBusy === l.id ? 'Envoi…' : (l.planUrl ? 'Remplacer le plan' : 'Importer un plan (image/PDF)')}
+                        <input type="file" accept="image/*,application/pdf" className="hidden" disabled={planBusy === l.id}
                           onChange={(e) => void uploadPlan(l.id, e)} />
                       </label>
                     </div>
