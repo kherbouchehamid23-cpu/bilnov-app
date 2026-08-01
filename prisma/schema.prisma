@@ -292,6 +292,13 @@ model TourScene {
   initialPitch Float?   @map("initial_pitch")
   initialFov   Float?   @map("initial_fov")
 
+  // Vague 2 — dérivés d'image (additif nullable) : miniature 640×320 + aperçu léger
+  // servis à la place de l'original 12–30 Mo. derivStatus = PENDING|PROCESSING|READY|FAILED.
+  thumbnailKey String? @map("thumbnail_key")
+  previewKey   String? @map("preview_key")
+  derivStatus  String? @map("deriv_status")
+  derivError   String? @map("deriv_error")
+
   tour     VirtualTour   @relation(fields: [tourId], references: [id], onDelete: Cascade)
   level    TourLevel?    @relation(fields: [levelId], references: [id], onDelete: SetNull)
   hotspots TourHotspot[]
