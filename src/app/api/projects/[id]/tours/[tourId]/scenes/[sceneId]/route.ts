@@ -10,6 +10,13 @@ export async function PATCH(
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
 
+    // Sécurité — la scène doit appartenir à ce tour ET à ce projet (pas d'accès transversal).
+    const owned = await prisma.tourScene.findFirst({
+      where: { id: params.sceneId, tourId: params.tourId, tour: { projectId: params.id } },
+      select: { id: true },
+    });
+    if (!owned) return apiError('Scène introuvable', 'NOT_FOUND', 404);
+
     const body = await req.json() as {
       name?: string;
       isInitial?: boolean;
@@ -79,13 +86,21 @@ export async function DELETE(
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
 
-    // Vérifier si c'est la scène initiale
-    const scene = await prisma.tourScene.findUnique({
-      where: { id: params.sceneId },
+    // Sécurité — la scène doit appartenir à ce tour ET à ce projet.
+    const scene = await prisma.tourScene.findFirst({
+      where: { id: params.sceneId, tourId: params.tourId, tour: { projectId: params.id } },
     });
+    if (!scene) return apiError('Scène introuvable', 'NOT_FOUND', 404);
 
     await prisma.tourScene.delete({
       where: { id: params.sceneId },
+    });
+
+    // §nav — neutraliser les flèches de direction d'autres scènes qui pointaient vers
+    // la scène supprimée (sinon elles deviennent des liens morts / hotspots vides).
+    await prisma.tourHotspot.updateMany({
+      where: { targetSceneId: params.sceneId },
+      data: { targetSceneId: null },
     });
 
     // Si c'était la scène initiale, définir la première restante comme initiale
