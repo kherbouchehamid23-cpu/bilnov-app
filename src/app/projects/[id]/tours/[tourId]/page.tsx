@@ -131,6 +131,8 @@ export default function TourEditorPage() {
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [shareExpiry, setShareExpiry] = useState('');   // §22 — date d'expiration (YYYY-MM-DD)
+  const [shareCodeVal, setShareCodeVal] = useState(''); // §22 — code d'accès facultatif
 
   // V6c — historique annuler/rétablir (undo/redo) des hotspots.
   const [history, setHistory] = useState<History>(() => emptyHistory());
@@ -473,16 +475,23 @@ export default function TourEditorPage() {
   const loadShare = async (): Promise<void> => {
     try {
       const r = await fetch(`/api/projects/${id}/tours/${tourId}/share`, { headers: { Authorization: `Bearer ${getToken()}` } });
-      const d = await r.json() as ApiResponse<{ isPublic: boolean; token: string | null }>;
+      const d = await r.json() as ApiResponse<{ isPublic: boolean; token: string | null; expiresAt?: string | null; code?: string | null }>;
       setShareToken(d.data?.isPublic ? d.data.token : null);
+      setShareExpiry(d.data?.expiresAt ? d.data.expiresAt.slice(0, 10) : '');
+      setShareCodeVal(d.data?.code ?? '');
     } catch { /* noop */ }
   };
+  // §22 — active OU met à jour le partage (expiration + code d'accès facultatifs).
   const enableShare = async (): Promise<void> => {
     setShareBusy(true);
     try {
-      const r = await fetch(`/api/projects/${id}/tours/${tourId}/share`, { method: 'POST', headers: authJson });
-      const d = await r.json() as ApiResponse<{ token: string | null }>;
+      const expiresAt = shareExpiry ? new Date(`${shareExpiry}T23:59:59`).toISOString() : null;
+      const code = shareCodeVal.trim() || null;
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/share`, { method: 'POST', headers: authJson, body: JSON.stringify({ expiresAt, code }) });
+      const d = await r.json() as ApiResponse<{ token: string | null; expiresAt?: string | null; code?: string | null }>;
       setShareToken(d.data?.token ?? null);
+      setShareExpiry(d.data?.expiresAt ? d.data.expiresAt.slice(0, 10) : '');
+      setShareCodeVal(d.data?.code ?? '');
     } catch { alert('Erreur lors de l’activation du partage.'); }
     finally { setShareBusy(false); }
   };
@@ -1067,6 +1076,16 @@ export default function TourEditorPage() {
               {!shareToken ? (
                 <>
                   <p className="mb-4 text-sm text-stone-600">Générez un lien public : toute personne disposant du lien pourra visiter la visite, sans compte. Vous pouvez le désactiver à tout moment.</p>
+                  <div className="mb-4 grid grid-cols-2 gap-3">
+                    <label className="block text-xs font-medium text-stone-500">Expiration (optionnel)
+                      <input type="date" value={shareExpiry} onChange={(e) => setShareExpiry(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm outline-none focus:border-violet-500" />
+                    </label>
+                    <label className="block text-xs font-medium text-stone-500">Code d’accès (optionnel)
+                      <input value={shareCodeVal} onChange={(e) => setShareCodeVal(e.target.value)} placeholder="ex. 4821"
+                        className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm outline-none focus:border-violet-500" />
+                    </label>
+                  </div>
                   <button onClick={() => void enableShare()} disabled={shareBusy}
                     className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50">
                     {shareBusy ? 'Activation…' : 'Activer le partage'}
@@ -1086,6 +1105,24 @@ export default function TourEditorPage() {
                     <p className="mb-1 text-xs font-medium text-stone-500">Intégration (iframe)</p>
                     <textarea readOnly value={embed} rows={3} className="w-full rounded-lg border border-stone-300 px-3 py-2 font-mono text-[11px]" onFocus={(e) => e.currentTarget.select()} />
                     <button onClick={() => copyText('embed', embed)} className="mt-1 rounded-lg bg-stone-800 px-3 py-1.5 text-xs text-white hover:bg-stone-700">{copied === 'embed' ? '✓ Copié' : 'Copier le code'}</button>
+                  </div>
+                  <div className="rounded-lg border border-stone-200 p-3">
+                    <p className="mb-2 text-xs font-medium text-stone-500">Restrictions d’accès (§22)</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block text-xs text-stone-500">Expiration
+                        <input type="date" value={shareExpiry} onChange={(e) => setShareExpiry(e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm outline-none focus:border-violet-500" />
+                      </label>
+                      <label className="block text-xs text-stone-500">Code d’accès
+                        <input value={shareCodeVal} onChange={(e) => setShareCodeVal(e.target.value)} placeholder="aucun"
+                          className="mt-1 w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm outline-none focus:border-violet-500" />
+                      </label>
+                    </div>
+                    <button onClick={() => void enableShare()} disabled={shareBusy}
+                      className="mt-2 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">
+                      {shareBusy ? '…' : 'Mettre à jour'}
+                    </button>
+                    <p className="mt-1 text-[11px] text-stone-400">Videz un champ puis « Mettre à jour » pour le retirer.</p>
                   </div>
                   <button onClick={() => void disableShare()} disabled={shareBusy}
                     className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 disabled:opacity-50">
