@@ -149,6 +149,10 @@ export default function TourEditorPage() {
 
   const viewerRef = useRef<HTMLDivElement>(null);
   const pannellumInstanceRef = useRef<PannellumViewer | null>(null);
+  // Échec réel de chargement du panorama (image absente du stockage / 404) : on écoute
+  // l'évènement Pannellum plutôt que de se fier au seul derivStatus (qui peut valoir FAILED
+  // pour d'anciennes scènes). Dès qu'une scène n'affiche pas son image, on propose le réimport.
+  const [loadErrorSceneId, setLoadErrorSceneId] = useState<string | null>(null);
 
   const getToken = (): string =>
     typeof window !== 'undefined' ? localStorage.getItem('bilnov_token') ?? '' : '';
@@ -182,13 +186,18 @@ export default function TourEditorPage() {
       text: hotspotLabel(h.type, h.content, scenesRef.current.find((s) => s.id === h.targetSceneId)?.name),
       clickHandlerFunc: () => { if (isDirection(h.type)) { const t = scenesRef.current.find((s) => s.id === h.targetSceneId); if (t) setCurrentScene(t); } else setInfoModal(h); },
     }));
+    const sceneAtInit = currentScene.id;
     try {
       pannellumInstanceRef.current = window.pannellum.viewer(viewerRef.current, {
         type: 'equirectangular', panorama: currentScene.previewUrl ? currentScene.previewUrl : (currentScene.panoramaProxy ? `${currentScene.panoramaProxy}?token=${getToken()}` : currentScene.imageUrl), autoLoad: true, autoRotate: 0,
         compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true,
         hfov: 100, minHfov: 50, maxHfov: 120, pitch: 0, yaw: 0, hotSpots: hs,
       });
-    } catch { /* viewer init failed */ }
+      // Image absente du stockage (404) → Pannellum émet « error » : on bascule sur l'overlay
+      // de réimport. « load » réussi → on efface l'erreur éventuelle pour cette scène.
+      pannellumInstanceRef.current.on('error', () => setLoadErrorSceneId(sceneAtInit));
+      pannellumInstanceRef.current.on('load', () => setLoadErrorSceneId((prev) => (prev === sceneAtInit ? null : prev)));
+    } catch { setLoadErrorSceneId(sceneAtInit); }
     const el = viewerRef.current;
     const onClick = (e: MouseEvent) => {
       if (!addModeRef.current || !pannellumInstanceRef.current) return;
@@ -590,6 +599,7 @@ export default function TourEditorPage() {
         body: JSON.stringify({ fileId }),
       });
       if (!r.ok) { setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'MISSING' } : s)); return; }
+      setLoadErrorSceneId(prev => (prev === sceneId ? null : prev));
       await processScene(sceneId);
     } catch { setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'MISSING' } : s)); }
     finally { setReimporting(false); setUploadProgress(0); setReimportTargetId(null); }
@@ -860,7 +870,7 @@ export default function TourEditorPage() {
               {/* Réimport en place (image source absente) : input caché déclenché par l'overlay. */}
               <input ref={reimportInputRef} type="file" className="hidden" accept="image/*"
                 onChange={e => { void handleReimportFile(e); }} />
-              {currentScene.derivStatus === 'MISSING' && (
+              {(currentScene.derivStatus === 'MISSING' || loadErrorSceneId === currentScene.id) && (
                 <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-stone-950/95 p-6 text-center">
                   <div className="text-4xl">🖼️</div>
                   <div className="max-w-md">
