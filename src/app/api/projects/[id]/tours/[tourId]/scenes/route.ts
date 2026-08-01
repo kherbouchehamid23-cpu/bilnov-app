@@ -28,14 +28,25 @@ export async function GET(
       orderBy: { position: 'asc' },
     });
 
+    const sign = async (key: string | null | undefined): Promise<string | null> => {
+      if (!key) return null;
+      try { return (await getSignedFileUrl(key, 'view')).url; } catch { return null; }
+    };
     const scenesWithUrls = await Promise.all(
       scenes.map(async scene => {
-        try {
-          const { url } = await getSignedFileUrl(scene.imageUrl, 'view');
-          return { ...scene, imageUrl: url, panoramaProxy: `/api/projects/${params.id}/tours/${params.tourId}/scenes/${scene.id}/raw` };
-        } catch {
-          return { ...scene, panoramaProxy: `/api/projects/${params.id}/tours/${params.tourId}/scenes/${scene.id}/raw` };
-        }
+        const proxy = `/api/projects/${params.id}/tours/${params.tourId}/scenes/${scene.id}/raw`;
+        // Vague 2 — la vignette utilise la miniature dédiée (jamais l'original),
+        // et le viewer sert l'aperçu léger si disponible (sinon le proxy sur l'original).
+        const [imageUrl, thumbnailUrl, previewUrl] = await Promise.all([
+          sign(scene.imageUrl), sign(scene.thumbnailKey), sign(scene.previewKey),
+        ]);
+        return {
+          ...scene,
+          imageUrl: imageUrl ?? scene.imageUrl,
+          panoramaProxy: proxy,
+          thumbnailUrl,
+          previewUrl,
+        };
       })
     );
 
@@ -74,6 +85,7 @@ export async function POST(
         position: count,
         isInitial: count === 0,
         imageUrl: storageKey,
+        derivStatus: 'PENDING', // Vague 2 — le client déclenchera /process pour générer miniature+aperçu
       },
     });
 
