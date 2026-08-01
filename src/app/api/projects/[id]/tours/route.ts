@@ -4,6 +4,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { getProjectAccess } from '@/lib/access';
 
 export async function GET(
   req: NextRequest,
@@ -12,6 +13,8 @@ export async function GET(
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
     const tours = await prisma.virtualTour.findMany({
       where: { projectId: params.id },
       include: { _count: { select: { scenes: true } } },
@@ -30,6 +33,8 @@ export async function POST(
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canManage) return apiError('Accès refusé', 'FORBIDDEN', 403);
     const { name, nodeId } = (await req.json()) as { name?: string; nodeId?: string };
     if (!name) return apiError('Nom requis', 'VALIDATION_ERROR', 400);
     const userId = user.sub;
