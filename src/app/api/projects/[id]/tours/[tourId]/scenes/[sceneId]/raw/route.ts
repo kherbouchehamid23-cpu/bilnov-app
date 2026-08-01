@@ -4,9 +4,12 @@ import { verifyToken, apiError } from '@/lib/auth';
 import { getSignedFileUrl } from '@/lib/storage';
 import { getProjectAccess } from '@/lib/access';
 
-// Proxy same-origin de l'image 360 d'une scène : evite le blocage CORS de Pannellum
-// (texture WebGL). Auth via header Authorization ou ?token= (les <img>/textures ne
-// peuvent pas envoyer d'en-tete Authorization).
+// Accès à l'image 360° d'une scène. Auth via header Authorization ou ?token= (les <img>/
+// textures ne peuvent pas envoyer d'en-tête Authorization). Après contrôle des droits, on
+// REDIRIGE (302) vers l'URL R2 signée : les octets ne transitent plus par la fonction
+// serverless — ni la limite de 4,5 Mo (qui faisait échouer le proxy bufferisé), ni les
+// soucis de streaming (502). R2 sert le CORS, le viewer public charge déjà des URLs R2
+// signées comme textures WebGL, donc la redirection fonctionne pour Pannellum/three.js.
 export async function GET(req: NextRequest, { params }: { params: { id: string; tourId: string; sceneId: string } }) {
   try {
     const authHeader = req.headers.get('authorization');
@@ -25,20 +28,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
     if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     const { url } = await getSignedFileUrl(scene.imageUrl, 'view');
-    const r2 = await fetch(url);
-    if (!r2.ok || !r2.body) return apiError('Erreur stockage', 'STORAGE_ERROR', 502);
-    // On STREAME le corps au lieu de le bufferiser (await arrayBuffer) : une image
-    // 360° de téléphone dépasse souvent 4,5 Mo, la limite de réponse bufferisée des
-    // fonctions serverless Vercel — le proxy renvoyait alors une erreur et Pannellum
-    // affichait « The file … could not be accessed ». Le streaming n'a pas cette limite
-    // et reste same-origin (aucun besoin de CORS pour la texture WebGL).
-    const headers = new Headers({
-      'Content-Type': r2.headers.get('content-type') ?? 'image/jpeg',
-      'Cache-Control': 'private, max-age=3600',
+    // Redirection vers R2 (aucun octet dans la fonction → plus de 502 ni de limite de taille).
+    return new Response(null, {
+      status: 302,
+      headers: { Location: url, 'Cache-Control': 'private, max-age=300' },
     });
-    const len = r2.headers.get('content-length');
-    if (len) headers.set('Content-Length', len);
-    return new Response(r2.body, { status: 200, headers });
   } catch (e) {
     return apiError(e instanceof Error ? e.message : 'Erreur', 'INTERNAL_ERROR', 500);
   }
