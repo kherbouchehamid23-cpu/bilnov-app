@@ -16,7 +16,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import Link from 'next/link';
 import { isDirection } from '@/lib/tour';
 
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; hidden?: boolean; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; iconColor?: string | null; visible?: boolean; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
@@ -425,7 +425,7 @@ export default function TourViewerVrPage() {
 
       {scenes.length > 1 && (
         <div className="flex gap-2 overflow-x-auto px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,.1)', background: 'rgba(255,255,255,.04)' }}>
-          {scenes.map((s) => (
+          {scenes.filter((s) => !s.hidden).map((s) => (
             <button key={s.id} onClick={() => void goScene(s.id)}
               className="relative shrink-0 rounded-lg overflow-hidden"
               style={{ width: 96, height: 56, border: s.id === currentSceneId ? '2px solid #7ef0ff' : '1px solid rgba(255,255,255,.18)' }}>
