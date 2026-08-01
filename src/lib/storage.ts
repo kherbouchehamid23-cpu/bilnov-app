@@ -71,6 +71,40 @@ export async function getSignedFileUrl(
   };
 }
 
+// Vague 2 — écrit un buffer à une clé STABLE explicite (dérivés versionnés/immuables).
+export async function putObjectAtKey(
+  key: string,
+  buffer: Buffer,
+  contentType: string,
+  cacheControl?: string,
+): Promise<void> {
+  await getClient().send(
+    new PutObjectCommand({
+      Bucket: getBucket(),
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      ...(cacheControl ? { CacheControl: cacheControl } : {}),
+    }),
+  );
+}
+
+// Vague 2 — télécharge un objet R2 dans un Buffer (entrée de sharp côté serveur).
+export async function getObjectBuffer(storageKey: string): Promise<Buffer> {
+  const res = await getClient().send(
+    new GetObjectCommand({ Bucket: getBucket(), Key: storageKey }),
+  );
+  const body = res.Body as unknown as { transformToByteArray?: () => Promise<Uint8Array> };
+  if (body?.transformToByteArray) {
+    return Buffer.from(await body.transformToByteArray());
+  }
+  // Fallback flux Node.
+  const stream = res.Body as unknown as AsyncIterable<Uint8Array>;
+  const chunks: Uint8Array[] = [];
+  for await (const c of stream) chunks.push(c);
+  return Buffer.concat(chunks.map((c) => Buffer.from(c)));
+}
+
 export async function deleteFile(storageKey: string): Promise<void> {
   await getClient().send(
     new DeleteObjectCommand({
