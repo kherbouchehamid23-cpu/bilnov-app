@@ -26,15 +26,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
 
     const { url } = await getSignedFileUrl(scene.imageUrl, 'view');
     const r2 = await fetch(url);
-    if (!r2.ok) return apiError('Erreur stockage', 'STORAGE_ERROR', 502);
-    const body = await r2.arrayBuffer();
-    return new Response(body, {
-      status: 200,
-      headers: {
-        'Content-Type': r2.headers.get('content-type') ?? 'image/jpeg',
-        'Cache-Control': 'private, max-age=3600',
-      },
+    if (!r2.ok || !r2.body) return apiError('Erreur stockage', 'STORAGE_ERROR', 502);
+    // On STREAME le corps au lieu de le bufferiser (await arrayBuffer) : une image
+    // 360° de téléphone dépasse souvent 4,5 Mo, la limite de réponse bufferisée des
+    // fonctions serverless Vercel — le proxy renvoyait alors une erreur et Pannellum
+    // affichait « The file … could not be accessed ». Le streaming n'a pas cette limite
+    // et reste same-origin (aucun besoin de CORS pour la texture WebGL).
+    const headers = new Headers({
+      'Content-Type': r2.headers.get('content-type') ?? 'image/jpeg',
+      'Cache-Control': 'private, max-age=3600',
     });
+    const len = r2.headers.get('content-length');
+    if (len) headers.set('Content-Length', len);
+    return new Response(r2.body, { status: 200, headers });
   } catch (e) {
     return apiError(e instanceof Error ? e.message : 'Erreur', 'INTERNAL_ERROR', 500);
   }
