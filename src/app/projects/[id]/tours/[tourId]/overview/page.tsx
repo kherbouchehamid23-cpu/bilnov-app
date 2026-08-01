@@ -102,7 +102,7 @@ export default function TourOverviewPage() {
       <header className="flex items-center justify-between px-6 py-4 border-b border-stone-800">
         <div className="flex items-center gap-3">
           <Link href={`/projects/${id}/tours/${tourId}`} className="text-stone-400 hover:text-white text-sm">← Éditeur</Link>
-          <Link href={`/projects/${id}/tours/${tourId}/view`} className="text-stone-400 hover:text-white text-sm">👁 Voir</Link>
+          <Link href={`/projects/${id}/tours/${tourId}/view-psv`} className="text-stone-400 hover:text-white text-sm">👁 Voir</Link>
           <div className="w-px h-4 bg-stone-700" />
           <span className="font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>{tourName || 'Visite'} — Contrôle qualité</span>
         </div>
