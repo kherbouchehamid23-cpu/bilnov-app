@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { getProjectAccess } from '@/lib/access';
 
 export async function PATCH(
   req: NextRequest,
@@ -17,10 +18,16 @@ export async function PATCH(
     });
     if (!owned) return apiError('Scène introuvable', 'NOT_FOUND', 404);
 
+    // Autorisation — l'utilisateur doit pouvoir gérer ce projet (cohérent avec POST /scenes).
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canManage) return apiError('Accès refusé', 'FORBIDDEN', 403);
+
     const body = await req.json() as {
       name?: string;
       isInitial?: boolean;
       position?: number;
+      // Réimport en place : nouvelle image source (préserve la scène, ses hotspots, sa position).
+      fileId?: string;
       // V4 — rattachement niveau + position sur le plan 2D.
       levelId?: string | null;
       mapX?: number | null;
@@ -48,9 +55,23 @@ export async function PATCH(
     const clamp01 = (n: number | null | undefined): number | null | undefined =>
       typeof n === 'number' && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : (n === null ? null : undefined);
 
+    // Réimport en place : si fileId fourni, on remplace l'image source (nouvel objet R2 déjà
+    // uploadé + enregistré) et on réinitialise les dérivés — la scène et ses hotspots sont
+    // conservés. Le fichier doit appartenir à ce projet (pas de référence transversale).
+    let reimport: { imageUrl: string; thumbnailKey: null; previewKey: null; derivStatus: string; derivError: null } | undefined;
+    if (body.fileId) {
+      const file = await prisma.file.findFirst({
+        where: { id: body.fileId, projectId: params.id },
+        select: { storageKey: true },
+      });
+      if (!file) return apiError('Fichier introuvable', 'NOT_FOUND', 404);
+      reimport = { imageUrl: file.storageKey, thumbnailKey: null, previewKey: null, derivStatus: 'PENDING', derivError: null };
+    }
+
     const scene = await prisma.tourScene.update({
       where: { id: params.sceneId },
       data: {
+        ...(reimport ?? {}),
         name: body.name,
         isInitial: body.isInitial,
         position: body.position,
@@ -91,6 +112,10 @@ export async function DELETE(
       where: { id: params.sceneId, tourId: params.tourId, tour: { projectId: params.id } },
     });
     if (!scene) return apiError('Scène introuvable', 'NOT_FOUND', 404);
+
+    // Autorisation — l'utilisateur doit pouvoir gérer ce projet (cohérent avec POST /scenes).
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canManage) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     await prisma.tourScene.delete({
       where: { id: params.sceneId },
