@@ -53,9 +53,9 @@ export interface HotspotTypeDef {
 /** Registre unique — source de vérité des types. */
 export const HOTSPOT_TYPES: Record<HotspotKind, HotspotTypeDef> = {
   DIRECTION:   { kind: 'DIRECTION',   label: 'Direction',            description: 'Aller vers une autre scène',       icon: 'arrow', dbType: 'LINK',  cssClass: 'pnlm-hotspot bilnov-dir',  needsTarget: true,  fields: ['targetSceneId', 'title', 'returnLink'] },
-  IMAGE:       { kind: 'IMAGE',       label: 'Image',                description: 'Afficher une image',               icon: 'image', dbType: 'IMAGE', cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'url', 'caption'] },
+  IMAGE:       { kind: 'IMAGE',       label: 'Image',                description: 'Afficher une image',               icon: 'image', dbType: 'IMAGE', cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'media', 'caption'] },
   GALLERY:     { kind: 'GALLERY',     label: 'Galerie',              description: 'Plusieurs images',                 icon: 'image', dbType: 'IMAGE', cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'images'] },
-  PDF:         { kind: 'PDF',         label: 'PDF',                  description: 'Document PDF',                     icon: 'pdf',   dbType: 'TEXT',  cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'url', 'allowDownload'] },
+  PDF:         { kind: 'PDF',         label: 'PDF',                  description: 'Document PDF',                     icon: 'pdf',   dbType: 'TEXT',  cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'media', 'allowDownload'] },
   DESCRIPTION: { kind: 'DESCRIPTION', label: 'Description',          description: 'Texte descriptif',                 icon: 'text',  dbType: 'TEXT',  cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'text', 'link'] },
   COMMENT:     { kind: 'COMMENT',     label: 'Commentaire',          description: 'Observation / réserve',            icon: 'chat',  dbType: 'TEXT',  cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'text', 'status', 'priority'] },
   URL:         { kind: 'URL',         label: 'Lien',                 description: 'Lien externe',                     icon: 'link',  dbType: 'TEXT',  cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'url', 'openMode'] },
@@ -186,7 +186,10 @@ export function validateHotspot(kind: HotspotKind, content: unknown): Validation
   }
   switch (kind) {
     case 'IMAGE':
-      if (!isValidUrl(c.url, { allowRelative: true })) errors.push("URL d'image invalide.");
+      // §12 — deux sources : fichier importé (assetId/fileKey) OU URL externe.
+      if (c.sourceType === 'UPLOAD') {
+        if (!(typeof c.fileKey === 'string' && c.fileKey.trim())) errors.push('Importez un fichier image (JPG, PNG ou WebP).');
+      } else if (!isValidUrl(c.url, { allowRelative: true })) errors.push("URL d'image invalide.");
       break;
     case 'GALLERY': {
       const imgs = Array.isArray(c.images) ? c.images : [];
@@ -194,6 +197,11 @@ export function validateHotspot(kind: HotspotKind, content: unknown): Validation
       break;
     }
     case 'PDF':
+      // §13 — fichier PDF importé OU URL externe.
+      if (c.sourceType === 'UPLOAD') {
+        if (!(typeof c.fileKey === 'string' && c.fileKey.trim())) errors.push('Importez un fichier PDF.');
+      } else if (!isValidUrl(c.url, { allowRelative: true })) errors.push('URL invalide.');
+      break;
     case 'AUDIO':
     case 'FILE':
     case 'VIDEO':
@@ -237,7 +245,7 @@ export function buildContent(kind: HotspotKind, raw: Record<string, unknown>): R
 // Métadonnées de formulaire (pilotent l'UI du panneau coulissant) — Phase 2.
 // -----------------------------------------------------------------------------
 
-export type FieldControl = 'text' | 'textarea' | 'url' | 'scene' | 'select' | 'checkbox' | 'images';
+export type FieldControl = 'text' | 'textarea' | 'url' | 'scene' | 'select' | 'checkbox' | 'images' | 'media';
 
 export interface FieldDef {
   name: string;
@@ -252,6 +260,7 @@ const FIELD_META: Record<string, FieldDef> = {
   title:         { name: 'title',         label: 'Titre',          control: 'text',     placeholder: 'Titre (optionnel)' },
   text:          { name: 'text',          label: 'Texte',          control: 'textarea', placeholder: 'Votre texte…' },
   url:           { name: 'url',           label: 'Lien / URL',     control: 'url',      placeholder: 'https://…' },
+  media:         { name: 'media',         label: 'Fichier',        control: 'media' },
   caption:       { name: 'caption',       label: 'Légende',        control: 'text',     placeholder: 'Légende (optionnel)' },
   link:          { name: 'link',          label: 'Lien associé',   control: 'url',      placeholder: 'https://… (optionnel)' },
   images:        { name: 'images',        label: 'Images',         control: 'images',   placeholder: 'Une URL par ligne' },
