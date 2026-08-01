@@ -291,7 +291,6 @@ export default function TourViewerPsvPage() {
           <button onClick={() => setProjection('sbs')} style={chip(projection === 'sbs')} title="Stéréo côte à côte (side-by-side)">Stéréo ⬌</button>
           <button onClick={toggleAuto} style={chip(autorotate)} title="Rotation automatique">Auto</button>
           <button onClick={toggleVr} style={chip(vrOn)} title="Mode casque VR / cardboard (mobile)">VR</button>
-          <span className="text-xs px-2 py-1 rounded-full" style={{ fontFamily: 'JetBrains Mono, monospace', background: 'rgba(124,109,255,.18)', color: '#a493ff' }}>PSV bêta</span>
         </div>
       </header>
 
