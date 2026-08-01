@@ -173,6 +173,9 @@ export default function TourEditorPage() {
   useEffect(() => {
     if (!pannellumLoaded || !currentScene?.imageUrl || !viewerRef.current) return;
     if (pannellumInstanceRef.current) { try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ } pannellumInstanceRef.current = null; }
+    // Source absente du stockage : ne pas initialiser Pannellum sur une URL morte (évite
+    // l'erreur brute « could not be accessed »). L'overlay de réimport prend le relais.
+    if (currentScene.derivStatus === 'MISSING') return;
     const hs = hotspots.map((h) => ({
       id: h.id, pitch: h.positionPitch, yaw: h.positionYaw,
       cssClass: isDirection(h.type) ? 'pnlm-hotspot bilnov-dir' : 'pnlm-hotspot bilnov-info',
@@ -198,7 +201,7 @@ export default function TourEditorPage() {
     };
     el.addEventListener('click', onClick);
     return () => { el.removeEventListener('click', onClick); if (pannellumInstanceRef.current) { try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ } pannellumInstanceRef.current = null; } };
-  }, [pannellumLoaded, currentScene?.imageUrl, currentScene?.previewUrl, hotspots]);
+  }, [pannellumLoaded, currentScene?.imageUrl, currentScene?.previewUrl, currentScene?.derivStatus, hotspots]);
 
   const reloadHotspots = async (): Promise<void> => {
     if (!currentScene) { setHotspots([]); return; }
@@ -545,7 +548,15 @@ export default function TourEditorPage() {
     setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'PROCESSING' } : s));
     try {
       const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sceneId}/process`, { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` } });
-      if (!r.ok) { setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'FAILED' } : s)); return; }
+      if (!r.ok) {
+        // Image source absente (SOURCE_MISSING, 422) → état « MISSING » distinct d'un échec de
+        // traitement, pour proposer la réimportation au lieu d'afficher une erreur brute.
+        let code = ''; try { const j = await r.json() as { error?: { code?: string } }; code = j.error?.code ?? ''; } catch { /* noop */ }
+        const next = code === 'SOURCE_MISSING' ? 'MISSING' : 'FAILED';
+        setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: next } : s));
+        setCurrentScene(prev => prev && prev.id === sceneId ? { ...prev, derivStatus: next } : prev);
+        return;
+      }
       const sr = await fetch(`/api/projects/${id}/tours/${tourId}/scenes`, { headers: { Authorization: `Bearer ${getToken()}` } });
       const sd = await sr.json() as ApiResponse<{ scenes: Scene[] }>;
       const fresh = (sd.data?.scenes ?? []).find(x => x.id === sceneId);
@@ -557,13 +568,42 @@ export default function TourEditorPage() {
     } catch { setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'FAILED' } : s)); }
   };
 
+  // Réimport en place d'une scène dont l'image source est absente du stockage : on upload la
+  // nouvelle image, on remplace l'image de la scène (hotspots/position conservés) via PATCH,
+  // puis on régénère les dérivés. Aucune scène recréée → aucun lien de navigation cassé.
+  const reimportInputRef = useRef<HTMLInputElement>(null);
+  const [reimportTargetId, setReimportTargetId] = useState<string | null>(null);
+  const [reimporting, setReimporting] = useState(false);
+  const triggerReimport = (sceneId: string): void => { setReimportTargetId(sceneId); reimportInputRef.current?.click(); };
+  const handleReimportFile = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = e.target.files?.[0];
+    const sceneId = reimportTargetId;
+    e.target.value = '';
+    if (!file || !sceneId) return;
+    setReimporting(true);
+    setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'PROCESSING' } : s));
+    try {
+      const { fileId } = await uploadFileDirect(file, id, getToken(), null, (p) => setUploadProgress(p));
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sceneId}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId }),
+      });
+      if (!r.ok) { setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'MISSING' } : s)); return; }
+      await processScene(sceneId);
+    } catch { setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, derivStatus: 'MISSING' } : s)); }
+    finally { setReimporting(false); setUploadProgress(0); setReimportTargetId(null); }
+  };
+
   // Vague 2 — auto-optimisation des scènes existantes (créées avant le pipeline) : une passe,
   // séquentielle (pas de rafale), pour que les visites déjà réalisées bénéficient de l'aperçu léger.
   const autoHealedRef = useRef(false);
   useEffect(() => {
     if (autoHealedRef.current || loading || scenes.length === 0) return;
     autoHealedRef.current = true;
-    const todo = scenes.filter(s => !s.previewUrl && s.derivStatus !== 'READY' && s.derivStatus !== 'PROCESSING');
+    // On ne réessaie pas les scènes déjà en échec (FAILED) ou à source absente (MISSING) :
+    // relancer /process en boucle sur un objet manquant ne ferait que répéter le 422/502.
+    const todo = scenes.filter(s => !s.previewUrl && s.derivStatus !== 'READY' && s.derivStatus !== 'PROCESSING' && s.derivStatus !== 'FAILED' && s.derivStatus !== 'MISSING');
     if (todo.length === 0) return;
     void (async () => { for (const s of todo) { await processScene(s.id); } })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -817,6 +857,22 @@ export default function TourEditorPage() {
             <>
               {/* Pannellum container */}
               <div ref={viewerRef} className="flex-1" style={{ minHeight: '500px', background: '#000' }} />
+              {/* Réimport en place (image source absente) : input caché déclenché par l'overlay. */}
+              <input ref={reimportInputRef} type="file" className="hidden" accept="image/*"
+                onChange={e => { void handleReimportFile(e); }} />
+              {currentScene.derivStatus === 'MISSING' && (
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-stone-950/95 p-6 text-center">
+                  <div className="text-4xl">🖼️</div>
+                  <div className="max-w-md">
+                    <p className="text-base font-semibold text-white">Image source introuvable</p>
+                    <p className="mt-1 text-sm text-stone-400">Le fichier panoramique de cette scène n’est plus présent dans le stockage. La scène et ses points d’intérêt sont conservés — réimportez l’image pour la réafficher.</p>
+                  </div>
+                  <button onClick={() => triggerReimport(currentScene.id)} disabled={reimporting}
+                    className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-60">
+                    {reimporting ? `Réimport… ${uploadProgress}%` : 'Réimporter l’image'}
+                  </button>
+                </div>
+              )}
               {currentScene && (
                 <button onClick={openHotspotPanel} className={`absolute top-4 right-4 z-20 rounded-lg px-3 py-1.5 text-sm font-medium ${addMode ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}>{addMode ? 'Placement…' : '＋ Hotspot'}</button>
               )}
@@ -1057,6 +1113,11 @@ export default function TourEditorPage() {
                     {(scene.derivStatus === 'PROCESSING' || scene.derivStatus === 'PENDING') && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/50">
                         <span className="w-3.5 h-3.5 border border-white border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                    {scene.derivStatus === 'MISSING' && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-amber-950/70" title="Image source absente — réimport nécessaire">
+                        <span className="text-sm">⚠️</span>
                       </div>
                     )}
                   </button>
