@@ -20,7 +20,7 @@ import TourFloorPlan from '@/components/TourFloorPlan';
 interface Tour { id: string; name: string; status: string; }
 interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; hidden?: boolean; thumbnailUrl?: string | null; previewUrl?: string | null; derivStatus?: string | null; }
 interface Level extends LevelLite { planUrl?: string | null; }
-interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
+interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; visible?: boolean; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
 declare global {
@@ -244,6 +244,7 @@ export default function TourEditorPage() {
       iconId: typeof hsForm.iconId === 'string' ? hsForm.iconId : undefined,
       iconColor: typeof hsForm.iconColor === 'string' ? hsForm.iconColor : undefined,
       iconScale: typeof hsForm.iconScale === 'number' ? hsForm.iconScale : undefined,
+      iconOpacity: typeof hsForm.iconOpacity === 'number' ? hsForm.iconOpacity : undefined,
     };
     // §14 — le hotspot Commentaire crée un vrai commentaire dans le système transversal Bilnov
     // (CommentLocation PANORAMA_360 → scène ; metadata yaw/pitch). Le hotspot ne stocke que le lien.
@@ -701,15 +702,33 @@ export default function TourEditorPage() {
           if (!ok) return;
         }
       }
-      await fetch(`/api/projects/${id}/tours/${tourId}/publish`, {
+      const pubRes = await fetch(`/api/projects/${id}/tours/${tourId}/publish`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}` },
       });
+      if (!pubRes.ok) {
+        const err = await pubRes.json().catch(() => null) as { error?: { message?: string } } | null;
+        alert(err?.error?.message ?? 'Publication impossible.');
+        return;
+      }
       setPublished(true);
       setTour(prev => prev ? { ...prev, status: 'PUBLISHED' } : null);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2500);
     } catch { alert('Erreur, reessayez.'); }
+  };
+
+  // §19 — masquer/afficher un hotspot (mode Modifier). Le PATCH est déjà scopé projet+tour.
+  const toggleHotspotVisible = async (hid: string, next: boolean): Promise<void> => {
+    const sceneId = currentScene?.id;
+    if (!sceneId) return;
+    setHotspots((prev) => prev.map((h) => h.id === hid ? { ...h, visible: next } as Hotspot : h));
+    try {
+      await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sceneId}/hotspots/${hid}`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visible: next }),
+      });
+    } catch { void reloadHotspots(); }
   };
 
   if (loading) {
@@ -824,12 +843,20 @@ export default function TourEditorPage() {
               {hotspots.length > 0 && (
                 <div className="absolute bottom-4 left-4 z-20 max-h-40 w-56 overflow-y-auto rounded-lg bg-black/70 p-2 text-white">
                   <p className="mb-1 text-[10px] uppercase text-stone-400">Hotspots ({hotspots.length})</p>
-                  {hotspots.map((h) => (
+                  {hotspots.map((h) => {
+                    const hidden = h.visible === false;
+                    return (
                     <div key={h.id} className="flex items-center justify-between py-0.5 text-xs">
-                      <span className="truncate">{isDirection(h.type) ? '➤' : 'ℹ'} {hotspotLabel(h.type, h.content, scenes.find((s) => s.id === h.targetSceneId)?.name)}</span>
-                      <button onClick={() => void deleteHotspot(h.id)} className="ml-2 text-stone-400 hover:text-red-400">✕</button>
+                      <span className={`truncate ${hidden ? 'text-stone-500 line-through' : ''}`}>{isDirection(h.type) ? '➤' : 'ℹ'} {hotspotLabel(h.type, h.content, scenes.find((s) => s.id === h.targetSceneId)?.name)}</span>
+                      <span className="ml-2 flex items-center gap-1.5">
+                        <button onClick={() => void toggleHotspotVisible(h.id, hidden)}
+                          title={hidden ? 'Afficher ce hotspot' : 'Masquer ce hotspot'}
+                          className="text-stone-400 hover:text-white">{hidden ? '🚫' : '👁'}</button>
+                        <button onClick={() => void deleteHotspot(h.id)} title="Supprimer" className="text-stone-400 hover:text-red-400">✕</button>
+                      </span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
