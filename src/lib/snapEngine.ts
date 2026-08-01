@@ -3,6 +3,9 @@
 
 export interface Pt { x: number; y: number }
 export interface Seg { ax: number; ay: number; bx: number; by: number }
+// §15 — cercle/arc : centre + rayon. `full` = cercle complet (accrochage « sur le cercle »
+// en plus du centre) ; les arcs n'exposent que leur centre (`full=false`).
+export interface Circle { cx: number; cy: number; r: number; full: boolean }
 export type SnapType =
   | 'ENDPOINT' | 'MIDPOINT' | 'INTERSECTION' | 'CENTER'
   | 'PERPENDICULAR' | 'ON_SEGMENT' | 'NEAREST' | 'NONE';
@@ -50,7 +53,7 @@ export function perpendicularFoot(from: Pt, s: Seg): { x: number; y: number } | 
  * Meilleur accrochage du curseur parmi les segments fournis, sous tolérance `tol`
  * (en unités monde). `from` (1er point de mesure) active la perpendiculaire.
  */
-export function snap(segments: Seg[], cursor: Pt, tol: number, opts?: { from?: Pt | null }): SnapResult {
+export function snap(segments: Seg[], cursor: Pt, tol: number, opts?: { from?: Pt | null; circles?: Circle[] | null }): SnapResult {
   let best: SnapResult = { x: cursor.x, y: cursor.y, type: 'NONE', dist: Infinity };
   const consider = (x: number, y: number, type: SnapType) => {
     const d = Math.hypot(x - cursor.x, y - cursor.y);
@@ -73,7 +76,25 @@ export function snap(segments: Seg[], cursor: Pt, tol: number, opts?: { from?: P
       const ip = segmentIntersection(near[i], near[j]);
       if (ip) consider(ip.x, ip.y, 'INTERSECTION');
     }
+  // §15 — accrochage cercles/arcs : centre (CENTER) + point sur le cercle (NEAREST).
+  if (opts?.circles) {
+    for (const c of opts.circles) {
+      consider(c.cx, c.cy, 'CENTER');
+      if (c.full && c.r > 0) {
+        const dx = cursor.x - c.cx, dy = cursor.y - c.cy;
+        const d = Math.hypot(dx, dy);
+        if (d > 1e-9) consider(c.cx + (dx / d) * c.r, c.cy + (dy / d) * c.r, 'NEAREST');
+      }
+    }
+  }
   return best;
+}
+
+/** Conversion Float32Array [cx,cy,r,full,...] → Circle[]. */
+export function circlesFromFloat32(a: Float32Array): Circle[] {
+  const out: Circle[] = [];
+  for (let i = 0; i + 3 < a.length; i += 4) out.push({ cx: a[i], cy: a[i + 1], r: a[i + 2], full: a[i + 3] !== 0 });
+  return out;
 }
 
 /**

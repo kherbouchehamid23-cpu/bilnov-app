@@ -8,6 +8,7 @@ export interface CadLoadResult {
   url: string;              // URL blob: du DXF (à révoquer après usage)
   snapPoints: Float32Array; // [x0,y0,x1,y1,...] repères d'accrochage (coords dessin)
   segments: Float32Array;   // [ax,ay,bx,by,...] segments (LINE + LWPOLYLINE) pour snap riche & mesure rapide
+  circles: Float32Array;    // §15 — [cx,cy,r,full,...] cercles/arcs pour accrochage centre/sur-cercle
   insUnits: number;         // $INSUNITS : 0=inconnu, 4=mm, 5=cm, 6=m, 1=in, 2=ft...
 }
 
@@ -15,15 +16,15 @@ let _worker: Worker | null = null;
 let _seq = 0;
 const _pending = new Map<
   number,
-  { resolve: (r: { dxf: string; snap: Float32Array; segs: Float32Array; insunits: number }) => void; reject: (e: Error) => void }
+  { resolve: (r: { dxf: string; snap: Float32Array; segs: Float32Array; circles: Float32Array; insunits: number }) => void; reject: (e: Error) => void }
 >();
 
 function getWorker(): Worker {
   if (!_worker) {
     _worker = new Worker('/cad/dwg-worker.js', { type: 'module' });
     _worker.onmessage = (e: MessageEvent) => {
-      const { id, ok, dxf, snap, segs, insunits, error } = e.data as {
-        id: number; ok: boolean; dxf?: string; snap?: ArrayBuffer; segs?: ArrayBuffer; insunits?: number; error?: string;
+      const { id, ok, dxf, snap, segs, circles, insunits, error } = e.data as {
+        id: number; ok: boolean; dxf?: string; snap?: ArrayBuffer; segs?: ArrayBuffer; circles?: ArrayBuffer; insunits?: number; error?: string;
       };
       const p = _pending.get(id);
       if (!p) return;
@@ -33,6 +34,7 @@ function getWorker(): Worker {
           dxf,
           snap: snap ? new Float32Array(snap) : new Float32Array(0),
           segs: segs ? new Float32Array(segs) : new Float32Array(0),
+          circles: circles ? new Float32Array(circles) : new Float32Array(0),
           insunits: insunits ?? 0,
         });
       } else {
@@ -50,7 +52,7 @@ function getWorker(): Worker {
 function convertInWorker(
   buffer: ArrayBuffer,
   isDwg: boolean,
-): Promise<{ dxf: string; snap: Float32Array; segs: Float32Array; insunits: number }> {
+): Promise<{ dxf: string; snap: Float32Array; segs: Float32Array; circles: Float32Array; insunits: number }> {
   const w = getWorker();
   const id = ++_seq;
   return new Promise((resolve, reject) => {
@@ -70,9 +72,9 @@ export async function toDxfObjectUrl(
 ): Promise<CadLoadResult> {
   const isDwg = /\.dwg$/i.test(fileName);
   const buf = await blob.arrayBuffer();
-  const { dxf, snap, segs, insunits } = await convertInWorker(buf, isDwg);
+  const { dxf, snap, segs, circles, insunits } = await convertInWorker(buf, isDwg);
   const dxfBlob = new Blob([dxf], { type: 'application/dxf' });
-  return { url: URL.createObjectURL(dxfBlob), snapPoints: snap, segments: segs, insUnits: insunits };
+  return { url: URL.createObjectURL(dxfBlob), snapPoints: snap, segments: segs, circles, insUnits: insunits };
 }
 
 export function isCadFile(name: string, fileType?: string): boolean {
