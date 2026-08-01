@@ -16,7 +16,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import Link from 'next/link';
 import { isDirection } from '@/lib/tour';
 
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; hidden?: boolean; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; previewUrl?: string | null; hidden?: boolean; panoramaType?: string | null; stereoLayout?: string | null; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; iconColor?: string | null; visible?: boolean; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
@@ -75,6 +75,7 @@ export default function TourViewerVrPage() {
   const [info, setInfo] = useState<Hotspot | null>(null);
   const [xrSupported, setXrSupported] = useState<boolean | null>(null);
   const [gyroOn, setGyroOn] = useState(false);
+  const [invertEyes, setInvertEyes] = useState(false);
 
   const hostRef = useRef<HTMLDivElement>(null);
   const vrBtnRef = useRef<HTMLDivElement>(null);
@@ -83,7 +84,9 @@ export default function TourViewerVrPage() {
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
-  const sphereRef = useRef<any>(null);
+  const sphereGroupRef = useRef<any>(null);   // §8 stéréo — contient 1 (mono) ou 2 (par œil) sphères
+  const curTexRef = useRef<any>(null);        // texture courante (à libérer au changement)
+  const invertEyesRef = useRef(false);
   const hsGroupRef = useRef<any>(null);
   const reticleRef = useRef<any>(null);
   const raycasterRef = useRef<any>(null);
@@ -116,15 +119,50 @@ export default function TourViewerVrPage() {
     }
   }, []);
 
-  // Charge la texture d'une scène puis l'applique à la sphère (garde l'ancienne jusqu'au chargement).
+  // §8 — fabrique une sphère équirectangulaire ; si `region` est fourni, les UV ne couvrent
+  // qu'une moitié (haut/bas pour TB, gauche/droite pour SBS) → rendu par œil.
+  const buildSphere = (THREE: any, tex: any, region: { axis: 'u' | 'v'; offset: number } | null): any => {
+    const geo = new THREE.SphereGeometry(SPHERE_R, 64, 40);
+    geo.scale(-1, 1, 1);
+    if (region) {
+      const uv = geo.attributes.uv;
+      for (let i = 0; i < uv.count; i++) {
+        let u = uv.getX(i), v = uv.getY(i);
+        if (region.axis === 'v') v = region.offset + v * 0.5; else u = region.offset + u * 0.5;
+        uv.setXY(i, u, v);
+      }
+      uv.needsUpdate = true;
+    }
+    return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
+  };
+
+  // Charge la texture d'une scène et (re)construit la/les sphère(s) selon mono/stéréo.
   const applyScene = useCallback((s: Scene): Promise<void> => new Promise((resolve) => {
-    const THREE = T.current; if (!THREE || !sphereRef.current) { resolve(); return; }
+    const THREE = T.current; const grp = sphereGroupRef.current;
+    if (!THREE || !grp) { resolve(); return; }
     new THREE.TextureLoader().load(panoUrl(s), (tex: any) => {
       tex.colorSpace = THREE.SRGBColorSpace;
-      const old = sphereRef.current.material.map;
-      sphereRef.current.material.map = tex;
-      sphereRef.current.material.needsUpdate = true;
-      old?.dispose?.();
+      // purge des anciennes sphères + texture
+      while (grp.children.length) { const c = grp.children.pop(); c.geometry?.dispose?.(); c.material?.dispose?.(); }
+      curTexRef.current?.dispose?.();
+      curTexRef.current = tex;
+
+      const layout = s.stereoLayout === 'SBS' ? 'SBS' : s.stereoLayout === 'TB' ? 'TB' : null;
+      const isStereo = s.panoramaType === 'STEREO' && !!layout;
+      if (isStereo) {
+        const axis: 'u' | 'v' = layout === 'TB' ? 'v' : 'u';
+        // TB : œil gauche = moitié HAUTE (offset .5) ; SBS : œil gauche = moitié GAUCHE (offset 0).
+        let leftOffset = layout === 'TB' ? 0.5 : 0;
+        let rightOffset = layout === 'TB' ? 0 : 0.5;
+        if (invertEyesRef.current) { const t = leftOffset; leftOffset = rightOffset; rightOffset = t; }
+        const sphereL = buildSphere(THREE, tex, { axis, offset: leftOffset });
+        sphereL.layers.set(1);   // three.js : cameraL (œil gauche) voit la couche 1
+        const sphereR = buildSphere(THREE, tex, { axis, offset: rightOffset });
+        sphereR.layers.set(2);   // cameraR (œil droit) voit la couche 2
+        grp.add(sphereL); grp.add(sphereR);
+      } else {
+        grp.add(buildSphere(THREE, tex, null)); // mono : couche 0 (les deux yeux voient l'identique)
+      }
       resolve();
     }, undefined, () => resolve());
   }), []);
@@ -205,11 +243,10 @@ export default function TourViewerVrPage() {
         hostRef.current.appendChild(renderer.domElement);
         sceneRef.current = scene; cameraRef.current = camera; rendererRef.current = renderer;
 
-        // Sphère équirectangulaire (vue de l'intérieur).
-        const geo = new THREE.SphereGeometry(SPHERE_R, 64, 40);
-        geo.scale(-1, 1, 1);
-        const sphere = new THREE.Mesh(geo, new THREE.MeshBasicMaterial());
-        scene.add(sphere); sphereRef.current = sphere;
+        // §8 — groupe de sphères (1 mono, ou 2 par œil pour la stéréo). Construites dans applyScene.
+        const sphereGroup = new THREE.Group(); scene.add(sphereGroup); sphereGroupRef.current = sphereGroup;
+        // La caméra mono (bureau/gyroscope) voit aussi la couche 1 → prévisualise l'œil gauche d'une scène stéréo.
+        camera.layers.enable(1);
 
         const hsGroup = new THREE.Group(); scene.add(hsGroup); hsGroupRef.current = hsGroup;
 
@@ -369,6 +406,16 @@ export default function TourViewerVrPage() {
     } else start();
   };
 
+  // §8 — inverser les yeux (utile si le relief est inversé sur le casque).
+  const toggleInvertEyes = () => {
+    const next = !invertEyesRef.current;
+    invertEyesRef.current = next; setInvertEyes(next);
+    const s = dataRef.current.scenes.find((x) => x.id === curRef.current);
+    if (s) void applyScene(s);
+  };
+  const curScene = scenes.find((s) => s.id === currentSceneId);
+  const curStereo = curScene?.panoramaType === 'STEREO' && (curScene?.stereoLayout === 'TB' || curScene?.stereoLayout === 'SBS');
+
   const infoTitle = info && typeof info.content?.title === 'string' ? info.content.title as string : 'Information';
   const infoText = info && typeof info.content?.text === 'string' ? info.content.text as string
     : info && typeof info.content?.url === 'string' ? info.content.url as string : '';
@@ -383,6 +430,12 @@ export default function TourViewerVrPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div ref={vrBtnRef} />
+          {curStereo && (
+            <button onClick={toggleInvertEyes} className="text-xs px-3 py-1.5 rounded-full" style={{ fontFamily: 'JetBrains Mono, monospace', background: invertEyes ? 'rgba(126,240,255,.18)' : 'rgba(255,255,255,.06)', color: invertEyes ? '#7ef0ff' : '#c7d3e6', border: '1px solid rgba(255,255,255,.18)' }} title="Inverser œil gauche/droit (si le relief est inversé)">Inverser les yeux</button>
+          )}
+          {curStereo && (
+            <span className="text-xs px-2 py-1 rounded-full" style={{ fontFamily: 'JetBrains Mono, monospace', background: 'rgba(52,211,153,.16)', color: '#34d399' }} title={`Stéréo ${curScene?.stereoLayout}`}>Stéréo {curScene?.stereoLayout}</span>
+          )}
           {xrSupported === false && (
             <button onClick={toggleGyro} className="text-xs px-3 py-1.5 rounded-full" style={{ fontFamily: 'JetBrains Mono, monospace', background: gyroOn ? 'rgba(126,240,255,.18)' : 'rgba(255,255,255,.06)', color: gyroOn ? '#7ef0ff' : '#c7d3e6', border: '1px solid rgba(255,255,255,.18)' }} title="Repli gyroscope (mobile)">Gyroscope</button>
           )}
