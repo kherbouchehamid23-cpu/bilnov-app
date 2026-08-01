@@ -10,9 +10,9 @@ import { levelForScene, type LevelLite } from '@/lib/tourMap';
 import { viewerKeyAction, neighborSceneId, preloadUrls } from '@/lib/tourViewer';
 import TourFloorPlan from '@/components/TourFloorPlan';
 
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; hidden?: boolean; }
 interface Level extends LevelLite { planUrl?: string | null; }
-interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; commentId?: string | null; }
+interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; commentId?: string | null; visible?: boolean; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
 function embedUrl(u: string): string | null {
@@ -124,7 +124,7 @@ export default function TourViewerPage() {
     const cfgScenes: Record<string, unknown> = {};
     for (const s of scenes) {
       const src = s.panoramaProxy ? `${s.panoramaProxy}?token=${token}` : s.imageUrl;
-      const hs = (hotspotsByScene[s.id] ?? []).map((h) => {
+      const hs = (hotspotsByScene[s.id] ?? []).filter((h) => h.visible !== false).map((h) => {
         if (isDirection(h.type) && h.targetSceneId && scenes.some((t) => t.id === h.targetSceneId)) {
           const at = arrivalTarget(h.content);
           return {
@@ -324,7 +324,7 @@ export default function TourViewerPage() {
             )}
             {scenes.length > 1 && (
               <div className="flex gap-2 overflow-x-auto px-4 py-3 border-t border-white/10 bg-white/8 backdrop-blur-md">
-                {scenes.map((s) => (
+                {scenes.filter((s) => !s.hidden).map((s) => (
                   <button key={s.id} onClick={() => goToScene(s.id)}
                     className={`flex-shrink-0 rounded-lg overflow-hidden border-2 ${currentSceneId === s.id ? 'border-violet-500' : 'border-transparent'}`}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
