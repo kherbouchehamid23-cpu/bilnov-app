@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 import { HotspotType, Prisma } from '@prisma/client';
+import { signHotspotMedia } from '@/lib/tourHotspotMedia';
 
 async function sceneInProject(sceneId: string, tourId: string, projectId: string) {
   return prisma.tourScene.findFirst({ where: { id: sceneId, tourId, tour: { projectId } }, select: { id: true } });
@@ -12,7 +13,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
-    const hotspots = await prisma.tourHotspot.findMany({ where: { sceneId: params.sceneId }, orderBy: { createdAt: 'asc' } });
+    const rows = await prisma.tourHotspot.findMany({ where: { sceneId: params.sceneId }, orderBy: { createdAt: 'asc' } });
+    const hotspots = await signHotspotMedia(rows);
     return apiSuccess({ hotspots });
   } catch (e) {
     return apiError(e instanceof Error ? e.message : 'Erreur', 'INTERNAL_ERROR', 500);
