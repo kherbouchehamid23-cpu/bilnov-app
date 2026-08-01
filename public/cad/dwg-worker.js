@@ -89,6 +89,40 @@ function extractSnapPoints(dxf) {
   return new Float32Array(out);
 }
 
+// §15 — cercles/arcs : CIRCLE (centre 10/20, rayon 40) + ARC (idem). Sortie [cx,cy,r,full,...]
+// (full=1 cercle complet → accrochage « sur le cercle » ; full=0 arc → centre seul). Additif,
+// canal séparé : n'affecte pas l'extraction des segments.
+function extractCircles(dxf) {
+  const L = dxf.split(/\r\n|\r|\n/);
+  const out = [];
+  let inEntities = false, sectionNameNext = false, ent = null;
+  const flush = () => {
+    if (ent && ent.cx != null && ent.cy != null && ent.r != null && ent.r > 0) {
+      out.push(ent.cx, ent.cy, ent.r, ent.type === 'CIRCLE' ? 1 : 0);
+    }
+    ent = null;
+  };
+  for (let i = 0; i + 1 < L.length; i += 2) {
+    const code = parseInt(L[i], 10);
+    if (Number.isNaN(code)) continue;
+    const val = (L[i + 1] === undefined ? '' : L[i + 1]).trim();
+    if (code === 0) {
+      const up = val.toUpperCase();
+      if (up === 'SECTION') { flush(); sectionNameNext = true; continue; }
+      if (up === 'ENDSEC') { flush(); inEntities = false; sectionNameNext = false; continue; }
+      flush();
+      if (inEntities && (up === 'CIRCLE' || up === 'ARC')) ent = { type: up, cx: null, cy: null, r: null };
+      continue;
+    }
+    if (code === 2 && sectionNameNext) { inEntities = val.toUpperCase() === 'ENTITIES'; sectionNameNext = false; continue; }
+    if (!inEntities || !ent) continue;
+    const num = parseFloat(val);
+    if (code === 10) ent.cx = num; else if (code === 20) ent.cy = num; else if (code === 40) ent.r = num;
+  }
+  flush();
+  return new Float32Array(out);
+}
+
 // $INSUNITS (HEADER) : code 9 = nom de variable, code 70 = valeur.
 function extractInsUnits(dxf) {
   const lines = dxf.split(/\r\n|\r|\n/);
@@ -155,9 +189,10 @@ self.onmessage = async (e) => {
     // Accrochage calculé sur le dessin complet (avant retrait des hachures).
     let snap; try { snap = extractSnapPoints(dxf); } catch (_) { snap = new Float32Array(0); }
     let segs; try { segs = extractSegments(dxf); } catch (_) { segs = new Float32Array(0); }
+    let circles; try { circles = extractCircles(dxf); } catch (_) { circles = new Float32Array(0); }
     let insunits; try { insunits = extractInsUnits(dxf); } catch (_) { insunits = 0; }
     try { const r = stripSolidHatches(dxf); dxf = r.dxf; } catch (_) { /* garde le dxf tel quel */ }
-    self.postMessage({ id, ok: true, dxf, snap: snap.buffer, segs: segs.buffer, insunits }, [snap.buffer, segs.buffer]);
+    self.postMessage({ id, ok: true, dxf, snap: snap.buffer, segs: segs.buffer, circles: circles.buffer, insunits }, [snap.buffer, segs.buffer, circles.buffer]);
   } catch (err) {
     self.postMessage({ id, ok: false, error: (err && err.message) ? String(err.message) : 'Erreur de conversion' });
   }
