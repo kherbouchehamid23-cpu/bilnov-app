@@ -25,6 +25,8 @@ interface Props {
   onSubmit: () => void;
   onBack: () => void;
   onCancel: () => void;
+  // Vague 3 (§12/§13) — import de fichier : délégué à l'éditeur (qui a projectId + token).
+  onUploadFile?: (file: File) => Promise<{ fileKey: string; name: string; size: number }>;
 }
 
 const ICONS: Record<string, string> = {
@@ -50,14 +52,20 @@ function Icon({ name }: { name: string }) {
   );
 }
 
-function Field({ f, scenes, currentSceneId, value, onChange }: {
+function Field({ f, scenes, currentSceneId, value, onChange, form, kind, onUploadFile }: {
   f: FieldDef; scenes: SceneLite[]; currentSceneId: string | null;
   value: unknown; onChange: (name: string, value: unknown) => void;
+  form?: Record<string, unknown>; kind?: HotspotKind | null;
+  onUploadFile?: (file: File) => Promise<{ fileKey: string; name: string; size: number }>;
 }) {
   const base = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-violet-500';
   if (f.control === 'scene') {
     // §11.2 / §20 — sélection de la scène cible par MINIATURES (cartes) + recherche.
     return <SceneThumbPicker f={f} scenes={scenes} currentSceneId={currentSceneId} value={value} onChange={onChange} />;
+  }
+  if (f.control === 'media') {
+    // Vague 3 (§12/§13) — import fichier (défaut) OU URL externe.
+    return <MediaField form={form ?? {}} kind={kind ?? null} onChange={onChange} onUploadFile={onUploadFile} />;
   }
   if (f.control === 'select') {
     return (
@@ -108,6 +116,112 @@ function Field({ f, scenes, currentSceneId, value, onChange }: {
         value={typeof value === 'string' ? value : ''}
         onChange={(e) => onChange(f.name, e.target.value)} />
     </label>
+  );
+}
+
+// Vague 3 (§12/§13) — source d'un hotspot Image/PDF : IMPORTER un fichier (défaut) ou URL externe.
+function MediaField({ form, kind, onChange, onUploadFile }: {
+  form: Record<string, unknown>; kind: HotspotKind | null;
+  onChange: (name: string, value: unknown) => void;
+  onUploadFile?: (file: File) => Promise<{ fileKey: string; name: string; size: number }>;
+}) {
+  const isPdf = kind === 'PDF';
+  const accept = isPdf ? 'application/pdf,.pdf' : 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp';
+  const maxMb = isPdf ? 50 : 25;
+  const source = form.sourceType === 'EXTERNAL_URL' ? 'EXTERNAL_URL' : 'UPLOAD';
+  const fileKey = typeof form.fileKey === 'string' ? form.fileKey : '';
+  const mediaName = typeof form.mediaName === 'string' ? form.mediaName : '';
+  const mediaSize = typeof form.mediaSize === 'number' ? form.mediaSize : 0;
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const [drag, setDrag] = React.useState(false);
+  const [preview, setPreview] = React.useState<string | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => { if (form.sourceType === undefined) onChange('sourceType', 'UPLOAD'); /* défaut = import */ }, [form.sourceType, onChange]);
+
+  const fmtSize = (b: number) => b >= 1048576 ? `${(b / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(b / 1024))} Ko`;
+
+  const handleFile = async (file: File): Promise<void> => {
+    setErr(null);
+    const okType = isPdf
+      ? (file.type === 'application/pdf' || /\.pdf$/i.test(file.name))
+      : (/^image\/(jpeg|png|webp)$/.test(file.type) || /\.(jpe?g|png|webp)$/i.test(file.name));
+    if (!okType) { setErr(isPdf ? 'Seuls les documents PDF sont acceptés.' : 'Format non accepté. Utilisez JPG, JPEG, PNG ou WebP.'); return; }
+    if (file.size > maxMb * 1048576) { setErr(`Le fichier dépasse la limite autorisée de ${maxMb} Mo.`); return; }
+    if (!onUploadFile) { setErr("Import indisponible ici."); return; }
+    if (!isPdf) { try { setPreview(URL.createObjectURL(file)); } catch { /* noop */ } }
+    setBusy(true);
+    try {
+      const res = await onUploadFile(file);
+      onChange('sourceType', 'UPLOAD');
+      onChange('fileKey', res.fileKey);
+      onChange('mediaName', res.name || file.name);
+      onChange('mediaSize', res.size || file.size);
+    } catch { setErr("L'import a échoué. Vous pouvez réessayer."); }
+    finally { setBusy(false); }
+  };
+
+  const clearFile = (): void => {
+    onChange('fileKey', undefined); onChange('mediaName', undefined); onChange('mediaSize', undefined);
+    setPreview(null); setErr(null);
+  };
+
+  return (
+    <div className="block">
+      <span className="mb-1 block text-xs font-medium text-stone-500">Source {isPdf ? 'du document' : "de l'image"}</span>
+      <div className="mb-2 flex gap-3 text-sm text-slate-700">
+        <label className="flex items-center gap-1.5"><input type="radio" checked={source === 'UPLOAD'} onChange={() => onChange('sourceType', 'UPLOAD')} />Importer un fichier</label>
+        <label className="flex items-center gap-1.5"><input type="radio" checked={source === 'EXTERNAL_URL'} onChange={() => onChange('sourceType', 'EXTERNAL_URL')} />Utiliser une URL</label>
+      </div>
+
+      {source === 'UPLOAD' ? (
+        !fileKey ? (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) void handleFile(f); }}
+            onClick={() => inputRef.current?.click()}
+            className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-3 py-6 text-center text-sm ${drag ? 'border-violet-500 bg-violet-50' : 'border-stone-300 bg-stone-50'}`}>
+            {busy ? (
+              <span className="flex items-center gap-2 text-stone-500"><span className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />Envoi en cours…</span>
+            ) : (
+              <>
+                <span className="font-medium text-slate-700">{isPdf ? 'Déposer un PDF ici' : 'Déposer une image ici'}</span>
+                <span className="text-stone-500">ou cliquez pour {isPdf ? 'sélectionner un PDF' : 'sélectionner une image'}</span>
+                <span className="text-[11px] text-stone-400">{isPdf ? 'PDF' : 'JPG, JPEG, PNG, WebP'} · max {maxMb} Mo</span>
+              </>
+            )}
+            <input ref={inputRef} type="file" accept={accept} className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ''; }} />
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white p-2">
+            {isPdf ? (
+              <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500"><Icon name="pdf" /></div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={preview ?? (typeof form.url === 'string' ? form.url : '')} alt="" className="h-14 w-14 flex-shrink-0 rounded-lg object-cover bg-stone-100" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-slate-700">{mediaName || 'Fichier importé'}</p>
+              {mediaSize > 0 && <p className="text-xs text-stone-400">{fmtSize(mediaSize)}</p>}
+              <div className="mt-1 flex gap-3 text-xs">
+                <button type="button" onClick={() => inputRef.current?.click()} className="text-violet-600 hover:underline">Remplacer</button>
+                <button type="button" onClick={clearFile} className="text-red-500 hover:underline">Supprimer</button>
+              </div>
+            </div>
+            <input ref={inputRef} type="file" accept={accept} className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ''; }} />
+          </div>
+        )
+      ) : (
+        <input className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-violet-500"
+          type="url" placeholder="https://…" value={typeof form.url === 'string' ? form.url : ''}
+          onChange={(e) => onChange('url', e.target.value)} />
+      )}
+      {err && <p className="mt-1 text-xs text-red-500">{err}</p>}
+    </div>
   );
 }
 
@@ -244,7 +358,8 @@ export default function TourHotspotPanel(props: Props) {
             <div className="space-y-3">
               {fieldsFor(kind).map((f) => (
                 <Field key={f.name} f={f} scenes={scenes} currentSceneId={currentSceneId}
-                  value={form[f.name]} onChange={props.onChange} />
+                  value={form[f.name]} onChange={props.onChange}
+                  form={form} kind={kind} onUploadFile={props.onUploadFile} />
               ))}
               <IconPicker kind={kind} form={form} onChange={props.onChange} />
               {errors.length > 0 && (
