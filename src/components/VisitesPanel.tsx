@@ -225,7 +225,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
           {tours360.map(t => (
             <div key={`t360-${t.id}`} className="file-card rounded-2xl p-5">
               {/* La carte ouvre l'éditeur (gestion des scènes) pour un gestionnaire, sinon le viewer. */}
-              <Link href={canManage ? `/projects/${projectId}/tours/${t.id}` : `/projects/${projectId}/tours/${t.id}/view`} className="block">
+              <Link href={canManage ? `/projects/${projectId}/tours/${t.id}` : `/projects/${projectId}/tours/${t.id}/view-psv`} className="block">
                 <div className="flex items-center justify-between mb-3">
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet-light)' }}><Globe size={24} style={{ color: 'var(--violet)' }} /></div>
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>360°</span>
@@ -240,7 +240,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
                 {canManage && (
                   <Link href={`/projects/${projectId}/tours/${t.id}`} className="inline-block text-xs font-medium hover:underline" style={{ color: 'var(--violet)' }}><Pencil size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Gérer les scènes</Link>
                 )}
-                <Link href={`/projects/${projectId}/tours/${t.id}/view`} className="inline-block text-xs hover:underline" style={{ color: 'var(--text-muted)' }}><Eye size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Voir</Link>
+                <Link href={`/projects/${projectId}/tours/${t.id}/view-psv`} className="inline-block text-xs hover:underline" style={{ color: 'var(--text-muted)' }}><Eye size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Voir</Link>
               </div>
             </div>
           ))}
