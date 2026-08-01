@@ -871,7 +871,10 @@ export default function TourEditorPage() {
               <input ref={reimportInputRef} type="file" className="hidden" accept="image/*"
                 onChange={e => { void handleReimportFile(e); }} />
               {(currentScene.derivStatus === 'MISSING' || loadErrorSceneId === currentScene.id) && (
-                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-stone-950/95 p-6 text-center">
+                // z-10 : au-dessus du panorama (vide/erreur) mais SOUS les contrôles z-20
+                // (liste des hotspots, bouton + Hotspot…) pour que la gestion des hotspots
+                // reste accessible même quand l'image source est absente.
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-stone-950/95 p-6 text-center">
                   <div className="text-4xl">🖼️</div>
                   <div className="max-w-md">
                     <p className="text-base font-semibold text-white">Image source introuvable</p>
