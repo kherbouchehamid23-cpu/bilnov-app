@@ -38,6 +38,19 @@ export async function POST(
       });
       return apiSuccess({ id: scene.id, derivStatus: 'READY' });
     } catch (e) {
+      // Distinguer « objet source absent du bucket » (donnée perdue → réimport nécessaire)
+      // d'un vrai échec de traitement. Un objet manquant renvoie NoSuchKey/404 : ce n'est pas
+      // une panne serveur (502) mais un état attendu, signalé clairement au client (422) pour
+      // qu'il propose la réimportation au lieu d'afficher une erreur brute / de boucler.
+      const err = e as { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
+      const missing = err?.name === 'NoSuchKey' || err?.Code === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404;
+      if (missing) {
+        await prisma.tourScene.update({
+          where: { id: scene.id },
+          data: { derivStatus: 'MISSING', derivError: 'Image source absente du stockage (réimport nécessaire)' },
+        });
+        return apiError('Image source introuvable — réimportez cette scène', 'SOURCE_MISSING', 422);
+      }
       await prisma.tourScene.update({
         where: { id: scene.id },
         data: { derivStatus: 'FAILED', derivError: e instanceof Error ? e.message.slice(0, 300) : 'erreur' },
