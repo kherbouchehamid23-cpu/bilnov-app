@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { Hand, Ruler, Square, Zap, MessageSquare, Layers, FileText, Image as ImageIcon } from 'lucide-react';
 import { toDxfObjectUrl } from '@/lib/cad';
 import { SnapIndex } from '@/lib/snap';
-import { SegmentIndex, segmentsFromFloat32, snap as snapSegments, applyOrtho, type SnapType } from '@/lib/snapEngine';
+import { SegmentIndex, segmentsFromFloat32, snap as snapSegments, applyOrtho, circlesFromFloat32, type SnapType, type Circle } from '@/lib/snapEngine';
 import { quickMeasure, type QuickResult } from '@/lib/quickMeasure';
 import { cursorOffsetPx } from '@/lib/cadCursor';
 import {
@@ -52,6 +52,7 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const THREERef = useRef<any>(null);
   const snapIndexRef = useRef<SnapIndex | null>(null);
   const segIndexRef = useRef<SegmentIndex | null>(null);
+  const circlesRef = useRef<Circle[]>([]); // §15 — cercles/arcs pour accrochage centre/sur-cercle
   const orthoAxisRef = useRef<'H' | 'V' | null>(null);
   const objectUrlRef = useRef<string | null>(null);
 
@@ -181,9 +182,10 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
   const snapResolve = useCallback((p: Pt): { x: number; y: number; type: SnapType } => {
     const wpp = worldPerPixel();
     const tol = (wpp ?? 1) * 14;
-    if (segIndexRef.current) {
-      const cand = segIndexRef.current.query(p.x, p.y, tol);
-      if (cand.length > 0) { const r = snapSegments(cand, p, tol); if (r.type !== 'NONE') return { x: r.x, y: r.y, type: r.type }; }
+    if (segIndexRef.current || circlesRef.current.length > 0) {
+      const cand = segIndexRef.current ? segIndexRef.current.query(p.x, p.y, tol) : [];
+      const circ = circlesRef.current.length > 0 ? circlesRef.current : null;
+      if (cand.length > 0 || circ) { const r = snapSegments(cand, p, tol, { circles: circ }); if (r.type !== 'NONE') return { x: r.x, y: r.y, type: r.type }; }
     }
     if (snapIndexRef.current && wpp) { const hit = snapIndexRef.current.nearest(p.x, p.y, tol); if (hit) return { x: hit.x, y: hit.y, type: 'ENDPOINT' }; }
     return { x: p.x, y: p.y, type: 'NONE' };
@@ -220,11 +222,12 @@ export default function CadViewer({ fileId, fileName, token, canAnnotate = true,
         const blob = await res.blob();
 
         setPhase('Conversion DWG…');
-        const { url, snapPoints, segments, insUnits } = await toDxfObjectUrl(blob, fileName);
+        const { url, snapPoints, segments, circles, insUnits } = await toDxfObjectUrl(blob, fileName);
         if (cancelled) { URL.revokeObjectURL(url); return; }
         objectUrlRef.current = url;
         snapIndexRef.current = snapPoints.length > 0 ? new SnapIndex(snapPoints) : null;
         segIndexRef.current = segments.length > 0 ? new SegmentIndex(segmentsFromFloat32(segments)) : null;
+        circlesRef.current = circles && circles.length > 0 ? circlesFromFloat32(circles) : []; // §15
         const detected = unitFromInsUnits(insUnits);
         setBaseUnit(detected); setUnit(detected);
 
