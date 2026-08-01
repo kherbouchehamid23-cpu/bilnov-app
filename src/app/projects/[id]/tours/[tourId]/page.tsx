@@ -200,15 +200,17 @@ export default function TourEditorPage() {
     return () => { el.removeEventListener('click', onClick); if (pannellumInstanceRef.current) { try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ } pannellumInstanceRef.current = null; } };
   }, [pannellumLoaded, currentScene?.imageUrl, currentScene?.previewUrl, hotspots]);
 
-  useEffect(() => {
+  const reloadHotspots = async (): Promise<void> => {
     if (!currentScene) { setHotspots([]); return; }
-    void (async () => {
-      try {
-        const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots`, { headers: { Authorization: `Bearer ${getToken()}` } });
-        const d = await r.json() as ApiResponse<{ hotspots: Hotspot[] }>;
-        setHotspots(d.data?.hotspots ?? []);
-      } catch { setHotspots([]); }
-    })();
+    try {
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const d = await r.json() as ApiResponse<{ hotspots: Hotspot[] }>;
+      setHotspots(d.data?.hotspots ?? []);
+    } catch { setHotspots([]); }
+  };
+  useEffect(() => {
+    void reloadHotspots();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentScene, id, tourId]);
 
   // --- Panneau de création de hotspot ---
@@ -273,6 +275,8 @@ export default function TourEditorPage() {
         const created = d.data;
         setHotspots((prev) => [...prev, created]);
         setHistory((h) => pushAction(h, { kind: 'create', hotspot: toSnapshot(created, currentScene.id) }));
+        // Vague 3 — média importé : recharge pour obtenir l'URL signée (affichage immédiat).
+        if ((res.payload.content as Record<string, unknown> | undefined)?.sourceType === 'UPLOAD') void reloadHotspots();
       }
       if (hsForm.returnLink === true && res.payload.targetSceneId) {
         // §11.4 — au lieu d'auto-placer le retour, on bascule sur la scène cible pour le positionner séparément.
@@ -893,6 +897,10 @@ export default function TourEditorPage() {
                 onSubmit={() => { void submitHotspot(); }}
                 onBack={backToTypes}
                 onCancel={closeHotspotPanel}
+                onUploadFile={async (file) => {
+                  const r = await uploadFileDirect(file, id, getToken(), null);
+                  return { fileKey: r.storageKey, name: r.name, size: file.size };
+                }}
               />
 
               {infoModal && (
