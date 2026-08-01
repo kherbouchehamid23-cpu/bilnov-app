@@ -9,7 +9,7 @@ import { isValidShareToken } from '@/lib/tourShare';
 // en lecture seule, avec des URLs d'images signées (temporaires). Aucune
 // donnée d'écriture, aucune info projet/utilisateur exposée.
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { token: string } }
 ) {
   try {
@@ -18,7 +18,7 @@ export async function GET(
     const tour = await prisma.virtualTour.findFirst({
       where: { publicToken: params.token, isPublic: true },
       select: {
-        id: true, name: true,
+        id: true, name: true, shareExpiresAt: true, shareCode: true,
         scenes: {
           // §22.2 — le partage public masque les scènes cachées et les hotspots non visibles.
           where: { hidden: false },
@@ -33,6 +33,16 @@ export async function GET(
       },
     });
     if (!tour) return apiError('Visite introuvable ou non partagée', 'NOT_FOUND', 404);
+
+    // §22 — expiration du lien (410) puis code d'accès (403 CODE_REQUIRED / CODE_INVALID).
+    if (tour.shareExpiresAt && tour.shareExpiresAt.getTime() < Date.now()) {
+      return apiError('Ce lien de partage a expiré.', 'SHARE_EXPIRED', 410);
+    }
+    if (tour.shareCode) {
+      const provided = (req.nextUrl.searchParams.get('code') ?? req.headers.get('x-share-code') ?? '').trim();
+      if (!provided) return apiError('Code d\'accès requis.', 'CODE_REQUIRED', 403);
+      if (provided !== tour.shareCode) return apiError('Code d\'accès invalide.', 'CODE_INVALID', 403);
+    }
 
     const scenes = await Promise.all(tour.scenes.map(async (s) => {
       let imageUrl = s.imageUrl;
