@@ -180,10 +180,11 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
 
       {/* Form 360° inline */}
       {show360Form && (
-        <div className="mb-4 p-4 rounded-2xl border" style={{ background: 'white', borderColor: 'var(--violet-light)' }}>
-          <h3 className="font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>Nouvelle visite 360°</h3>
+        <div className="mb-4 p-4 rounded-2xl border" style={{ background: 'var(--surface-2)', borderColor: 'var(--border)' }}>
+          <h3 className="font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Nouvelle visite 360°</h3>
           <div className="flex flex-col sm:flex-row gap-2">
             <input className="input flex-1" placeholder="Nom de la visite" value={name360} autoFocus
+              style={{ color: 'var(--text)', background: 'var(--surface-2)', borderColor: 'var(--border)' }}
               onChange={e => setName360(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void create360(); }} />
             <button className="btn-primary" disabled={creating360 || !name360.trim()} onClick={() => void create360()}>
               {creating360 ? '...' : 'Créer'}
@@ -195,7 +196,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
 
       {/* Barre d'upload krpano */}
       {uploading && (
-        <div className="mb-4 p-4 rounded-2xl border" style={{ background: 'white', borderColor: 'var(--violet-light)' }}>
+        <div className="mb-4 p-4 rounded-2xl border" style={{ background: 'var(--surface-2)', borderColor: 'var(--border)' }}>
           <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
             <span>{phase}</span>{progress > 0 && <span>{progress}%</span>}
           </div>
@@ -223,7 +224,8 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
           {/* Cartes 360° */}
           {tours360.map(t => (
             <div key={`t360-${t.id}`} className="file-card rounded-2xl p-5">
-              <Link href={`/projects/${projectId}/tours/${t.id}/view`} className="block">
+              {/* La carte ouvre l'éditeur (gestion des scènes) pour un gestionnaire, sinon le viewer. */}
+              <Link href={canManage ? `/projects/${projectId}/tours/${t.id}` : `/projects/${projectId}/tours/${t.id}/view`} className="block">
                 <div className="flex items-center justify-between mb-3">
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet-light)' }}><Globe size={24} style={{ color: 'var(--violet)' }} /></div>
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>360°</span>
@@ -234,9 +236,12 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
                   {t.status === 'PUBLISHED' ? '● Publié' : '○ Brouillon'}
                 </span>
               </Link>
-              {canManage && (
-                <Link href={`/projects/${projectId}/tours/${t.id}`} className="mt-3 inline-block text-xs hover:underline" style={{ color: 'var(--violet)' }}><Pencil size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Modifier</Link>
-              )}
+              <div className="mt-3 flex items-center gap-4">
+                {canManage && (
+                  <Link href={`/projects/${projectId}/tours/${t.id}`} className="inline-block text-xs font-medium hover:underline" style={{ color: 'var(--violet)' }}><Pencil size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Gérer les scènes</Link>
+                )}
+                <Link href={`/projects/${projectId}/tours/${t.id}/view`} className="inline-block text-xs hover:underline" style={{ color: 'var(--text-muted)' }}><Eye size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Voir</Link>
+              </div>
             </div>
           ))}
 
