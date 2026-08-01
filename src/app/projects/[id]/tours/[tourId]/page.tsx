@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { uploadFileDirect } from '@/lib/upload';
+import { projectionFromScene, oneEyePanoramaUrl, revokeCroppedUrl } from '@/lib/stereoCrop';
 import { hotspotLabel, isDirection } from '@/lib/tour';
 import { buildHotspotPayload, buildReturnPayload, kindFromContent, type HotspotKind, type HotspotPayload } from '@/lib/tourHotspots';
 import { qualityReport, type DirectionLink } from '@/lib/tourQuality';
@@ -187,17 +188,36 @@ export default function TourEditorPage() {
       clickHandlerFunc: () => { if (isDirection(h.type)) { const t = scenesRef.current.find((s) => s.id === h.targetSceneId); if (t) setCurrentScene(t); } else setInfoModal(h); },
     }));
     const sceneAtInit = currentScene.id;
-    try {
-      pannellumInstanceRef.current = window.pannellum.viewer(viewerRef.current, {
-        type: 'equirectangular', panorama: currentScene.previewUrl ? currentScene.previewUrl : (currentScene.panoramaProxy ? `${currentScene.panoramaProxy}?token=${getToken()}` : currentScene.imageUrl), autoLoad: true, autoRotate: 0,
-        compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true,
-        hfov: 100, minHfov: 50, maxHfov: 120, pitch: 0, yaw: 0, hotSpots: hs,
-      });
-      // Image absente du stockage (404) → Pannellum émet « error » : on bascule sur l'overlay
-      // de réimport. « load » réussi → on efface l'erreur éventuelle pour cette scène.
-      pannellumInstanceRef.current.on('error', () => setLoadErrorSceneId(sceneAtInit));
-      pannellumInstanceRef.current.on('load', () => setLoadErrorSceneId((prev) => (prev === sceneAtInit ? null : prev)));
-    } catch { setLoadErrorSceneId(sceneAtInit); }
+    const baseUrl = currentScene.previewUrl ? currentScene.previewUrl : (currentScene.panoramaProxy ? `${currentScene.panoramaProxy}?token=${getToken()}` : currentScene.imageUrl);
+    // §7 — projection de la scène : mono = chemin inchangé (aucune régression) ; stéréo =
+    // on affiche UN œil recadré (over/under → moitié haute, side-by-side → moitié gauche) pour
+    // que le panorama ne soit pas déformé et que le placement des hotspots corresponde à ce que
+    // voient les visiteurs (viewer public / PSV appliquent le même recadrage).
+    const proj = projectionFromScene(currentScene.panoramaType, currentScene.stereoLayout);
+    let cancelledInit = false;
+    let cropBlob: string | null = null;
+    const initViewer = (panoramaUrl: string): void => {
+      if (cancelledInit || !viewerRef.current) return;
+      try {
+        pannellumInstanceRef.current = window.pannellum.viewer(viewerRef.current, {
+          type: 'equirectangular', panorama: panoramaUrl, autoLoad: true, autoRotate: 0,
+          compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true,
+          hfov: 100, minHfov: 50, maxHfov: 120, pitch: 0, yaw: 0, hotSpots: hs,
+        });
+        // Image absente du stockage (404) → Pannellum émet « error » : on bascule sur l'overlay
+        // de réimport. « load » réussi → on efface l'erreur éventuelle pour cette scène.
+        pannellumInstanceRef.current.on('error', () => setLoadErrorSceneId(sceneAtInit));
+        pannellumInstanceRef.current.on('load', () => setLoadErrorSceneId((prev) => (prev === sceneAtInit ? null : prev)));
+      } catch { setLoadErrorSceneId(sceneAtInit); }
+    };
+    if (proj === 'mono') {
+      initViewer(baseUrl);
+    } else {
+      // Recadrage depuis l'original signé (CORS-propre) ; repli sur l'image entière si échec.
+      void oneEyePanoramaUrl(currentScene.imageUrl, proj)
+        .then((u) => { if (cancelledInit) { revokeCroppedUrl(u); return; } if (u.startsWith('blob:')) cropBlob = u; initViewer(u); })
+        .catch(() => initViewer(baseUrl));
+    }
     const el = viewerRef.current;
     const onClick = (e: MouseEvent) => {
       if (!addModeRef.current || !pannellumInstanceRef.current) return;
@@ -209,8 +229,8 @@ export default function TourEditorPage() {
       } catch { /* noop */ }
     };
     el.addEventListener('click', onClick);
-    return () => { el.removeEventListener('click', onClick); if (pannellumInstanceRef.current) { try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ } pannellumInstanceRef.current = null; } };
-  }, [pannellumLoaded, currentScene?.imageUrl, currentScene?.previewUrl, currentScene?.derivStatus, hotspots]);
+    return () => { cancelledInit = true; el.removeEventListener('click', onClick); if (pannellumInstanceRef.current) { try { pannellumInstanceRef.current.destroy(); } catch { /* ignore */ } pannellumInstanceRef.current = null; } revokeCroppedUrl(cropBlob); };
+  }, [pannellumLoaded, currentScene?.imageUrl, currentScene?.previewUrl, currentScene?.derivStatus, currentScene?.panoramaType, currentScene?.stereoLayout, hotspots]);
 
   const reloadHotspots = async (): Promise<void> => {
     if (!currentScene) { setHotspots([]); return; }
@@ -801,7 +821,7 @@ export default function TourEditorPage() {
           <Link href={`/projects/${id}`} className="text-stone-400 hover:text-white transition-colors text-sm">
             ← Retour
           </Link>
-          <Link href={`/projects/${id}/tours/${tourId}/view`} className="text-stone-400 hover:text-white transition-colors text-sm">👁 Voir</Link>
+          <Link href={`/projects/${id}/tours/${tourId}/view-psv`} className="text-stone-400 hover:text-white transition-colors text-sm">👁 Voir</Link>
           <Link href={`/projects/${id}/tours/${tourId}/overview`} className="text-stone-400 hover:text-white transition-colors text-sm">✓ Qualité</Link>
           <div className="w-px h-4 bg-stone-700" />
           <span className="font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
