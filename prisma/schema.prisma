@@ -234,6 +234,9 @@ model VirtualTour {
   // V6 — partage public par lien / iframe.
   isPublic    Boolean    @default(false) @map("is_public")
   publicToken String?    @unique @map("public_token")
+  // §22 — expiration + code d'accès du partage public (additif nullable).
+  shareExpiresAt DateTime? @map("share_expires_at")
+  shareCode      String?   @map("share_code")
 
   project Project               @relation(fields: [projectId], references: [id])
   node    ProjectStructureNode? @relation(fields: [nodeId], references: [id])
