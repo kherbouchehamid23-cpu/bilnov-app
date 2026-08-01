@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { apiError, apiSuccess } from '@/lib/auth';
 import { getSignedFileUrl } from '@/lib/storage';
 import { isValidShareToken } from '@/lib/tourShare';
+import { signHotspotMedia } from '@/lib/tourHotspotMedia';
 
 // Endpoint PUBLIC (sans authentification) — V6.
 // Ne sert QUE les visites explicitement partagées (isPublic + jeton exact),
@@ -49,7 +50,8 @@ export async function GET(
       try { imageUrl = (await getSignedFileUrl(s.imageUrl, 'view')).url; } catch { /* garde la clé brute */ }
       return {
         id: s.id, name: s.name, isInitial: s.isInitial, position: s.position,
-        imageUrl, levelId: s.levelId, mapX: s.mapX, mapY: s.mapY, hotspots: s.hotspots,
+        imageUrl, levelId: s.levelId, mapX: s.mapX, mapY: s.mapY,
+        hotspots: await signHotspotMedia(s.hotspots), // §12/§13 — résout les médias importés
       };
     }));
 
