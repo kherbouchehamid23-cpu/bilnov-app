@@ -5,13 +5,14 @@
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { isDirection, hotspotLabel } from '@/lib/tour';
+import { projectionFromScene, oneEyePanoramaUrl, revokeCroppedUrl } from '@/lib/stereoCrop';
 import { kindFromContent, arrivalTarget } from '@/lib/tourHotspots';
 import { levelForScene, type LevelLite } from '@/lib/tourMap';
 import { viewerKeyAction, neighborSceneId, preloadUrls } from '@/lib/tourViewer';
 import TourFloorPlan from '@/components/TourFloorPlan';
 
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; levelId?: string | null; mapX?: number | null; mapY?: number | null; hotspots: Hotspot[]; }
+interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; hotspots: Hotspot[]; }
 interface Level extends LevelLite { planUrl?: string | null; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
@@ -90,35 +91,53 @@ export default function PublicTourPage() {
   useEffect(() => {
     if (!pLoaded || status !== 'ok' || !viewerRef.current || scenes.length === 0) return;
     if (instRef.current) return;
+    let cancelled = false;
+    const createdBlobs: string[] = [];
     const sceneName = (sid: string | null) => scenes.find((s) => s.id === sid)?.name;
-    const cfgScenes: Record<string, unknown> = {};
-    for (const s of scenes) {
-      const hs = (s.hotspots ?? []).map((h) => {
-        if (isDirection(h.type) && h.targetSceneId && scenes.some((t) => t.id === h.targetSceneId)) {
-          const at = arrivalTarget(h.content);
-          return {
-            pitch: h.positionPitch, yaw: h.positionYaw, cssClass: 'pnlm-hotspot bilnov-dir',
-            type: 'scene', sceneId: h.targetSceneId, targetYaw: at.targetYaw, targetPitch: at.targetPitch,
-            ...(at.targetHfov != null ? { targetHfov: at.targetHfov } : {}),
-            text: hotspotLabel(h.type, h.content, sceneName(h.targetSceneId)),
-          };
-        }
-        return { pitch: h.positionPitch, yaw: h.positionYaw, cssClass: 'pnlm-hotspot bilnov-info', text: hotspotLabel(h.type, h.content, sceneName(h.targetSceneId)), clickHandlerFunc: () => setInfoModal(h) };
-      });
-      cfgScenes[s.id] = { type: 'equirectangular', panorama: s.imageUrl, hotSpots: hs };
-    }
-    const first = currentSceneId ?? scenes[0].id;
-    try {
-      const inst = window.pannellum.viewer(viewerRef.current, {
-        default: { firstScene: first, sceneFadeDuration: 900, autoLoad: true, autoRotate: 0, compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true, hfov: 100, minHfov: 50, maxHfov: 120 },
-        scenes: cfgScenes,
-      }) as unknown as PViewer;
-      instRef.current = inst;
-      inst.on('scenechange', (sid: unknown) => { if (typeof sid === 'string') setCurrentSceneId(sid); });
-      setViewerReady(true);
-      try { setGyroSupported(Boolean(inst.isOrientationSupported?.())); } catch { /* ignore */ }
-    } catch { /* init failed */ }
-    return () => { if (instRef.current) { try { instRef.current.destroy(); } catch { /* ignore */ } instRef.current = null; } setViewerReady(false); };
+    (async () => {
+      // §7 — pré-calcule l'URL panorama de chaque scène : mono inchangé, stéréo recadré à un
+      // seul œil (over/under → moitié haute ; side-by-side → moitié gauche) pour un affichage
+      // correct (non déformé) sur téléphone, tablette et desktop. Visites 100% mono : aucun coût.
+      const panoById: Record<string, string> = {};
+      await Promise.all(scenes.map(async (s) => {
+        const proj = projectionFromScene(s.panoramaType, s.stereoLayout);
+        if (proj === 'mono') { panoById[s.id] = s.imageUrl; return; }
+        try {
+          const u = await oneEyePanoramaUrl(s.imageUrl, proj);
+          panoById[s.id] = u;
+          if (u.startsWith('blob:')) createdBlobs.push(u);
+        } catch { panoById[s.id] = s.imageUrl; }
+      }));
+      if (cancelled || !viewerRef.current || instRef.current) return;
+      const cfgScenes: Record<string, unknown> = {};
+      for (const s of scenes) {
+        const hs = (s.hotspots ?? []).map((h) => {
+          if (isDirection(h.type) && h.targetSceneId && scenes.some((t) => t.id === h.targetSceneId)) {
+            const at = arrivalTarget(h.content);
+            return {
+              pitch: h.positionPitch, yaw: h.positionYaw, cssClass: 'pnlm-hotspot bilnov-dir',
+              type: 'scene', sceneId: h.targetSceneId, targetYaw: at.targetYaw, targetPitch: at.targetPitch,
+              ...(at.targetHfov != null ? { targetHfov: at.targetHfov } : {}),
+              text: hotspotLabel(h.type, h.content, sceneName(h.targetSceneId)),
+            };
+          }
+          return { pitch: h.positionPitch, yaw: h.positionYaw, cssClass: 'pnlm-hotspot bilnov-info', text: hotspotLabel(h.type, h.content, sceneName(h.targetSceneId)), clickHandlerFunc: () => setInfoModal(h) };
+        });
+        cfgScenes[s.id] = { type: 'equirectangular', panorama: panoById[s.id] ?? s.imageUrl, hotSpots: hs };
+      }
+      const first = currentSceneId ?? scenes[0].id;
+      try {
+        const inst = window.pannellum.viewer(viewerRef.current, {
+          default: { firstScene: first, sceneFadeDuration: 900, autoLoad: true, autoRotate: 0, compass: false, showControls: true, showFullscreenCtrl: true, showZoomCtrl: true, mouseZoom: true, hfov: 100, minHfov: 50, maxHfov: 120 },
+          scenes: cfgScenes,
+        }) as unknown as PViewer;
+        instRef.current = inst;
+        inst.on('scenechange', (sid: unknown) => { if (typeof sid === 'string') setCurrentSceneId(sid); });
+        setViewerReady(true);
+        try { setGyroSupported(Boolean(inst.isOrientationSupported?.())); } catch { /* ignore */ }
+      } catch { /* init failed */ }
+    })();
+    return () => { cancelled = true; if (instRef.current) { try { instRef.current.destroy(); } catch { /* ignore */ } instRef.current = null; } setViewerReady(false); createdBlobs.forEach(revokeCroppedUrl); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pLoaded, status, scenes]);
 
