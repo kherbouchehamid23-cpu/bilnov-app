@@ -27,6 +27,8 @@ export async function GET(
           select: {
             id: true, name: true, isInitial: true, position: true, imageUrl: true,
             levelId: true, mapX: true, mapY: true,
+            // §7 — projection mono/stéréo pour que le viewer public affiche le bon œil.
+            panoramaType: true, stereoLayout: true,
             hotspots: { where: { visible: true }, select: { id: true, type: true, positionYaw: true, positionPitch: true, targetSceneId: true, content: true, iconId: true, iconColor: true, iconScale: true } },
           },
         },
@@ -51,6 +53,7 @@ export async function GET(
       return {
         id: s.id, name: s.name, isInitial: s.isInitial, position: s.position,
         imageUrl, levelId: s.levelId, mapX: s.mapX, mapY: s.mapY,
+        panoramaType: s.panoramaType, stereoLayout: s.stereoLayout,
         hotspots: await signHotspotMedia(s.hotspots), // §12/§13 — résout les médias importés
       };
     }));
