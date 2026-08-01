@@ -260,6 +260,7 @@ export default function TourViewerPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link href={`/projects/${id}/tours/${tourId}/view-psv`} className="px-4 py-2 rounded-lg text-sm font-medium bg-white/10 backdrop-blur-md border border-white/15 text-stone-100 hover:bg-white/20" title="Nouveau moteur immersif : transitions fondu, mono/stéréo, VR">360° immersif ✦</Link>
+          <Link href={`/projects/${id}/tours/${tourId}/view-vr`} className="px-4 py-2 rounded-lg text-sm font-medium bg-white/10 backdrop-blur-md border border-white/15 text-stone-100 hover:bg-white/20" title="Mode VR WebXR immersif (casque / gyroscope)">VR 🥽</Link>
           {canEdit && (
             <Link href={`/projects/${id}/tours/${tourId}`} className="px-4 py-2 rounded-lg text-sm font-medium bg-stone-800 hover:bg-stone-700 text-white">✎ Modifier</Link>
           )}
