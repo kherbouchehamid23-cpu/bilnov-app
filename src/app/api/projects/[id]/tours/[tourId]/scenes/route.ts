@@ -2,6 +2,15 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 import { getSignedFileUrl } from '@/lib/storage';
+import { getProjectAccess } from '@/lib/access';
+
+// Sécurité — le tour appartient-il à ce projet et l'utilisateur y a-t-il accès ?
+async function tourAccess(user: Parameters<typeof getProjectAccess>[0], projectId: string, tourId: string) {
+  const tour = await prisma.virtualTour.findFirst({ where: { id: tourId, projectId }, select: { id: true } });
+  if (!tour) return { error: apiError('Introuvable', 'NOT_FOUND', 404) as Response };
+  const access = await getProjectAccess(user, projectId);
+  return { access };
+}
 
 export async function GET(
   req: NextRequest,
@@ -10,6 +19,9 @@ export async function GET(
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+    const chk = await tourAccess(user, params.id, params.tourId);
+    if (chk.error) return chk.error;
+    if (!chk.access || !chk.access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     const scenes = await prisma.tourScene.findMany({
       where: { tourId: params.tourId },
@@ -40,6 +52,9 @@ export async function POST(
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+    const chk = await tourAccess(user, params.id, params.tourId);
+    if (chk.error) return chk.error;
+    if (!chk.access || !chk.access.canManage) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     const { fileId, name } = (await req.json()) as { fileId?: string; name?: string };
     if (!fileId || !name) {
