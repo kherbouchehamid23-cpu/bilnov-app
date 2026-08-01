@@ -33,7 +33,9 @@ export default function PublicTourPage() {
   const [currentSceneId, setCurrentSceneId] = useState<string | null>(null);
   const [infoModal, setInfoModal] = useState<Hotspot | null>(null);
   const [showPlan, setShowPlan] = useState(true);
-  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'ok' | 'error' | 'expired' | 'code'>('loading');
+  const [codeInput, setCodeInput] = useState('');
+  const [codeErr, setCodeErr] = useState<string | null>(null);
   const [pLoaded, setPLoaded] = useState(false);
   const [viewerReady, setViewerReady] = useState(false);
   const [gyroOn, setGyroOn] = useState(false);
@@ -62,21 +64,26 @@ export default function PublicTourPage() {
     document.body.appendChild(script);
   }, []);
 
-  // Charger les données publiques
+  // Charger les données publiques (§22 : gère expiration + code d'accès).
+  const loadPublic = async (code?: string): Promise<void> => {
+    try {
+      const q = code ? `?code=${encodeURIComponent(code)}` : '';
+      const r = await fetch(`/api/public/tours/${encodeURIComponent(token)}${q}`);
+      if (r.status === 410) { setStatus('expired'); return; }
+      if (r.status === 403) { setCodeErr(code ? 'Code invalide, réessayez.' : null); setStatus('code'); return; }
+      if (!r.ok) { setStatus('error'); return; }
+      const d = await r.json() as ApiResponse<{ name: string; scenes: Scene[]; levels: Level[] }>;
+      const list = (d.data?.scenes ?? []).slice().sort((a, b) => a.position - b.position);
+      setTourName(d.data?.name ?? '');
+      setScenes(list);
+      setLevels((d.data?.levels ?? []).slice().sort((a, b) => a.position - b.position));
+      setCurrentSceneId((list.find((s) => s.isInitial) ?? list[0])?.id ?? null);
+      setStatus('ok');
+    } catch { setStatus('error'); }
+  };
   useEffect(() => {
-    void (async () => {
-      try {
-        const r = await fetch(`/api/public/tours/${encodeURIComponent(token)}`);
-        if (!r.ok) { setStatus('error'); return; }
-        const d = await r.json() as ApiResponse<{ name: string; scenes: Scene[]; levels: Level[] }>;
-        const list = (d.data?.scenes ?? []).slice().sort((a, b) => a.position - b.position);
-        setTourName(d.data?.name ?? '');
-        setScenes(list);
-        setLevels((d.data?.levels ?? []).slice().sort((a, b) => a.position - b.position));
-        setCurrentSceneId((list.find((s) => s.isInitial) ?? list[0])?.id ?? null);
-        setStatus('ok');
-      } catch { setStatus('error'); }
-    })();
+    void loadPublic();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Construire l'instance multiScene UNE fois
@@ -188,6 +195,37 @@ export default function PublicTourPage() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#0f0f0f' }}>
         <p className="text-sm text-stone-400">Cette visite n’est pas disponible ou n’est plus partagée.</p>
+      </div>
+    );
+  }
+
+  if (status === 'expired') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: '#0f0f0f' }}>
+        <div className="text-center">
+          <p className="mb-1 text-base font-semibold text-white">Lien expiré</p>
+          <p className="text-sm text-stone-400">Ce lien de partage a expiré. Demandez-en un nouveau au propriétaire de la visite.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'code') {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: '#0f0f0f' }}>
+        <form
+          onSubmit={(e) => { e.preventDefault(); if (codeInput.trim()) { setStatus('loading'); void loadPublic(codeInput.trim()); } }}
+          className="w-full max-w-xs rounded-2xl border border-stone-800 p-6 text-center">
+          <p className="mb-1 text-base font-semibold text-white">Visite protégée</p>
+          <p className="mb-4 text-sm text-stone-400">Saisissez le code d’accès communiqué par le propriétaire.</p>
+          <input
+            autoFocus value={codeInput} onChange={(e) => setCodeInput(e.target.value)}
+            placeholder="Code d’accès"
+            className="mb-2 w-full rounded-lg border border-stone-700 bg-stone-900 px-3 py-2 text-center text-sm text-white outline-none focus:border-violet-500" />
+          {codeErr && <p className="mb-2 text-xs text-red-400">{codeErr}</p>}
+          <button type="submit" disabled={!codeInput.trim()}
+            className={`w-full rounded-lg py-2 text-sm font-medium ${codeInput.trim() ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-stone-800 text-stone-500 cursor-not-allowed'}`}>Accéder</button>
+        </form>
       </div>
     );
   }
