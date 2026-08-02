@@ -42,6 +42,10 @@ export default function PublicTourPage() {
   const [gyroOn, setGyroOn] = useState(false);
   const [gyroSupported, setGyroSupported] = useState(false);
   const [isFs, setIsFs] = useState(false);
+  // §4 — interface immersive : les commandes se masquent après inactivité et réapparaissent
+  // au moindre mouvement / toucher / touche. Toujours retrouvables (jamais retirées du DOM).
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const chromeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const viewerRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -208,6 +212,29 @@ export default function PublicTourPage() {
     if (infoModal) closeBtnRef.current?.focus();
   }, [infoModal]);
 
+  // §4 — masquage automatique des commandes après inactivité (interface immersive).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const reveal = () => {
+      setChromeVisible(true);
+      if (chromeTimer.current) clearTimeout(chromeTimer.current);
+      chromeTimer.current = setTimeout(() => setChromeVisible(false), 3500);
+    };
+    reveal();
+    const opts: AddEventListenerOptions = { passive: true };
+    window.addEventListener('mousemove', reveal, opts);
+    window.addEventListener('pointerdown', reveal, opts);
+    window.addEventListener('touchstart', reveal, opts);
+    window.addEventListener('keydown', reveal);
+    return () => {
+      if (chromeTimer.current) clearTimeout(chromeTimer.current);
+      window.removeEventListener('mousemove', reveal);
+      window.removeEventListener('pointerdown', reveal);
+      window.removeEventListener('touchstart', reveal);
+      window.removeEventListener('keydown', reveal);
+    };
+  }, []);
+
   const currentScene = scenes.find((s) => s.id === currentSceneId) ?? null;
   const currentLevel = currentScene ? levelForScene(levels, currentScene) : null;
   const currentPlanUrl = (currentLevel && levels.find((l) => l.id === currentLevel.id)?.planUrl) || null;
@@ -259,9 +286,9 @@ export default function PublicTourPage() {
           <>
             <div ref={viewerRef} className="flex-1" role="application" aria-label={`Visite virtuelle 360° — ${currentScene?.name ?? tourName}. Flèches gauche/droite pour changer de scène.`} style={{ minHeight: '100vh', background: '#000' }} />
             {currentScene && (
-              <div className="absolute top-4 left-4 z-10 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-black/60 pointer-events-none">{currentScene.name}</div>
+              <div className={`absolute top-4 left-4 z-10 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-black/60 pointer-events-none transition-opacity duration-500 ${chromeVisible ? 'opacity-100' : 'opacity-0'}`}>{currentScene.name}</div>
             )}
-            <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
+            <div className={`absolute top-4 right-4 z-10 flex flex-col items-end gap-2 transition-opacity duration-500 ${chromeVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
               <div className="flex gap-2">
                 {gyroSupported && (
                   <button onClick={toggleGyro} aria-pressed={gyroOn} aria-label={gyroOn ? 'Désactiver le gyroscope' : 'Activer le gyroscope'} title="Gyroscope (g)"
@@ -283,7 +310,7 @@ export default function PublicTourPage() {
             {/* Barre de navigation entre scènes — indispensable sur mobile (pas de clavier)
                 et quand la visite n'a ni flèche de direction ni plan. */}
             {scenes.length > 1 && (
-              <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 max-w-[calc(100%-2rem)] overflow-x-auto rounded-full bg-black/70 px-2 py-1.5">
+              <div className={`absolute bottom-4 left-1/2 z-20 -translate-x-1/2 max-w-[calc(100%-2rem)] overflow-x-auto rounded-full bg-black/70 px-2 py-1.5 transition-opacity duration-500 ${chromeVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                 <div className="flex items-center gap-1">
                   {scenes.map((s) => {
                     const active = s.id === currentSceneId;
@@ -300,7 +327,7 @@ export default function PublicTourPage() {
             )}
 
             {hasAnyPlan && (
-              <div className="absolute bottom-4 right-4 z-20 w-60 rounded-lg bg-black/75 p-2 text-white">
+              <div className={`absolute bottom-4 right-4 z-20 w-60 rounded-lg bg-black/75 p-2 text-white transition-opacity duration-500 ${chromeVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                 <div className="mb-1 flex items-center justify-between">
                   <span className="text-[10px] uppercase text-stone-400">Plan{currentLevel ? ` — ${currentLevel.name}` : ''}</span>
                   <button onClick={() => setShowPlan((v) => !v)} className="text-xs text-stone-300 hover:text-white">{showPlan ? '▾' : '▸'}</button>
