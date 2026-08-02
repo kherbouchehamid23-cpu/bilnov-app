@@ -38,6 +38,10 @@ interface PannellumViewer {
   loadScene: (sceneId: string) => void;
   on: (event: string, callback: () => void) => void;
   mouseEventToCoords: (e: MouseEvent) => [number, number];
+  // §2 — lecture de la vue courante (capture de l'orientation d'arrivée).
+  getYaw?: () => number;
+  getPitch?: () => number;
+  getHfov?: () => number;
 }
 
 // Rendu du contenu d'un hotspot info (modale) selon son type fin.
@@ -126,6 +130,12 @@ export default function TourEditorPage() {
   const [editingHotspotId, setEditingHotspotId] = useState<string | null>(null);
   const [repositioning, setRepositioning] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  // §2 — édition avancée : instantané d'origine (bouton « Annuler les modifications » +
+  // désactivation d'« Enregistrer » tant que rien n'a changé), application aux deux sens d'une
+  // paire A↔B (apparence), et réglage de la vue d'arrivée dans la scène cible.
+  const editOriginalRef = useRef<{ form: Record<string, unknown>; targetSceneId?: string } | null>(null);
+  const [editApplyBoth, setEditApplyBoth] = useState(false);
+  const [arrivalEdit, setArrivalEdit] = useState<{ prevSceneId: string; targetName: string } | null>(null);
   // §3 — aller-retour A↔B : OPTION du hotspot Direction. Ouvert depuis le panneau Direction
   // (mode « aller-retour » + « Continuer »). Porte la scène B choisie, la position A→B déjà
   // placée dans la scène A (seed), et les paramètres d'icône/titre du formulaire.
@@ -288,6 +298,7 @@ export default function TourEditorPage() {
   const closeHotspotPanel = (): void => {
     setHsOpen(false); setHsStep('type'); setHsKind(null); setHsForm({}); setHsErrors([]);
     setDraft(null); setAddMode(false); setEditingHotspotId(null); setRepositioning(false);
+    editOriginalRef.current = null; setEditApplyBoth(false); setArrivalEdit(null);
   };
   const pickKind = (k: HotspotKind): void => {
     setHsKind(k); setHsForm(initialFormFor(k)); setHsErrors([]); setHsStep('place'); setAddMode(true);
@@ -299,18 +310,56 @@ export default function TourEditorPage() {
   const startEditHotspot = (h: Hotspot): void => {
     const kind = kindFromContent(h.type, h.content);
     const content = (h.content ?? {}) as Record<string, unknown>;
-    setHsKind(kind);
-    setHsForm({
+    const form: Record<string, unknown> = {
       ...content,
       targetSceneId: h.targetSceneId ?? undefined,
       iconId: h.iconId ?? undefined,
       iconColor: h.iconColor ?? undefined,
       iconScale: typeof h.iconScale === 'number' ? h.iconScale : undefined,
       iconOpacity: typeof h.iconOpacity === 'number' ? h.iconOpacity : undefined,
-    });
+    };
+    setHsKind(kind);
+    setHsForm(form);
+    // §2 — instantané d'origine pour « Annuler les modifications » et la détection de changement.
+    editOriginalRef.current = { form: JSON.parse(JSON.stringify(form)), targetSceneId: h.targetSceneId ?? undefined };
+    setEditApplyBoth(false);
     setHsErrors([]); setHsStep('form'); setEditingHotspotId(h.id);
     setDraft(null); setRepositioning(false); setAddMode(false); setHsOpen(true);
   };
+  // §2 — « Annuler les modifications » : restaure intégralement le formulaire d'origine
+  // (contenu, fichier, cible, orientation d'arrivée) et abandonne un repositionnement en cours.
+  const resetEdits = (): void => {
+    if (!editOriginalRef.current) return;
+    setHsForm(JSON.parse(JSON.stringify(editOriginalRef.current.form)));
+    setDraft(null); setHsErrors([]);
+  };
+  // §2 — réglage de la vue d'arrivée : ouvre la scène cible, l'utilisateur l'oriente, puis on
+  // capture yaw/pitch/hfov. « Annuler » ne perd pas les anciennes données (rien n'est écrit).
+  const startArrivalEdit = (): void => {
+    if (!currentScene) return;
+    const target = typeof hsForm.targetSceneId === 'string' ? scenes.find((s) => s.id === hsForm.targetSceneId) : null;
+    if (!target) { setHsErrors(['Choisissez d’abord une scène de destination.']); return; }
+    setArrivalEdit({ prevSceneId: currentScene.id, targetName: target.name });
+    setHotspotEditMode(false); setAddMode(false); setHsOpen(false);
+    setCurrentScene(target);
+  };
+  const confirmArrival = (): void => {
+    const inst = pannellumInstanceRef.current;
+    if (inst?.getYaw && inst.getPitch) {
+      const yaw = ((inst.getYaw() % 360) + 360) % 360;
+      const pitch = Math.min(85, Math.max(-85, inst.getPitch()));
+      const hfov = inst.getHfov ? inst.getHfov() : 100;
+      setHsForm((prev) => ({ ...prev, arrival: { yaw, pitch, hfov } }));
+    }
+    endArrivalEdit();
+  };
+  const cancelArrival = (): void => { endArrivalEdit(); };
+  const endArrivalEdit = (): void => {
+    const prev = arrivalEdit ? scenes.find((s) => s.id === arrivalEdit.prevSceneId) : null;
+    if (prev) setCurrentScene(prev);
+    setArrivalEdit(null); setHsOpen(true);
+  };
+  const clearArrival = (): void => { setHsForm((prev) => { const n = { ...prev }; delete n.arrival; return n; }); };
   useEffect(() => { startEditHotspotRef.current = startEditHotspot; });
 
   // §2 — repositionnement : masque le panneau, active le placement ; le clic panorama fixe la
@@ -352,7 +401,9 @@ export default function TourEditorPage() {
     if (!hsKind || !currentScene || !editingHotspotId) return;
     const cur = hotspots.find((h) => h.id === editingHotspotId);
     const pos = draft ?? (cur ? { yaw: cur.positionYaw, pitch: cur.positionPitch } : null);
-    const res = buildHotspotPayload(hsKind, hsForm, pos);
+    // pairMode est un réglage d'UI (création) — jamais persisté dans le content.
+    const formForPayload = { ...hsForm }; delete formForPayload.pairMode;
+    const res = buildHotspotPayload(hsKind, formForPayload, pos);
     if (!res.ok || !res.payload) { setHsErrors(res.errors); return; }
     const iconFields = {
       iconId: typeof hsForm.iconId === 'string' ? hsForm.iconId : undefined,
@@ -360,8 +411,12 @@ export default function TourEditorPage() {
       iconScale: typeof hsForm.iconScale === 'number' ? hsForm.iconScale : undefined,
       iconOpacity: typeof hsForm.iconOpacity === 'number' ? hsForm.iconOpacity : undefined,
     };
+    // §2 — paire A↔B : « appliquer aux deux sens » synchronise UNIQUEMENT l'apparence (icône,
+    // couleur, taille, opacité) sur l'autre direction ; position/cible/arrivée restent propres à
+    // chaque sens (une modification d'un sens ne déplace jamais l'autre).
+    const scope = (editApplyBoth && cur?.directionPairId) ? '?scope=pair' : '';
     try {
-      const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots/${editingHotspotId}`, {
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots/${editingHotspotId}${scope}`, {
         method: 'PATCH', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ positionYaw: res.payload.positionYaw, positionPitch: res.payload.positionPitch, targetSceneId: res.payload.targetSceneId, content: res.payload.content, ...iconFields }),
       });
@@ -1058,6 +1113,15 @@ export default function TourEditorPage() {
                   <button onClick={() => { setRepositioning(false); setAddMode(false); setHsOpen(true); }} className="rounded-full bg-black/20 px-2 py-0.5">Annuler</button>
                 </div>
               )}
+              {/* §2 — réglage de la vue d'arrivée : on est dans la scène cible ; l'utilisateur
+                  l'oriente (glisser/zoom) puis valide. « Annuler » ne perd pas les anciennes données. */}
+              {currentScene && arrivalEdit && (
+                <div className="absolute top-16 left-1/2 z-30 -translate-x-1/2 flex items-center gap-3 rounded-full bg-violet-600/95 px-4 py-1.5 text-xs font-medium text-white">
+                  Orientez la vue d’arrivée dans « {arrivalEdit.targetName} »
+                  <button onClick={confirmArrival} className="rounded-full bg-white/20 px-2 py-0.5 hover:bg-white/30">Valider la vue d’arrivée</button>
+                  <button onClick={cancelArrival} className="rounded-full bg-black/20 px-2 py-0.5 hover:bg-black/30">Annuler</button>
+                </div>
+              )}
               {/* §7 — type de panorama de la scène courante (mono / stéréo) */}
               <div className="absolute top-4 left-4 z-20 flex items-center gap-1 rounded-lg bg-black/60 p-1 text-white">
                 <span className="px-1.5 text-[10px] uppercase text-stone-400">Panorama</span>
@@ -1176,6 +1240,16 @@ export default function TourEditorPage() {
                 onToggleVisible={() => { const h = hotspots.find((x) => x.id === editingHotspotId); if (h) void toggleHotspotVisible(h.id, !(h.visible !== false)); }}
                 onReposition={startReposition}
                 onDelete={() => { if (editingHotspotId) setDeleteConfirmId(editingHotspotId); }}
+                canSave={editingHotspotId
+                  ? (JSON.stringify(hsForm) !== JSON.stringify(editOriginalRef.current?.form ?? {}) || !!draft)
+                  : true}
+                onCancelEdits={resetEdits}
+                onEditArrival={startArrivalEdit}
+                arrivalSet={!!hsForm.arrival}
+                onClearArrival={clearArrival}
+                isPair={(() => { const h = hotspots.find((x) => x.id === editingHotspotId); return !!h?.directionPairId; })()}
+                applyBoth={editApplyBoth}
+                onToggleApplyBoth={() => setEditApplyBoth((v) => !v)}
               />
 
               {/* §3 — constructeur aller-retour A↔B, ouvert DEPUIS le hotspot Direction (option
