@@ -126,9 +126,15 @@ export default function TourEditorPage() {
   const [editingHotspotId, setEditingHotspotId] = useState<string | null>(null);
   const [repositioning, setRepositioning] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  // §3 — aller-retour A↔B : choix de la scène B puis constructeur double panorama.
-  const [pairPickOpen, setPairPickOpen] = useState(false);
-  const [pairSceneB, setPairSceneB] = useState<string | null>(null);
+  // §3 — aller-retour A↔B : OPTION du hotspot Direction. Ouvert depuis le panneau Direction
+  // (mode « aller-retour » + « Continuer »). Porte la scène B choisie, la position A→B déjà
+  // placée dans la scène A (seed), et les paramètres d'icône/titre du formulaire.
+  const [pairBuild, setPairBuild] = useState<{
+    sceneBId: string;
+    seedA: { yaw: number; pitch: number } | null;
+    title?: string;
+    icon: { iconId?: string; iconColor?: string; iconScale?: number; iconOpacity?: number };
+  } | null>(null);
   const hotspotEditModeRef = useRef(false);
   const repositioningRef = useRef(false);
   const startEditHotspotRef = useRef<(h: Hotspot) => void>(() => {});
@@ -317,18 +323,26 @@ export default function TourEditorPage() {
   // §3 — enregistrement atomique de la paire A↔B via l'endpoint dédié. Lève en cas d'échec
   // (le constructeur affiche l'erreur). Succès → recharge les hotspots de la scène courante.
   const savePair = async (p: PairPlacement): Promise<void> => {
-    if (!currentScene || !pairSceneB) throw new Error('scène manquante');
-    const content = { kind: 'DIRECTION' };
+    if (!currentScene || !pairBuild) throw new Error('scène manquante');
+    const icon = pairBuild.icon ?? {};
+    // A→B : content porte le titre saisi + l'orientation d'arrivée DANS B (vue affichée à l'arrivée).
+    const contentAB: Record<string, unknown> = { kind: 'DIRECTION' };
+    if (pairBuild.title) contentAB.title = pairBuild.title;
+    if (p.arrivalIntoB) contentAB.arrival = p.arrivalIntoB;
+    // B→A : orientation d'arrivée DANS A.
+    const contentBA: Record<string, unknown> = { kind: 'DIRECTION' };
+    if (p.arrivalIntoA) contentBA.arrival = p.arrivalIntoA;
     const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots/pair`, {
       method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sceneBId: pairSceneB,
-        aToB: { positionYaw: p.aYaw, positionPitch: p.aPitch, content },
-        bToA: { positionYaw: p.bYaw, positionPitch: p.bPitch, content },
+        sceneBId: pairBuild.sceneBId,
+        aToB: { positionYaw: p.aYaw, positionPitch: p.aPitch, content: contentAB, ...icon },
+        bToA: { positionYaw: p.bYaw, positionPitch: p.bPitch, content: contentBA, ...icon },
       }),
     });
     if (!r.ok) throw new Error('pair failed');
-    setPairSceneB(null);
+    setPairBuild(null);
+    closeHotspotPanel();
     await reloadHotspots();
   };
 
@@ -361,6 +375,25 @@ export default function TourEditorPage() {
   const submitHotspot = async (): Promise<void> => {
     if (editingHotspotId) { await submitEditHotspot(); return; }
     if (!hsKind || !currentScene) return;
+    // §3 — Direction « aller-retour » : ne crée PAS un hotspot ici. On ouvre l'écran A/B pour
+    // placer les DEUX flèches. La position placée dans la scène A (draft) sert de point A→B initial.
+    if (hsKind === 'DIRECTION' && hsForm.pairMode === 'roundtrip') {
+      const target = typeof hsForm.targetSceneId === 'string' ? hsForm.targetSceneId : '';
+      if (!target || target === currentScene.id) { setHsErrors(['Choisissez une scène cible différente pour l’aller-retour A↔B.']); return; }
+      setPairBuild({
+        sceneBId: target,
+        seedA: draft ? { yaw: draft.yaw, pitch: draft.pitch } : null,
+        title: typeof hsForm.title === 'string' && hsForm.title.trim() ? hsForm.title.trim() : undefined,
+        icon: {
+          iconId: typeof hsForm.iconId === 'string' ? hsForm.iconId : undefined,
+          iconColor: typeof hsForm.iconColor === 'string' ? hsForm.iconColor : undefined,
+          iconScale: typeof hsForm.iconScale === 'number' ? hsForm.iconScale : undefined,
+          iconOpacity: typeof hsForm.iconOpacity === 'number' ? hsForm.iconOpacity : undefined,
+        },
+      });
+      setHsOpen(false); setAddMode(false);
+      return;
+    }
     const res = buildHotspotPayload(hsKind, hsForm, draft);
     if (!res.ok || !res.payload) { setHsErrors(res.errors); return; }
     // §10 — personnalisation d'icône transmise à part du contenu.
@@ -1010,11 +1043,6 @@ export default function TourEditorPage() {
                     className={`rounded-lg px-3 py-1.5 text-sm font-medium ${hotspotEditMode ? 'bg-emerald-500 text-black' : 'bg-black/60 text-white'}`}>
                     {hotspotEditMode ? '✓ Mode édition' : '✎ Modifier les hotspots'}
                   </button>
-                  {scenes.length > 1 && (
-                    <button onClick={() => { setHotspotEditMode(false); closeHotspotPanel(); setPairPickOpen(true); }}
-                      title="Créer une direction aller-retour A↔B (deux scènes visibles simultanément)"
-                      className="rounded-lg bg-black/60 px-3 py-1.5 text-sm font-medium text-white">⇄ A↔B</button>
-                  )}
                   <button onClick={() => { setHotspotEditMode(false); openHotspotPanel(); }} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${addMode && !repositioning ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}>{addMode && !repositioning ? 'Placement…' : '＋ Hotspot'}</button>
                 </div>
               )}
@@ -1150,16 +1178,19 @@ export default function TourEditorPage() {
                 onDelete={() => { if (editingHotspotId) setDeleteConfirmId(editingHotspotId); }}
               />
 
-              {/* §3 — constructeur aller-retour A↔B (double panorama simultané) */}
-              {pairSceneB && currentScene && (() => {
-                const sB = scenes.find((s) => s.id === pairSceneB);
+              {/* §3 — constructeur aller-retour A↔B, ouvert DEPUIS le hotspot Direction (option
+                  aller-retour + Continuer). Double panorama simultané (ordinateur) / 3 étapes (mobile). */}
+              {pairBuild && currentScene && (() => {
+                const sB = scenes.find((s) => s.id === pairBuild.sceneBId);
                 if (!sB) return null;
                 return (
                   <HotspotPairBuilder
                     sceneA={{ id: currentScene.id, name: currentScene.name, url: currentScene.previewUrl || currentScene.imageUrl }}
                     sceneB={{ id: sB.id, name: sB.name, url: sB.previewUrl || sB.imageUrl }}
+                    seedA={pairBuild.seedA}
                     onValidate={savePair}
-                    onCancel={() => setPairSceneB(null)}
+                    onBack={() => { setPairBuild(null); setHsOpen(true); }}
+                    onCancel={() => { setPairBuild(null); closeHotspotPanel(); }}
                   />
                 );
               })()}
@@ -1195,23 +1226,6 @@ export default function TourEditorPage() {
                 </div>
                 );
               })()}
-
-              {/* §3 — choix de la scène B pour l'aller-retour A↔B */}
-              {pairPickOpen && currentScene && (
-                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={() => setPairPickOpen(false)}>
-                  <div className="max-w-sm w-full rounded-xl bg-white p-5 text-slate-800" onClick={(e) => e.stopPropagation()}>
-                    <p className="font-semibold">Aller-retour A ↔ B</p>
-                    <p className="mt-1 text-sm text-stone-500">Scène A : <b>{currentScene.name}</b>. Choisissez la scène B :</p>
-                    <div className="mt-3 max-h-64 space-y-1 overflow-y-auto">
-                      {scenes.filter((s) => s.id !== currentScene.id).map((s) => (
-                        <button key={s.id} onClick={() => { setPairSceneB(s.id); setPairPickOpen(false); }}
-                          className="block w-full truncate rounded-lg border border-stone-200 px-3 py-2 text-left text-sm hover:border-violet-400 hover:bg-violet-50">{s.name}</button>
-                      ))}
-                    </div>
-                    <button onClick={() => setPairPickOpen(false)} className="mt-3 w-full rounded-lg bg-stone-100 py-2 text-sm text-slate-700 hover:bg-stone-200">Annuler</button>
-                  </div>
-                </div>
-              )}
 
               {infoModal && (
                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60" onClick={() => setInfoModal(null)}>
