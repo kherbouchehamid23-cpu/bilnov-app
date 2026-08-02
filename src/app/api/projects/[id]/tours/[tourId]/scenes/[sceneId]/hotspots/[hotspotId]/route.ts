@@ -38,8 +38,17 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
-    const hs = await prisma.tourHotspot.findFirst({ where: { id: params.hotspotId, sceneId: params.sceneId, scene: { tourId: params.tourId, tour: { projectId: params.id } } }, select: { id: true } });
+    const hs = await prisma.tourHotspot.findFirst({ where: { id: params.hotspotId, sceneId: params.sceneId, scene: { tourId: params.tourId, tour: { projectId: params.id } } }, select: { id: true, directionPairId: true } });
     if (!hs) return apiError('Hotspot introuvable', 'NOT_FOUND', 404);
+    // §3 — ?scope=pair : supprime les DEUX sens d'une paire aller-retour A↔B (par directionPairId,
+    // borné à ce tour). Par défaut, seule la direction cliquée est supprimée.
+    const scope = req.nextUrl.searchParams.get('scope');
+    if (scope === 'pair' && hs.directionPairId) {
+      const del = await prisma.tourHotspot.deleteMany({
+        where: { directionPairId: hs.directionPairId, scene: { tourId: params.tourId, tour: { projectId: params.id } } },
+      });
+      return apiSuccess({ id: params.hotspotId, deletedPair: hs.directionPairId, count: del.count });
+    }
     await prisma.tourHotspot.delete({ where: { id: params.hotspotId } });
     return apiSuccess({ id: params.hotspotId });
   } catch (e) {
