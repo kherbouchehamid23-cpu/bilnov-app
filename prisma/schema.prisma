@@ -323,6 +323,9 @@ model TourHotspot {
   iconOpacity Float?   @map("icon_opacity")
   visible     Boolean  @default(true) @map("visible")
   commentId   String?  @map("comment_id") // Comment.id (système transversal Bilnov), sans relation formelle (additif)
+  // §3 — identifiant commun d'une paire de direction aller-retour A↔B (les deux sens partagent
+  // le même directionPairId → édition/suppression de la paire, création atomique).
+  directionPairId String? @map("direction_pair_id")
 
   scene TourScene @relation(fields: [sceneId], references: [id], onDelete: Cascade)
 
