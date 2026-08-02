@@ -34,6 +34,16 @@ interface Props {
   positionLabel?: string;
   visible?: boolean;
   onToggleVisible?: () => void;
+  // §2 (complément) — enregistrement bloqué tant que rien n'a changé, annulation des
+  // modifications, réglage de la vue d'arrivée d'une direction, édition d'une paire A↔B.
+  canSave?: boolean;
+  onCancelEdits?: () => void;
+  onEditArrival?: () => void;
+  arrivalSet?: boolean;
+  onClearArrival?: () => void;
+  isPair?: boolean;
+  applyBoth?: boolean;
+  onToggleApplyBoth?: () => void;
 }
 
 const ICONS: Record<string, string> = {
@@ -407,6 +417,33 @@ export default function TourHotspotPanel(props: Props) {
                 </fieldset>
               )}
               <IconPicker kind={kind} form={form} onChange={props.onChange} />
+              {/* §2 — édition d'une DIRECTION : régler la vue d'arrivée (scène cible orientée
+                  manuellement → yaw/pitch/fov). Séparé de la position du hotspot. */}
+              {props.editMode && kind === 'DIRECTION' && props.onEditArrival && (
+                <div className="rounded-lg border border-stone-200 p-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-xs font-medium text-stone-500">Vue d’arrivée dans la scène cible</span>
+                    <span className={`text-[11px] ${props.arrivalSet ? 'text-emerald-600' : 'text-stone-400'}`}>{props.arrivalSet ? 'personnalisée' : 'cap conservé (défaut)'}</span>
+                  </div>
+                  <p className="mb-2 text-[11px] text-stone-400">Ouvre la scène de destination pour choisir l’orientation affichée à l’arrivée.</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={props.onEditArrival}
+                      className="flex-1 rounded-lg bg-stone-100 py-1.5 text-xs font-medium text-slate-700 hover:bg-stone-200">🧭 Régler la vue d’arrivée</button>
+                    {props.arrivalSet && props.onClearArrival && (
+                      <button type="button" onClick={props.onClearArrival}
+                        className="rounded-lg bg-stone-100 px-3 py-1.5 text-xs text-slate-600 hover:bg-stone-200">Réinitialiser</button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* §2 — hotspot appartenant à une paire A↔B : appliquer l'apparence aux deux sens.
+                  Position / cible / arrivée restent propres à chaque direction. */}
+              {props.editMode && props.isPair && (
+                <label className="flex items-start gap-2 rounded-lg bg-violet-50 p-3 text-xs text-slate-700">
+                  <input type="checkbox" className="mt-0.5" checked={!!props.applyBoth} onChange={props.onToggleApplyBoth} />
+                  <span><span className="font-medium">Direction aller-retour A ↔ B.</span> Appliquer les changements d’<b>apparence</b> (icône, couleur, taille) aux <b>deux sens</b>. La position et l’orientation d’arrivée de l’autre sens ne sont pas modifiées.</span>
+                </label>
+              )}
               {errors.length > 0 && (
                 <ul className="rounded-lg bg-red-50 p-2 text-xs text-red-600">
                   {errors.map((e, i) => <li key={i}>• {e}</li>)}
@@ -434,16 +471,23 @@ export default function TourHotspotPanel(props: Props) {
                 )}
               </div>
             )}
+            {/* §2 — en édition : « Annuler les modifications » restaure l'état d'origine. */}
+            {props.editMode && props.onCancelEdits && (
+              <button onClick={props.onCancelEdits} disabled={props.canSave === false}
+                className={`w-full rounded-lg py-2 text-sm font-medium ${props.canSave === false ? 'cursor-not-allowed bg-stone-50 text-stone-300' : 'bg-stone-100 text-slate-700 hover:bg-stone-200'}`}>
+                ↩ Annuler les modifications
+              </button>
+            )}
             <div className="flex gap-2">
-              <button onClick={props.onSubmit}
-                className="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-medium text-white hover:bg-violet-500">
+              <button onClick={props.onSubmit} disabled={props.editMode && props.canSave === false}
+                className={`flex-1 rounded-lg py-2 text-sm font-medium text-white ${props.editMode && props.canSave === false ? 'cursor-not-allowed bg-violet-300' : 'bg-violet-600 hover:bg-violet-500'}`}>
                 {props.editMode
                   ? 'Enregistrer les modifications'
                   : (kind === 'DIRECTION' && form.pairMode === 'roundtrip' ? 'Continuer → placer A et B' : 'Enregistrer')}
               </button>
               <button onClick={props.onCancel}
                 className="rounded-lg bg-stone-100 px-4 py-2 text-sm text-slate-700 hover:bg-stone-200">
-                Annuler
+                {props.editMode ? 'Fermer' : 'Annuler'}
               </button>
             </div>
           </div>
