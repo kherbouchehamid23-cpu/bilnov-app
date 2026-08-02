@@ -12,7 +12,7 @@ import { viewerKeyAction, neighborSceneId, preloadUrls } from '@/lib/tourViewer'
 import TourFloorPlan from '@/components/TourFloorPlan';
 
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; hotspots: Hotspot[]; }
+interface Scene { id: string; name: string; imageUrl: string; thumbnailUrl?: string | null; previewUrl?: string | null; isInitial: boolean; position: number; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; hotspots: Hotspot[]; }
 interface Level extends LevelLite { planUrl?: string | null; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
@@ -100,13 +100,16 @@ export default function PublicTourPage() {
       // correct (non déformé) sur téléphone, tablette et desktop. Visites 100% mono : aucun coût.
       const panoById: Record<string, string> = {};
       await Promise.all(scenes.map(async (s) => {
+        // §1 — on charge l'APERÇU léger (webp ~4096) plutôt que l'original lourd : chargement
+        // bien plus rapide (Algérie / 4G / connexions lentes). Repli sur l'original si absent.
+        const base = s.previewUrl || s.imageUrl;
         const proj = projectionFromScene(s.panoramaType, s.stereoLayout);
-        if (proj === 'mono') { panoById[s.id] = s.imageUrl; return; }
+        if (proj === 'mono') { panoById[s.id] = base; return; }
         try {
-          const u = await oneEyePanoramaUrl(s.imageUrl, proj);
+          const u = await oneEyePanoramaUrl(base, proj);
           panoById[s.id] = u;
           if (u.startsWith('blob:')) createdBlobs.push(u);
-        } catch { panoById[s.id] = s.imageUrl; }
+        } catch { panoById[s.id] = base; }
       }));
       if (cancelled || !viewerRef.current || instRef.current) return;
       const cfgScenes: Record<string, unknown> = {};
