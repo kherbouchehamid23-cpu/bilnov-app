@@ -52,7 +52,7 @@ export interface HotspotTypeDef {
 
 /** Registre unique — source de vérité des types. */
 export const HOTSPOT_TYPES: Record<HotspotKind, HotspotTypeDef> = {
-  DIRECTION:   { kind: 'DIRECTION',   label: 'Direction',            description: 'Aller vers une autre scène',       icon: 'arrow', dbType: 'LINK',  cssClass: 'pnlm-hotspot bilnov-dir',  needsTarget: true,  fields: ['targetSceneId', 'title', 'returnLink'] },
+  DIRECTION:   { kind: 'DIRECTION',   label: 'Direction',            description: 'Aller vers une autre scène',       icon: 'arrow', dbType: 'LINK',  cssClass: 'pnlm-hotspot bilnov-dir',  needsTarget: true,  fields: ['targetSceneId', 'title'] },
   IMAGE:       { kind: 'IMAGE',       label: 'Image',                description: 'Afficher une image',               icon: 'image', dbType: 'IMAGE', cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'media', 'caption'] },
   GALLERY:     { kind: 'GALLERY',     label: 'Galerie',              description: 'Plusieurs images',                 icon: 'image', dbType: 'IMAGE', cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'images'] },
   PDF:         { kind: 'PDF',         label: 'PDF',                  description: 'Document PDF',                     icon: 'pdf',   dbType: 'TEXT',  cssClass: 'pnlm-hotspot bilnov-info', needsTarget: false, fields: ['title', 'media', 'allowDownload'] },
