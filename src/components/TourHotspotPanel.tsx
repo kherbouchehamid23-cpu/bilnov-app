@@ -27,6 +27,13 @@ interface Props {
   onCancel: () => void;
   // Vague 3 (§12/§13) — import de fichier : délégué à l'éditeur (qui a projectId + token).
   onUploadFile?: (file: File) => Promise<{ fileKey: string; name: string; size: number }>;
+  // §2 — mode ÉDITION d'un hotspot existant (props optionnelles : aucun impact sur la création).
+  editMode?: boolean;
+  onReposition?: () => void;
+  onDelete?: () => void;
+  positionLabel?: string;
+  visible?: boolean;
+  onToggleVisible?: () => void;
 }
 
 const ICONS: Record<string, string> = {
@@ -269,6 +276,7 @@ function IconPicker({ kind, form, onChange }: {
   const current = typeof form.iconId === 'string' ? form.iconId : defaultIconFor(kind);
   const color = typeof form.iconColor === 'string' ? form.iconColor : '#7c6dff';
   const scale = typeof form.iconScale === 'number' ? form.iconScale : 1;
+  const opacity = typeof form.iconOpacity === 'number' ? form.iconOpacity : 1;
   const fams = familiesForKind(kind);
   return (
     <div className="rounded-lg border border-stone-200 p-3">
@@ -296,6 +304,10 @@ function IconPicker({ kind, form, onChange }: {
           <input type="range" min="0.6" max="2" step="0.1" value={scale} onChange={(e) => onChange('iconScale', Number(e.target.value))} className="flex-1" />
         </label>
       </div>
+      <label className="mt-2 flex items-center gap-2 text-[11px] text-stone-500">Opacité
+        <input type="range" min="0.2" max="1" step="0.05" value={opacity} onChange={(e) => onChange('iconOpacity', Number(e.target.value))} className="flex-1" />
+        <span className="w-8 text-right tabular-nums">{Math.round(opacity * 100)}%</span>
+      </label>
     </div>
   );
 }
@@ -331,7 +343,7 @@ export default function TourHotspotPanel(props: Props) {
               <button onClick={props.onBack} className="text-stone-500 hover:text-slate-800" aria-label="Retour">←</button>
             )}
             <h3 className="text-sm font-semibold text-slate-800">
-              {step === 'type' ? 'Choisir un type' : def?.label ?? 'Hotspot'}
+              {props.editMode ? `Modifier : ${def?.label ?? 'hotspot'}` : (step === 'type' ? 'Choisir un type' : def?.label ?? 'Hotspot')}
             </h3>
           </div>
           <button onClick={props.onCancel} className="text-stone-400 hover:text-slate-800" aria-label="Fermer">✕</button>
@@ -356,6 +368,17 @@ export default function TourHotspotPanel(props: Props) {
 
           {step === 'form' && kind && (
             <div className="space-y-3">
+              {props.editMode && (
+                <div className="flex items-center justify-between rounded-lg bg-stone-100 px-3 py-2 text-xs text-slate-600">
+                  <span>{props.positionLabel ?? 'Position enregistrée'}</span>
+                  {props.onToggleVisible && (
+                    <button type="button" onClick={props.onToggleVisible}
+                      className={`rounded-full px-2 py-0.5 font-medium ${props.visible === false ? 'bg-amber-200 text-amber-900' : 'bg-emerald-200 text-emerald-900'}`}>
+                      {props.visible === false ? '🚫 Masqué' : '👁 Visible'}
+                    </button>
+                  )}
+                </div>
+              )}
               {fieldsFor(kind).map((f) => (
                 <Field key={f.name} f={f} scenes={scenes} currentSceneId={currentSceneId}
                   value={form[f.name]} onChange={props.onChange}
@@ -372,15 +395,33 @@ export default function TourHotspotPanel(props: Props) {
         </div>
 
         {step === 'form' && (
-          <div className="flex gap-2 border-t border-stone-200 p-3">
-            <button onClick={props.onSubmit}
-              className="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-medium text-white hover:bg-violet-500">
-              Enregistrer
-            </button>
-            <button onClick={props.onCancel}
-              className="rounded-lg bg-stone-100 px-4 py-2 text-sm text-slate-700 hover:bg-stone-200">
-              Annuler
-            </button>
+          <div className="border-t border-stone-200 p-3 space-y-2">
+            {props.editMode && (
+              <div className="flex gap-2">
+                {props.onReposition && (
+                  <button onClick={props.onReposition}
+                    className="flex-1 rounded-lg bg-stone-100 py-2 text-sm font-medium text-slate-700 hover:bg-stone-200">
+                    ✥ Repositionner
+                  </button>
+                )}
+                {props.onDelete && (
+                  <button onClick={props.onDelete}
+                    className="flex-1 rounded-lg bg-red-50 py-2 text-sm font-medium text-red-600 hover:bg-red-100">
+                    🗑 Supprimer
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button onClick={props.onSubmit}
+                className="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-medium text-white hover:bg-violet-500">
+                {props.editMode ? 'Enregistrer les modifications' : 'Enregistrer'}
+              </button>
+              <button onClick={props.onCancel}
+                className="rounded-lg bg-stone-100 px-4 py-2 text-sm text-slate-700 hover:bg-stone-200">
+                Annuler
+              </button>
+            </div>
           </div>
         )}
       </div>
