@@ -21,7 +21,7 @@ import TourFloorPlan from '@/components/TourFloorPlan';
 interface Tour { id: string; name: string; status: string; }
 interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; hidden?: boolean; thumbnailUrl?: string | null; previewUrl?: string | null; derivStatus?: string | null; }
 interface Level extends LevelLite { planUrl?: string | null; }
-interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; visible?: boolean; }
+interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; visible?: boolean; iconId?: string | null; iconColor?: string | null; iconScale?: number | null; iconOpacity?: number | null; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
 declare global {
@@ -119,6 +119,17 @@ export default function TourEditorPage() {
   const [hsKind, setHsKind] = useState<HotspotKind | null>(null);
   const [hsForm, setHsForm] = useState<Record<string, unknown>>({});
   const [hsErrors, setHsErrors] = useState<string[]>([]);
+  // §2 — édition des hotspots existants : mode « Modifier », hotspot en cours d'édition,
+  // repositionnement et confirmation de suppression.
+  const [hotspotEditMode, setHotspotEditMode] = useState(false);
+  const [editingHotspotId, setEditingHotspotId] = useState<string | null>(null);
+  const [repositioning, setRepositioning] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const hotspotEditModeRef = useRef(false);
+  const repositioningRef = useRef(false);
+  const startEditHotspotRef = useRef<(h: Hotspot) => void>(() => {});
+  useEffect(() => { hotspotEditModeRef.current = hotspotEditMode; }, [hotspotEditMode]);
+  useEffect(() => { repositioningRef.current = repositioning; }, [repositioning]);
 
   // V4b — niveaux & plans 2D.
   const [levels, setLevels] = useState<Level[]>([]);
@@ -185,7 +196,11 @@ export default function TourEditorPage() {
       id: h.id, pitch: h.positionPitch, yaw: h.positionYaw,
       cssClass: isDirection(h.type) ? 'pnlm-hotspot bilnov-dir' : 'pnlm-hotspot bilnov-info',
       text: hotspotLabel(h.type, h.content, scenesRef.current.find((s) => s.id === h.targetSceneId)?.name),
-      clickHandlerFunc: () => { if (isDirection(h.type)) { const t = scenesRef.current.find((s) => s.id === h.targetSceneId); if (t) setCurrentScene(t); } else setInfoModal(h); },
+      clickHandlerFunc: () => {
+        // §2 — en mode « Modifier les hotspots », un clic ouvre l'édition au lieu de naviguer.
+        if (hotspotEditModeRef.current) { startEditHotspotRef.current(h); return; }
+        if (isDirection(h.type)) { const t = scenesRef.current.find((s) => s.id === h.targetSceneId); if (t) setCurrentScene(t); } else setInfoModal(h);
+      },
     }));
     const sceneAtInit = currentScene.id;
     const baseUrl = currentScene.previewUrl ? currentScene.previewUrl : (currentScene.panoramaProxy ? `${currentScene.panoramaProxy}?token=${getToken()}` : currentScene.imageUrl);
@@ -226,6 +241,9 @@ export default function TourEditorPage() {
         setDraft({ pitch: c[0], yaw: c[1] });
         setAddMode(false);
         setHsStep('form');   // le point est placé -> formulaire du type choisi
+        // §2 — repositionnement d'un hotspot existant : on rouvre le panneau d'édition
+        // avec la nouvelle position (enregistrée seulement à la validation).
+        if (repositioningRef.current) { setRepositioning(false); setHsOpen(true); }
       } catch { /* noop */ }
     };
     el.addEventListener('click', onClick);
@@ -259,7 +277,7 @@ export default function TourEditorPage() {
   };
   const closeHotspotPanel = (): void => {
     setHsOpen(false); setHsStep('type'); setHsKind(null); setHsForm({}); setHsErrors([]);
-    setDraft(null); setAddMode(false);
+    setDraft(null); setAddMode(false); setEditingHotspotId(null); setRepositioning(false);
   };
   const pickKind = (k: HotspotKind): void => {
     setHsKind(k); setHsForm(initialFormFor(k)); setHsErrors([]); setHsStep('place'); setAddMode(true);
@@ -267,7 +285,59 @@ export default function TourEditorPage() {
   const backToTypes = (): void => {
     setHsStep('type'); setHsKind(null); setHsForm({}); setHsErrors([]); setDraft(null); setAddMode(false);
   };
+  // §2 — ouvre le panneau pré-rempli avec les données actuelles d'un hotspot existant.
+  const startEditHotspot = (h: Hotspot): void => {
+    const kind = kindFromContent(h.type, h.content);
+    const content = (h.content ?? {}) as Record<string, unknown>;
+    setHsKind(kind);
+    setHsForm({
+      ...content,
+      targetSceneId: h.targetSceneId ?? undefined,
+      iconId: h.iconId ?? undefined,
+      iconColor: h.iconColor ?? undefined,
+      iconScale: typeof h.iconScale === 'number' ? h.iconScale : undefined,
+      iconOpacity: typeof h.iconOpacity === 'number' ? h.iconOpacity : undefined,
+    });
+    setHsErrors([]); setHsStep('form'); setEditingHotspotId(h.id);
+    setDraft(null); setRepositioning(false); setAddMode(false); setHsOpen(true);
+  };
+  useEffect(() => { startEditHotspotRef.current = startEditHotspot; });
+
+  // §2 — repositionnement : masque le panneau, active le placement ; le clic panorama fixe la
+  // nouvelle position puis rouvre le panneau. Annuler/fermer conserve l'ancienne position.
+  const startReposition = (): void => {
+    if (!editingHotspotId) return;
+    setHsOpen(false); setRepositioning(true); setAddMode(true);
+  };
+
+  // §2 — enregistre les modifications d'un hotspot existant (PATCH). Position = nouveau point
+  // repositionné (draft) sinon position actuelle. Aucune création de commentaire / lien retour.
+  const submitEditHotspot = async (): Promise<void> => {
+    if (!hsKind || !currentScene || !editingHotspotId) return;
+    const cur = hotspots.find((h) => h.id === editingHotspotId);
+    const pos = draft ?? (cur ? { yaw: cur.positionYaw, pitch: cur.positionPitch } : null);
+    const res = buildHotspotPayload(hsKind, hsForm, pos);
+    if (!res.ok || !res.payload) { setHsErrors(res.errors); return; }
+    const iconFields = {
+      iconId: typeof hsForm.iconId === 'string' ? hsForm.iconId : undefined,
+      iconColor: typeof hsForm.iconColor === 'string' ? hsForm.iconColor : undefined,
+      iconScale: typeof hsForm.iconScale === 'number' ? hsForm.iconScale : undefined,
+      iconOpacity: typeof hsForm.iconOpacity === 'number' ? hsForm.iconOpacity : undefined,
+    };
+    try {
+      const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots/${editingHotspotId}`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positionYaw: res.payload.positionYaw, positionPitch: res.payload.positionPitch, targetSceneId: res.payload.targetSceneId, content: res.payload.content, ...iconFields }),
+      });
+      if (!r.ok) { setHsErrors(["Erreur lors de l'enregistrement, réessayez."]); return; }
+      setEditingHotspotId(null);
+      closeHotspotPanel();
+      await reloadHotspots(); // URLs signées à jour (média remplacé) + positions
+    } catch { setHsErrors(["Erreur lors de l'enregistrement, réessayez."]); }
+  };
+
   const submitHotspot = async (): Promise<void> => {
+    if (editingHotspotId) { await submitEditHotspot(); return; }
     if (!hsKind || !currentScene) return;
     const res = buildHotspotPayload(hsKind, hsForm, draft);
     if (!res.ok || !res.payload) { setHsErrors(res.errors); return; }
@@ -886,7 +956,9 @@ export default function TourEditorPage() {
           {currentScene ? (
             <>
               {/* Pannellum container */}
-              <div ref={viewerRef} className="flex-1" style={{ minHeight: '500px', background: '#000' }} />
+              <div ref={viewerRef} className={`flex-1 ${hotspotEditMode ? 'hs-editing' : ''}`} style={{ minHeight: '500px', background: '#000' }} />
+              {/* §2 — en mode édition, les hotspots sont visuellement distingués (halo). */}
+              <style>{`.hs-editing .pnlm-hotspot{box-shadow:0 0 0 3px #34d399,0 0 12px rgba(52,211,153,.8);border-radius:9999px;cursor:pointer}`}</style>
               {/* Réimport en place (image source absente) : input caché déclenché par l'overlay. */}
               <input ref={reimportInputRef} type="file" className="hidden" accept="image/*"
                 onChange={e => { void handleReimportFile(e); }} />
@@ -907,7 +979,26 @@ export default function TourEditorPage() {
                 </div>
               )}
               {currentScene && (
-                <button onClick={openHotspotPanel} className={`absolute top-4 right-4 z-20 rounded-lg px-3 py-1.5 text-sm font-medium ${addMode ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}>{addMode ? 'Placement…' : '＋ Hotspot'}</button>
+                <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+                  <button onClick={() => { if (hotspotEditMode) { setHotspotEditMode(false); closeHotspotPanel(); } else { setHotspotEditMode(true); closeHotspotPanel(); } }}
+                    title="Modifier ou supprimer les hotspots déjà enregistrés"
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium ${hotspotEditMode ? 'bg-emerald-500 text-black' : 'bg-black/60 text-white'}`}>
+                    {hotspotEditMode ? '✓ Mode édition' : '✎ Modifier les hotspots'}
+                  </button>
+                  <button onClick={() => { setHotspotEditMode(false); openHotspotPanel(); }} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${addMode && !repositioning ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}>{addMode && !repositioning ? 'Placement…' : '＋ Hotspot'}</button>
+                </div>
+              )}
+              {/* §2 — bandeau du mode édition / repositionnement */}
+              {currentScene && hotspotEditMode && !repositioning && !hsOpen && (
+                <div className="absolute top-16 left-1/2 z-20 -translate-x-1/2 rounded-full bg-emerald-600/90 px-4 py-1.5 text-xs font-medium text-white">
+                  Mode édition — cliquez un hotspot pour le modifier ou le supprimer
+                </div>
+              )}
+              {currentScene && repositioning && (
+                <div className="absolute top-16 left-1/2 z-30 -translate-x-1/2 flex items-center gap-3 rounded-full bg-amber-500/95 px-4 py-1.5 text-xs font-medium text-black">
+                  Cliquez la nouvelle position du hotspot
+                  <button onClick={() => { setRepositioning(false); setAddMode(false); setHsOpen(true); }} className="rounded-full bg-black/20 px-2 py-0.5">Annuler</button>
+                </div>
               )}
               {/* §7 — type de panorama de la scène courante (mono / stéréo) */}
               <div className="absolute top-4 left-4 z-20 flex items-center gap-1 rounded-lg bg-black/60 p-1 text-white">
@@ -938,10 +1029,12 @@ export default function TourEditorPage() {
                     <div key={h.id} className="flex items-center justify-between py-0.5 text-xs">
                       <span className={`truncate ${hidden ? 'text-stone-500 line-through' : ''}`}>{isDirection(h.type) ? '➤' : 'ℹ'} {hotspotLabel(h.type, h.content, scenes.find((s) => s.id === h.targetSceneId)?.name)}</span>
                       <span className="ml-2 flex items-center gap-1.5">
+                        <button onClick={() => startEditHotspot(h)}
+                          title="Modifier ce hotspot" className="text-stone-400 hover:text-violet-300">✎</button>
                         <button onClick={() => void toggleHotspotVisible(h.id, hidden)}
                           title={hidden ? 'Afficher ce hotspot' : 'Masquer ce hotspot'}
                           className="text-stone-400 hover:text-white">{hidden ? '🚫' : '👁'}</button>
-                        <button onClick={() => void deleteHotspot(h.id)} title="Supprimer" className="text-stone-400 hover:text-red-400">✕</button>
+                        <button onClick={() => setDeleteConfirmId(h.id)} title="Supprimer" className="text-stone-400 hover:text-red-400">✕</button>
                       </span>
                     </div>
                     );
@@ -1017,7 +1110,31 @@ export default function TourEditorPage() {
                   const r = await uploadFileDirect(file, id, getToken(), null);
                   return { fileKey: r.storageKey, name: r.name, size: file.size };
                 }}
+                editMode={!!editingHotspotId}
+                positionLabel={draft
+                  ? `Nouvelle position — yaw ${draft.yaw.toFixed(1)}°, pitch ${draft.pitch.toFixed(1)}°`
+                  : (() => { const h = hotspots.find((x) => x.id === editingHotspotId); return h ? `Position — yaw ${h.positionYaw.toFixed(1)}°, pitch ${h.positionPitch.toFixed(1)}°` : undefined; })()}
+                visible={(() => { const h = hotspots.find((x) => x.id === editingHotspotId); return h ? h.visible !== false : true; })()}
+                onToggleVisible={() => { const h = hotspots.find((x) => x.id === editingHotspotId); if (h) void toggleHotspotVisible(h.id, !(h.visible !== false)); }}
+                onReposition={startReposition}
+                onDelete={() => { if (editingHotspotId) setDeleteConfirmId(editingHotspotId); }}
               />
+
+              {/* §2 — confirmation de suppression d'un hotspot */}
+              {deleteConfirmId && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={() => setDeleteConfirmId(null)}>
+                  <div className="max-w-sm w-full rounded-xl bg-white p-5 text-slate-800" onClick={(e) => e.stopPropagation()}>
+                    <p className="font-semibold">Supprimer ce hotspot ?</p>
+                    <p className="mt-1 text-sm text-stone-500">Cette action est définitive. Le hotspot disparaîtra de la visite et ne réapparaîtra pas après actualisation.</p>
+                    <div className="mt-4 flex gap-2">
+                      <button onClick={() => { const idToDel = deleteConfirmId; setDeleteConfirmId(null); if (idToDel) { void deleteHotspot(idToDel); if (editingHotspotId === idToDel) closeHotspotPanel(); } }}
+                        className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-500">Supprimer</button>
+                      <button onClick={() => setDeleteConfirmId(null)}
+                        className="rounded-lg bg-stone-100 px-4 py-2 text-sm text-slate-700 hover:bg-stone-200">Annuler</button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {infoModal && (
                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60" onClick={() => setInfoModal(null)}>
