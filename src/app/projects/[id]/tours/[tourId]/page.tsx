@@ -150,6 +150,12 @@ export default function TourEditorPage() {
   const startEditHotspotRef = useRef<(h: Hotspot) => void>(() => {});
   useEffect(() => { hotspotEditModeRef.current = hotspotEditMode; }, [hotspotEditMode]);
   useEffect(() => { repositioningRef.current = repositioning; }, [repositioning]);
+  // §2 (anomalie) — glisser-déposer : en mode « Modifier les hotspots », on saisit un hotspot
+  // (souris/doigt) et on le déplace ; la nouvelle position est enregistrée au relâchement.
+  const [draggingHotspot, setDraggingHotspot] = useState<string | null>(null);
+  const dragCoordsRef = useRef<{ yaw: number; pitch: number } | null>(null);
+  const dragMarkerRef = useRef<HTMLDivElement | null>(null);
+  const beginHotspotDragRef = useRef<(hid: string) => void>(() => {});
 
   // V4b — niveaux & plans 2D.
   const [levels, setLevels] = useState<Level[]>([]);
@@ -215,12 +221,25 @@ export default function TourEditorPage() {
     const hs = hotspots.map((h) => ({
       id: h.id, pitch: h.positionPitch, yaw: h.positionYaw,
       cssClass: isDirection(h.type) ? 'pnlm-hotspot bilnov-dir' : 'pnlm-hotspot bilnov-info',
-      text: hotspotLabel(h.type, h.content, scenesRef.current.find((s) => s.id === h.targetSceneId)?.name),
       clickHandlerFunc: () => {
-        // §2 — en mode « Modifier les hotspots », un clic ouvre l'édition au lieu de naviguer.
+        // §2 — en mode « Modifier les hotspots », un clic (sans glisser) ouvre l'édition.
+        if (dragCoordsRef.current) { dragCoordsRef.current = null; return; } // c'était un glisser, pas un clic
         if (hotspotEditModeRef.current) { startEditHotspotRef.current(h); return; }
         if (isDirection(h.type)) { const t = scenesRef.current.find((s) => s.id === h.targetSceneId); if (t) setCurrentScene(t); } else setInfoModal(h);
       },
+      // §2 (anomalie) — poignée de glisser-déposer : en mode édition, cliquer-maintenir sur le
+      // hotspot lance le déplacement (l'overlay suit la souris/le doigt jusqu'au relâchement).
+      createTooltipFunc: (div: HTMLElement) => {
+        div.style.cursor = 'grab';
+        const down = (ev: Event) => {
+          if (!hotspotEditModeRef.current) return;
+          ev.stopPropagation(); ev.preventDefault();
+          beginHotspotDragRef.current(h.id);
+        };
+        div.addEventListener('mousedown', down);
+        div.addEventListener('touchstart', down, { passive: false });
+      },
+      createTooltipArgs: h.id,
     }));
     const sceneAtInit = currentScene.id;
     const baseUrl = currentScene.previewUrl ? currentScene.previewUrl : (currentScene.panoramaProxy ? `${currentScene.panoramaProxy}?token=${getToken()}` : currentScene.imageUrl);
@@ -369,18 +388,47 @@ export default function TourEditorPage() {
     setHsOpen(false); setRepositioning(true); setAddMode(true);
   };
 
+  // §2 (anomalie) — glisser-déposer un hotspot directement (cliquer-maintenir-glisser).
+  const patchHotspotPosition = async (hid: string, yaw: number, pitch: number): Promise<void> => {
+    if (!currentScene) return;
+    try {
+      await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots/${hid}`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positionYaw: yaw, positionPitch: pitch }),
+      });
+      // reflète immédiatement la nouvelle position dans l'état (le viewer se reconstruit).
+      setHotspots((prev) => prev.map((h) => h.id === hid ? { ...h, positionYaw: yaw, positionPitch: pitch } : h));
+    } catch { void reloadHotspots(); }
+  };
+  const beginHotspotDrag = (hid: string): void => { dragCoordsRef.current = null; setDraggingHotspot(hid); };
+  useEffect(() => { beginHotspotDragRef.current = beginHotspotDrag; });
+  const onDragMove = (e: React.MouseEvent | React.TouchEvent): void => {
+    const inst = pannellumInstanceRef.current; if (!inst) return;
+    const pt: { clientX: number; clientY: number } = 'touches' in e
+      ? (e.touches[0] ?? { clientX: 0, clientY: 0 })
+      : { clientX: (e as React.MouseEvent).clientX, clientY: (e as React.MouseEvent).clientY };
+    const host = viewerRef.current?.getBoundingClientRect();
+    if (dragMarkerRef.current && host) {
+      dragMarkerRef.current.style.left = `${pt.clientX - host.left}px`;
+      dragMarkerRef.current.style.top = `${pt.clientY - host.top}px`;
+    }
+    try { const c = inst.mouseEventToCoords(pt as unknown as MouseEvent); dragCoordsRef.current = { pitch: c[0], yaw: c[1] }; } catch { /* noop */ }
+  };
+  const endHotspotDrag = (): void => {
+    const hid = draggingHotspot; const c = dragCoordsRef.current;
+    setDraggingHotspot(null);
+    if (hid && c) void patchHotspotPosition(hid, c.yaw, c.pitch);
+  };
+
   // §3 — enregistrement atomique de la paire A↔B via l'endpoint dédié. Lève en cas d'échec
   // (le constructeur affiche l'erreur). Succès → recharge les hotspots de la scène courante.
   const savePair = async (p: PairPlacement): Promise<void> => {
     if (!currentScene || !pairBuild) throw new Error('scène manquante');
     const icon = pairBuild.icon ?? {};
-    // A→B : content porte le titre saisi + l'orientation d'arrivée DANS B (vue affichée à l'arrivée).
+    // Titre côté A→B ; l'orientation d'arrivée se règle ensuite en éditant chaque direction.
     const contentAB: Record<string, unknown> = { kind: 'DIRECTION' };
     if (pairBuild.title) contentAB.title = pairBuild.title;
-    if (p.arrivalIntoB) contentAB.arrival = p.arrivalIntoB;
-    // B→A : orientation d'arrivée DANS A.
     const contentBA: Record<string, unknown> = { kind: 'DIRECTION' };
-    if (p.arrivalIntoA) contentBA.arrival = p.arrivalIntoA;
     const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots/pair`, {
       method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1071,7 +1119,21 @@ export default function TourEditorPage() {
               {/* Pannellum container */}
               <div ref={viewerRef} className={`flex-1 ${hotspotEditMode ? 'hs-editing' : ''}`} style={{ minHeight: '500px', background: '#000' }} />
               {/* §2 — en mode édition, les hotspots sont visuellement distingués (halo). */}
-              <style>{`.hs-editing .pnlm-hotspot{box-shadow:0 0 0 3px #34d399,0 0 12px rgba(52,211,153,.8);border-radius:9999px;cursor:pointer}`}</style>
+              <style>{`.hs-editing .pnlm-hotspot{box-shadow:0 0 0 3px #34d399,0 0 12px rgba(52,211,153,.8);border-radius:9999px;cursor:grab}`}</style>
+              {/* §2 (anomalie) — surcouche de glisser-déposer : capte le déplacement du pointeur
+                  (souris/doigt) sans faire pivoter le panorama, et pose un marqueur qui suit le
+                  curseur. Le relâchement enregistre la nouvelle position. */}
+              {draggingHotspot && (
+                <div className="absolute inset-0 z-30 cursor-grabbing" style={{ touchAction: 'none' }}
+                  onMouseMove={onDragMove} onMouseUp={endHotspotDrag} onMouseLeave={endHotspotDrag}
+                  onTouchMove={onDragMove} onTouchEnd={endHotspotDrag} onTouchCancel={endHotspotDrag}>
+                  <div ref={dragMarkerRef} className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+                    style={{ width: 36, height: 36, border: '3px solid #34d399', boxShadow: '0 0 14px rgba(52,211,153,.95)' }} />
+                  <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-emerald-600/95 px-4 py-1.5 text-xs font-medium text-white">
+                    Glissez le hotspot puis relâchez pour poser
+                  </div>
+                </div>
+              )}
               {/* Réimport en place (image source absente) : input caché déclenché par l'overlay. */}
               <input ref={reimportInputRef} type="file" className="hidden" accept="image/*"
                 onChange={e => { void handleReimportFile(e); }} />
@@ -1259,8 +1321,8 @@ export default function TourEditorPage() {
                 if (!sB) return null;
                 return (
                   <HotspotPairBuilder
-                    sceneA={{ id: currentScene.id, name: currentScene.name, url: currentScene.previewUrl || currentScene.imageUrl }}
-                    sceneB={{ id: sB.id, name: sB.name, url: sB.previewUrl || sB.imageUrl }}
+                    sceneA={{ id: currentScene.id, name: currentScene.name, url: currentScene.previewUrl || currentScene.imageUrl, panoramaType: currentScene.panoramaType, stereoLayout: currentScene.stereoLayout }}
+                    sceneB={{ id: sB.id, name: sB.name, url: sB.previewUrl || sB.imageUrl, panoramaType: sB.panoramaType, stereoLayout: sB.stereoLayout }}
                     seedA={pairBuild.seedA}
                     onValidate={savePair}
                     onBack={() => { setPairBuild(null); setHsOpen(true); }}
