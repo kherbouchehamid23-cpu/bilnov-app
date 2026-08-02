@@ -7,12 +7,13 @@ import { useEffect, useRef, useState } from 'react';
 import { isDirection, hotspotLabel } from '@/lib/tour';
 import { layoutFromScene, oneEyeUrl, revokeCroppedUrl } from '@/lib/stereoCrop';
 import { kindFromContent, arrivalTarget } from '@/lib/tourHotspots';
+import { iconSvg, defaultIconFor } from '@/lib/tourIcons';
 import { levelForScene, type LevelLite } from '@/lib/tourMap';
 import { viewerKeyAction, neighborSceneId, preloadUrls } from '@/lib/tourViewer';
 import TourFloorPlan from '@/components/TourFloorPlan';
 import PublicImmersiveViewer from '@/components/PublicImmersiveViewer';
 
-interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; }
+interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; iconId?: string | null; iconColor?: string | null; iconScale?: number | null; iconOpacity?: number | null; }
 interface Scene { id: string; name: string; imageUrl: string; thumbnailUrl?: string | null; previewUrl?: string | null; isInitial: boolean; position: number; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; hotspots: Hotspot[]; }
 interface Level extends LevelLite { planUrl?: string | null; }
 interface ApiResponse<T> { data: T; success: boolean; }
@@ -125,16 +126,25 @@ export default function PublicTourPage() {
       const cfgScenes: Record<string, unknown> = {};
       for (const s of scenes) {
         const hs = (s.hotspots ?? []).map((h) => {
+          // §10 (anomalie) — rend l'ICÔNE CHOISIE de CHAQUE hotspot (video, pdf, image, url, audio…),
+          // pas seulement direction/info. Injectée dans le div Pannellum via createTooltipFunc.
+          const kind = kindFromContent(h.type, h.content);
+          const iconId = (typeof h.iconId === 'string' && h.iconId) ? h.iconId : defaultIconFor(kind);
+          const color = typeof h.iconColor === 'string' && h.iconColor ? h.iconColor : '#ffffff';
+          const scale = typeof h.iconScale === 'number' && h.iconScale > 0 ? h.iconScale : 1;
+          const wrap = Math.round(38 * scale), glyph = Math.round(22 * scale);
+          const iconHtml = `<span class="bilnov-hs-pin" style="width:${wrap}px;height:${wrap}px">${iconSvg(iconId, { color, size: glyph, opacity: typeof h.iconOpacity === 'number' ? h.iconOpacity : 1 })}</span>`;
+          const createTooltipFunc = (div: HTMLElement) => { div.innerHTML = iconHtml; };
           if (isDirection(h.type) && h.targetSceneId && scenes.some((t) => t.id === h.targetSceneId)) {
             const at = arrivalTarget(h.content);
             return {
-              pitch: h.positionPitch, yaw: h.positionYaw, cssClass: 'pnlm-hotspot bilnov-dir',
+              pitch: h.positionPitch, yaw: h.positionYaw, cssClass: 'pnlm-hotspot bilnov-hs',
               type: 'scene', sceneId: h.targetSceneId, targetYaw: at.targetYaw, targetPitch: at.targetPitch,
               ...(at.targetHfov != null ? { targetHfov: at.targetHfov } : {}),
-              text: hotspotLabel(h.type, h.content, sceneName(h.targetSceneId)),
+              createTooltipFunc, createTooltipArgs: h.id,
             };
           }
-          return { pitch: h.positionPitch, yaw: h.positionYaw, cssClass: 'pnlm-hotspot bilnov-info', text: hotspotLabel(h.type, h.content, sceneName(h.targetSceneId)), clickHandlerFunc: () => setInfoModal(h) };
+          return { pitch: h.positionPitch, yaw: h.positionYaw, cssClass: 'pnlm-hotspot bilnov-hs', createTooltipFunc, createTooltipArgs: h.id, clickHandlerFunc: () => setInfoModal(h) };
         });
         cfgScenes[s.id] = { type: 'equirectangular', panorama: panoById[s.id] ?? s.imageUrl, hotSpots: hs };
       }
@@ -304,6 +314,8 @@ export default function PublicTourPage() {
         {scenes.length > 0 ? (
           <>
             <div ref={viewerRef} className="flex-1" role="application" aria-label={`Visite virtuelle 360° — ${currentScene?.name ?? tourName}. Flèches gauche/droite pour changer de scène.`} style={{ minHeight: '100vh', background: '#000' }} />
+            {/* §10 — pastille d'icône des hotspots (rendu de l'icône choisie, tous types). */}
+            <style>{`.bilnov-hs-pin{display:flex;align-items:center;justify-content:center;border-radius:9999px;background:rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.9);box-shadow:0 3px 10px rgba(0,0,0,.4);cursor:pointer;transition:transform .12s}.bilnov-hs:hover .bilnov-hs-pin{transform:scale(1.1)}`}</style>
             {currentScene && (
               <div className={`absolute top-4 left-4 z-10 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-black/60 pointer-events-none transition-opacity duration-500 ${chromeVisible ? 'opacity-100' : 'opacity-0'}`}>{currentScene.name}</div>
             )}
