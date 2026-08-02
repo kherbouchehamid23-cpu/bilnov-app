@@ -19,7 +19,7 @@ import { iconSvg } from '@/lib/tourIcons';
 interface Scene { id: string; name: string; imageUrl: string; thumbnailUrl?: string | null; previewUrl?: string | null; isInitial: boolean; position: number; panoramaProxy?: string; panoramaType?: string | null; stereoLayout?: string | null; hidden?: boolean; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; iconId?: string | null; iconColor?: string | null; iconScale?: number | null; iconOpacity?: number | null; visible?: boolean; }
 interface ApiResponse<T> { data: T; success: boolean; }
-type Projection = 'mono' | 'ou' | 'sbs';
+import { layoutFromScene, eyeRect, type StereoLayout, type Eye } from '@/lib/stereoCrop';
 
 const V = '5.11.5';
 const D = `deps=three@0.160.0`;
@@ -68,21 +68,18 @@ function loadPSV(): Promise<any> {
 
 // V4 mono/stéréo : forme fonction de panoData (reçoit l'image chargée -> dimensions natives).
 // mono = sphère complète ; ou = moitié haute ; sbs = moitié gauche. Aucun champ DB requis.
-// §7 : projection déduite de la scène (panoramaType/stereoLayout) ; sinon réglage manuel.
-function projFromScene(s: Scene, manual: Projection): Projection {
-  const pt = (s.panoramaType || '').toUpperCase();
-  if (pt === 'STEREO') {
-    const lay = (s.stereoLayout || 'TB').toUpperCase();
-    return (lay === 'SBS' || lay === 'LR') ? 'sbs' : 'ou';
-  }
-  if (pt === 'MONO') return 'mono';
-  return manual;
-}
-
-function panoDataFor(proj: Projection): ((img: any) => any) | undefined {
-  if (proj === 'ou') return (img: any) => ({ fullWidth: img.width, fullHeight: img.width / 2, croppedWidth: img.width, croppedHeight: img.height / 2, croppedX: 0, croppedY: 0 });
-  if (proj === 'sbs') return (img: any) => ({ fullWidth: img.width / 2, fullHeight: img.height, croppedWidth: img.width / 2, croppedHeight: img.height, croppedX: 0, croppedY: 0 });
-  return undefined;
+// §STÉRÉO — panoData PSV pour une disposition + un œil donnés. On indique à PSV la région de
+// l'œil DANS le fichier (croppedX/Y, croppedWidth/Height) et la taille du panorama complet d'UN
+// œil (fullWidth/fullHeight = équirectangulaire 2:1) → PSV mappe cette moitié sur toute la sphère
+// (jamais les deux moitiés ensemble). MONO → undefined (image entière, chemin inchangé).
+function panoDataFor(layout: StereoLayout, eye: Eye): ((img: any) => any) | undefined {
+  if (layout === 'MONO') return undefined;
+  return (img: any) => {
+    const r = eyeRect(layout, eye, img.width, img.height)!;
+    const fullWidth = (layout === 'LR' || layout === 'RL') ? img.width / 2 : img.width;
+    const fullHeight = (layout === 'TB' || layout === 'BT') ? img.height / 2 : img.width / 2;
+    return { fullWidth, fullHeight, croppedWidth: r.cw, croppedHeight: r.ch, croppedX: r.x, croppedY: r.y };
+  };
 }
 
 export default function TourViewerPsvPage() {
@@ -96,7 +93,10 @@ export default function TourViewerPsvPage() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errMsg, setErrMsg] = useState('');
   const [info, setInfo] = useState<Hotspot | null>(null);
-  const [projection, setProjection] = useState<Projection>('mono');
+  // §STÉRÉO — disposition ACTIVE (contrôlée par l'utilisateur, initialisée depuis la scène) et
+  // œil affiché à l'écran plat (aperçu gauche/droite). Le bouton change VRAIMENT le rendu.
+  const [layout, setLayout] = useState<StereoLayout>('MONO');
+  const [eye, setEye] = useState<Eye>('left');
   const [vrOn, setVrOn] = useState(false);
   const [autorotate, setAutorotate] = useState(false);
   const [sceneLoading, setSceneLoading] = useState(false);   // §23 — indicateur de chargement de scène
@@ -109,8 +109,10 @@ export default function TourViewerPsvPage() {
   const autoRef = useRef<any>(null);
   const dataRef = useRef<{ scenes: Scene[]; hs: Record<string, Hotspot[]> }>({ scenes: [], hs: {} });
   const curRef = useRef<string | null>(null);
-  const projRef = useRef<Projection>('mono');
-  useEffect(() => { projRef.current = projection; }, [projection]);
+  const layoutRef = useRef<StereoLayout>('MONO');
+  const eyeRefState = useRef<Eye>('left');
+  useEffect(() => { layoutRef.current = layout; }, [layout]);
+  useEffect(() => { eyeRefState.current = eye; }, [eye]);
 
   const getToken = (): string => typeof window !== 'undefined' ? localStorage.getItem('bilnov_token') ?? '' : '';
   // §1 — aperçu léger (webp ~4096) en priorité pour un chargement rapide (connexions lentes) ;
@@ -146,7 +148,7 @@ export default function TourViewerPsvPage() {
     // §23 — la scène précédente reste affichée pendant la préparation ; indicateur discret, jamais d'écran vide.
     setSceneLoading(true); setLoadError(null);
     try {
-      await viewerRef.current.setPanorama(panoUrl(s), { showLoader: false, transition: true, panoData: panoDataFor(projFromScene(s, projRef.current)) });
+      await viewerRef.current.setPanorama(panoUrl(s), { showLoader: false, transition: true, panoData: panoDataFor(layoutRef.current, eyeRefState.current) });
       markersRef.current?.setMarkers(markersFor(sceneId));
       curRef.current = sceneId;
       setCurrentSceneId(sceneId);
@@ -205,7 +207,7 @@ export default function TourViewerPsvPage() {
         const viewer = new Viewer({
           container: hostRef.current,
           panorama: panoUrl(s0),
-          panoData: panoDataFor(projFromScene(s0, projRef.current)),
+          panoData: panoDataFor(layoutRef.current, eyeRefState.current),
           navbar: ['zoom', 'move', 'fullscreen'],
           defaultZoomLvl: 30, minFov: 30, maxFov: 100,
           plugins: [
@@ -244,13 +246,22 @@ export default function TourViewerPsvPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSceneId]);
 
-  // V4 : ré-applique la projection en direct sur la scène courante.
+  // §STÉRÉO — ré-applique la disposition/œil ACTIFS en direct sur la scène courante (le bouton
+  // reconstruit réellement la texture : recadrage d'un seul œil, jamais les deux moitiés).
   useEffect(() => {
     const s = dataRef.current.scenes.find((x) => x.id === curRef.current);
     if (!s || !viewerRef.current) return;
-    try { void viewerRef.current.setPanorama(panoUrl(s), { showLoader: false, transition: false, panoData: panoDataFor(projFromScene(s, projection)) }); } catch { /* noop */ }
+    try { void viewerRef.current.setPanorama(panoUrl(s), { showLoader: false, transition: false, panoData: panoDataFor(layout, eye) }); } catch { /* noop */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projection]);
+  }, [layout, eye]);
+
+  // §STÉRÉO — à l'arrivée sur une scène, initialise la disposition depuis ses métadonnées
+  // (panoramaType/stereoLayout) ; l'utilisateur peut ensuite forcer un autre mode manuellement.
+  useEffect(() => {
+    const s = scenes.find((x) => x.id === currentSceneId);
+    if (s) setLayout(layoutFromScene(s.panoramaType, s.stereoLayout));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSceneId, scenes]);
 
   const toggleVr = () => { try { stereoRef.current?.toggle(); } catch { /* noop */ } };
   const toggleAuto = () => {
@@ -288,11 +299,23 @@ export default function TourViewerPsvPage() {
           <span className="font-bold truncate" style={{ fontFamily: 'Syne, sans-serif', color: '#f4f7fd' }}>{tourName || 'Visite 360°'}</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => setProjection('mono')} style={chip(projection === 'mono')} title="Panorama monoscopique">Mono</button>
-          <button onClick={() => setProjection('ou')} style={chip(projection === 'ou')} title="Stéréo haut/bas (over-under)">Stéréo ⬍</button>
-          <button onClick={() => setProjection('sbs')} style={chip(projection === 'sbs')} title="Stéréo côte à côte (side-by-side)">Stéréo ⬌</button>
+          {/* §STÉRÉO — VISION : reconstruit réellement la texture (recadrage d'un œil). */}
+          <button onClick={() => setLayout('MONO')} style={chip(layout === 'MONO')} title="Monoscopique (une seule vue)">Mono</button>
+          <button onClick={() => setLayout('TB')} style={chip(layout === 'TB')} title="Stéréo haut/bas — gauche en haut">Stéréo ⬍ TB</button>
+          <button onClick={() => setLayout('BT')} style={chip(layout === 'BT')} title="Stéréo bas/haut — gauche en bas">Stéréo ⬍ BT</button>
+          <button onClick={() => setLayout('LR')} style={chip(layout === 'LR')} title="Stéréo gauche/droite — gauche à gauche">Stéréo ⬌ LR</button>
+          <button onClick={() => setLayout('RL')} style={chip(layout === 'RL')} title="Stéréo droite/gauche — gauche à droite">Stéréo ⬌ RL</button>
+          {layout !== 'MONO' && (
+            <>
+              <span className="mx-1 h-4 w-px" style={{ background: 'rgba(255,255,255,.2)' }} />
+              <button onClick={() => setEye('left')} style={chip(eye === 'left')} title="Aperçu de l'œil gauche">Œil G</button>
+              <button onClick={() => setEye('right')} style={chip(eye === 'right')} title="Aperçu de l'œil droit">Œil D</button>
+              <button onClick={() => setEye((e) => e === 'left' ? 'right' : 'left')} style={chip(false)} title="Inverser les yeux (permute gauche/droite sans réimporter)">⇄ Inverser</button>
+            </>
+          )}
+          <span className="mx-1 h-4 w-px" style={{ background: 'rgba(255,255,255,.2)' }} />
           <button onClick={toggleAuto} style={chip(autorotate)} title="Rotation automatique">Auto</button>
-          <button onClick={toggleVr} style={chip(vrOn)} title="Mode casque VR / cardboard (mobile)">VR</button>
+          <button onClick={toggleVr} style={chip(vrOn)} title="Mode casque VR / cardboard (mobile)">Entrer en VR</button>
         </div>
       </header>
 
