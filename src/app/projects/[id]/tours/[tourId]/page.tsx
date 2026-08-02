@@ -16,12 +16,13 @@ import {
   type History, type HotspotSnapshot, type HotspotAction,
 } from '@/lib/tourHistory';
 import TourHotspotPanel from '@/components/TourHotspotPanel';
+import HotspotPairBuilder, { type PairPlacement } from '@/components/HotspotPairBuilder';
 import TourFloorPlan from '@/components/TourFloorPlan';
 
 interface Tour { id: string; name: string; status: string; }
 interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; levelId?: string | null; mapX?: number | null; mapY?: number | null; panoramaType?: string | null; stereoLayout?: string | null; hidden?: boolean; thumbnailUrl?: string | null; previewUrl?: string | null; derivStatus?: string | null; }
 interface Level extends LevelLite { planUrl?: string | null; }
-interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; visible?: boolean; iconId?: string | null; iconColor?: string | null; iconScale?: number | null; iconOpacity?: number | null; }
+interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; visible?: boolean; iconId?: string | null; iconColor?: string | null; iconScale?: number | null; iconOpacity?: number | null; directionPairId?: string | null; }
 interface ApiResponse<T> { data: T; success: boolean; }
 
 declare global {
@@ -125,6 +126,9 @@ export default function TourEditorPage() {
   const [editingHotspotId, setEditingHotspotId] = useState<string | null>(null);
   const [repositioning, setRepositioning] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  // §3 — aller-retour A↔B : choix de la scène B puis constructeur double panorama.
+  const [pairPickOpen, setPairPickOpen] = useState(false);
+  const [pairSceneB, setPairSceneB] = useState<string | null>(null);
   const hotspotEditModeRef = useRef(false);
   const repositioningRef = useRef(false);
   const startEditHotspotRef = useRef<(h: Hotspot) => void>(() => {});
@@ -310,6 +314,24 @@ export default function TourEditorPage() {
     setHsOpen(false); setRepositioning(true); setAddMode(true);
   };
 
+  // §3 — enregistrement atomique de la paire A↔B via l'endpoint dédié. Lève en cas d'échec
+  // (le constructeur affiche l'erreur). Succès → recharge les hotspots de la scène courante.
+  const savePair = async (p: PairPlacement): Promise<void> => {
+    if (!currentScene || !pairSceneB) throw new Error('scène manquante');
+    const content = { kind: 'DIRECTION' };
+    const r = await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${currentScene.id}/hotspots/pair`, {
+      method: 'POST', headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sceneBId: pairSceneB,
+        aToB: { positionYaw: p.aYaw, positionPitch: p.aPitch, content },
+        bToA: { positionYaw: p.bYaw, positionPitch: p.bPitch, content },
+      }),
+    });
+    if (!r.ok) throw new Error('pair failed');
+    setPairSceneB(null);
+    await reloadHotspots();
+  };
+
   // §2 — enregistre les modifications d'un hotspot existant (PATCH). Position = nouveau point
   // repositionné (draft) sinon position actuelle. Aucune création de commentaire / lien retour.
   const submitEditHotspot = async (): Promise<void> => {
@@ -418,13 +440,16 @@ export default function TourEditorPage() {
   };
   const cancelReturn = (): void => { setPendingReturn(null); setAddMode(false); setDraft(null); };
 
-  const deleteHotspot = async (hid: string): Promise<void> => {
+  const deleteHotspot = async (hid: string, scope?: 'pair'): Promise<void> => {
     const snap = hotspots.find((h) => h.id === hid);
     const sceneId = currentScene?.id;
+    const pairId = snap?.directionPairId;
     try {
-      await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sceneId}/hotspots/${hid}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } });
-      setHotspots((prev) => prev.filter((h) => h.id !== hid));
-      if (snap && sceneId) setHistory((h) => pushAction(h, { kind: 'delete', hotspot: toSnapshot(snap, sceneId) }));
+      const qs = scope === 'pair' ? '?scope=pair' : '';
+      await fetch(`/api/projects/${id}/tours/${tourId}/scenes/${sceneId}/hotspots/${hid}${qs}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } });
+      // §3 — suppression de la paire : on retire aussi l'éventuel autre sens présent dans cette scène.
+      setHotspots((prev) => prev.filter((h) => h.id !== hid && !(scope === 'pair' && pairId && h.directionPairId === pairId)));
+      if (scope !== 'pair' && snap && sceneId) setHistory((h) => pushAction(h, { kind: 'delete', hotspot: toSnapshot(snap, sceneId) }));
     } catch { /* noop */ }
   };
 
@@ -985,6 +1010,11 @@ export default function TourEditorPage() {
                     className={`rounded-lg px-3 py-1.5 text-sm font-medium ${hotspotEditMode ? 'bg-emerald-500 text-black' : 'bg-black/60 text-white'}`}>
                     {hotspotEditMode ? '✓ Mode édition' : '✎ Modifier les hotspots'}
                   </button>
+                  {scenes.length > 1 && (
+                    <button onClick={() => { setHotspotEditMode(false); closeHotspotPanel(); setPairPickOpen(true); }}
+                      title="Créer une direction aller-retour A↔B (deux scènes visibles simultanément)"
+                      className="rounded-lg bg-black/60 px-3 py-1.5 text-sm font-medium text-white">⇄ A↔B</button>
+                  )}
                   <button onClick={() => { setHotspotEditMode(false); openHotspotPanel(); }} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${addMode && !repositioning ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}>{addMode && !repositioning ? 'Placement…' : '＋ Hotspot'}</button>
                 </div>
               )}
@@ -1120,18 +1150,65 @@ export default function TourEditorPage() {
                 onDelete={() => { if (editingHotspotId) setDeleteConfirmId(editingHotspotId); }}
               />
 
-              {/* §2 — confirmation de suppression d'un hotspot */}
-              {deleteConfirmId && (
+              {/* §3 — constructeur aller-retour A↔B (double panorama simultané) */}
+              {pairSceneB && currentScene && (() => {
+                const sB = scenes.find((s) => s.id === pairSceneB);
+                if (!sB) return null;
+                return (
+                  <HotspotPairBuilder
+                    sceneA={{ id: currentScene.id, name: currentScene.name, url: currentScene.previewUrl || currentScene.imageUrl }}
+                    sceneB={{ id: sB.id, name: sB.name, url: sB.previewUrl || sB.imageUrl }}
+                    onValidate={savePair}
+                    onCancel={() => setPairSceneB(null)}
+                  />
+                );
+              })()}
+
+              {/* §2/§3 — confirmation de suppression (avec option « toute la paire A↔B ») */}
+              {deleteConfirmId && (() => {
+                const hsDel = hotspots.find((x) => x.id === deleteConfirmId);
+                const isPair = !!hsDel?.directionPairId;
+                const doDelete = (scope?: 'pair') => {
+                  const idToDel = deleteConfirmId; setDeleteConfirmId(null);
+                  if (idToDel) { void deleteHotspot(idToDel, scope); if (editingHotspotId === idToDel) closeHotspotPanel(); }
+                };
+                return (
                 <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={() => setDeleteConfirmId(null)}>
                   <div className="max-w-sm w-full rounded-xl bg-white p-5 text-slate-800" onClick={(e) => e.stopPropagation()}>
                     <p className="font-semibold">Supprimer ce hotspot ?</p>
-                    <p className="mt-1 text-sm text-stone-500">Cette action est définitive. Le hotspot disparaîtra de la visite et ne réapparaîtra pas après actualisation.</p>
-                    <div className="mt-4 flex gap-2">
-                      <button onClick={() => { const idToDel = deleteConfirmId; setDeleteConfirmId(null); if (idToDel) { void deleteHotspot(idToDel); if (editingHotspotId === idToDel) closeHotspotPanel(); } }}
-                        className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-500">Supprimer</button>
-                      <button onClick={() => setDeleteConfirmId(null)}
-                        className="rounded-lg bg-stone-100 px-4 py-2 text-sm text-slate-700 hover:bg-stone-200">Annuler</button>
+                    <p className="mt-1 text-sm text-stone-500">Cette action est définitive. Le hotspot disparaîtra de la visite et ne réapparaîtra pas après actualisation.{isPair ? ' Ce hotspot fait partie d’une direction aller-retour A↔B.' : ''}</p>
+                    <div className="mt-4 flex flex-col gap-2">
+                      {isPair ? (
+                        <>
+                          <button onClick={() => doDelete()} className="rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-500">Supprimer uniquement ce sens</button>
+                          <button onClick={() => doDelete('pair')} className="rounded-lg bg-red-700 py-2 text-sm font-medium text-white hover:bg-red-600">Supprimer toute la paire A↔B</button>
+                          <button onClick={() => setDeleteConfirmId(null)} className="rounded-lg bg-stone-100 py-2 text-sm text-slate-700 hover:bg-stone-200">Annuler</button>
+                        </>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button onClick={() => doDelete()} className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-500">Supprimer</button>
+                          <button onClick={() => setDeleteConfirmId(null)} className="rounded-lg bg-stone-100 px-4 py-2 text-sm text-slate-700 hover:bg-stone-200">Annuler</button>
+                        </div>
+                      )}
                     </div>
+                  </div>
+                </div>
+                );
+              })()}
+
+              {/* §3 — choix de la scène B pour l'aller-retour A↔B */}
+              {pairPickOpen && currentScene && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={() => setPairPickOpen(false)}>
+                  <div className="max-w-sm w-full rounded-xl bg-white p-5 text-slate-800" onClick={(e) => e.stopPropagation()}>
+                    <p className="font-semibold">Aller-retour A ↔ B</p>
+                    <p className="mt-1 text-sm text-stone-500">Scène A : <b>{currentScene.name}</b>. Choisissez la scène B :</p>
+                    <div className="mt-3 max-h-64 space-y-1 overflow-y-auto">
+                      {scenes.filter((s) => s.id !== currentScene.id).map((s) => (
+                        <button key={s.id} onClick={() => { setPairSceneB(s.id); setPairPickOpen(false); }}
+                          className="block w-full truncate rounded-lg border border-stone-200 px-3 py-2 text-left text-sm hover:border-violet-400 hover:bg-violet-50">{s.name}</button>
+                      ))}
+                    </div>
+                    <button onClick={() => setPairPickOpen(false)} className="mt-3 w-full rounded-lg bg-stone-100 py-2 text-sm text-slate-700 hover:bg-stone-200">Annuler</button>
                   </div>
                 </div>
               )}
