@@ -29,6 +29,8 @@ export async function GET(
             levelId: true, mapX: true, mapY: true,
             // §7 — projection mono/stéréo pour que le viewer public affiche le bon œil.
             panoramaType: true, stereoLayout: true,
+            // §1 — dérivés légers (aperçu + miniature) pour un chargement rapide (connexions lentes).
+            thumbnailKey: true, previewKey: true,
             hotspots: { where: { visible: true }, select: { id: true, type: true, positionYaw: true, positionPitch: true, targetSceneId: true, content: true, iconId: true, iconColor: true, iconScale: true } },
           },
         },
@@ -47,12 +49,17 @@ export async function GET(
       if (provided !== tour.shareCode) return apiError('Code d\'accès invalide.', 'CODE_INVALID', 403);
     }
 
+    const signKey = async (key: string | null | undefined): Promise<string | null> => {
+      if (!key) return null;
+      try { return (await getSignedFileUrl(key, 'view')).url; } catch { return null; }
+    };
     const scenes = await Promise.all(tour.scenes.map(async (s) => {
       let imageUrl = s.imageUrl;
       try { imageUrl = (await getSignedFileUrl(s.imageUrl, 'view')).url; } catch { /* garde la clé brute */ }
+      const [thumbnailUrl, previewUrl] = await Promise.all([signKey(s.thumbnailKey), signKey(s.previewKey)]);
       return {
         id: s.id, name: s.name, isInitial: s.isInitial, position: s.position,
-        imageUrl, levelId: s.levelId, mapX: s.mapX, mapY: s.mapY,
+        imageUrl, thumbnailUrl, previewUrl, levelId: s.levelId, mapX: s.mapX, mapY: s.mapY,
         panoramaType: s.panoramaType, stereoLayout: s.stereoLayout,
         hotspots: await signHotspotMedia(s.hotspots), // §12/§13 — résout les médias importés
       };
