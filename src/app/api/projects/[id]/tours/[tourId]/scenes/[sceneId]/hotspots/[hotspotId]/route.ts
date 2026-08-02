@@ -8,7 +8,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
-    const hs = await prisma.tourHotspot.findFirst({ where: { id: params.hotspotId, sceneId: params.sceneId, scene: { tourId: params.tourId, tour: { projectId: params.id } } }, select: { id: true } });
+    const hs = await prisma.tourHotspot.findFirst({ where: { id: params.hotspotId, sceneId: params.sceneId, scene: { tourId: params.tourId, tour: { projectId: params.id } } }, select: { id: true, directionPairId: true } });
     if (!hs) return apiError('Hotspot introuvable', 'NOT_FOUND', 404);
     const body = await req.json() as {
       positionYaw?: number; positionPitch?: number; targetSceneId?: string | null; content?: unknown;
@@ -27,6 +27,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (typeof body.visible === 'boolean') data.visible = body.visible;
     if (body.commentId !== undefined) data.commentId = body.commentId;
     const updated = await prisma.tourHotspot.update({ where: { id: params.hotspotId }, data });
+    // §2 — ?scope=pair : propage UNIQUEMENT l'apparence (icône/couleur/taille/opacité) à l'autre
+    // sens d'une paire aller-retour A↔B. Position, cible, contenu et arrivée restent propres à
+    // chaque direction (une modification d'un sens ne déplace/réoriente jamais l'autre).
+    const scope = req.nextUrl.searchParams.get('scope');
+    if (scope === 'pair' && hs.directionPairId) {
+      const iconData: Record<string, unknown> = {};
+      if (body.iconId !== undefined) iconData.iconId = body.iconId;
+      if (body.iconColor !== undefined) iconData.iconColor = body.iconColor;
+      if (body.iconScale !== undefined) iconData.iconScale = body.iconScale;
+      if (body.iconOpacity !== undefined) iconData.iconOpacity = body.iconOpacity;
+      if (Object.keys(iconData).length > 0) {
+        await prisma.tourHotspot.updateMany({
+          where: { directionPairId: hs.directionPairId, id: { not: params.hotspotId }, scene: { tourId: params.tourId, tour: { projectId: params.id } } },
+          data: iconData,
+        });
+      }
+    }
     return apiSuccess(updated);
   } catch (e) {
     return apiError(e instanceof Error ? e.message : 'Erreur', 'INTERNAL_ERROR', 500);
