@@ -50,7 +50,6 @@ export default function PublicTourPage() {
   // §4 — sélecteur de modes de lecture immersifs (overlay three.js additif ; Pannellum intact).
   const [immersiveMode, setImmersiveMode] = useState<'vrbox' | 'webxr' | null>(null);
   const [xrSupported, setXrSupported] = useState(false);      // WebXR / Meta Quest disponible ?
-  const [cardboardCapable, setCardboardCapable] = useState(false); // mobile + orientation → VR Box
 
   const viewerRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -250,9 +249,6 @@ export default function PublicTourPage() {
     if (xr?.isSessionSupported) {
       xr.isSessionSupported('immersive-vr').then((ok) => { if (!cancelled) setXrSupported(Boolean(ok)); }).catch(() => { /* non supporté */ });
     }
-    const coarse = Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
-    const hasOrientation = 'DeviceOrientationEvent' in window;
-    setCardboardCapable(coarse && hasOrientation);
     return () => { cancelled = true; };
   }, []);
 
@@ -322,23 +318,17 @@ export default function PublicTourPage() {
                 <div className="px-3 py-1.5 rounded-lg text-xs text-stone-200 bg-black/50 pointer-events-none">{tourName}</div>
               )}
             </div>
-            {/* §4 — sélecteur de modes de lecture immersifs. N'apparaît que si un mode casque est
-                réellement compatible (VR Box sur mobile, WebXR/Meta Quest si l'appareil le supporte).
-                Auto-masqué avec le reste des commandes ; le mode Panorama 360° reste l'affichage courant. */}
-            {(cardboardCapable || xrSupported) && (
-              <div className={`absolute top-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/70 px-2 py-1.5 transition-opacity duration-500 ${chromeVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                <span className="px-2 text-[10px] uppercase tracking-wide text-stone-400">Mode</span>
-                <span className="rounded-full bg-violet-600 px-3 py-1 text-xs font-medium text-white" aria-current="true">Panorama 360°</span>
-                {cardboardCapable && (
-                  <button onClick={() => setImmersiveMode('vrbox')} title="Casque carton : écran dédoublé + gyroscope"
-                    className="whitespace-nowrap rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-stone-200 hover:bg-white/20">VR Box</button>
-                )}
-                {xrSupported && (
-                  <button onClick={() => setImmersiveMode('webxr')} title="Casque WebXR / Meta Quest"
-                    className="whitespace-nowrap rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-stone-200 hover:bg-white/20">WebXR / Meta Quest</button>
-                )}
-              </div>
-            )}
+            {/* §4 — sélecteur de modes de lecture. TOUJOURS visible (auto-masqué avec les autres
+                commandes). Panorama 360° = affichage courant. VR Box (casque carton, tous appareils)
+                et WebXR/Meta Quest (repli clair si l'appareil ne supporte pas la session immersive). */}
+            <div className={`absolute top-4 left-1/2 z-20 flex -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-full bg-black/70 px-2 py-1.5 transition-opacity duration-500 ${chromeVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+              <span className="px-2 text-[10px] uppercase tracking-wide text-stone-400">Mode</span>
+              <span className="rounded-full bg-violet-600 px-3 py-1 text-xs font-medium text-white" aria-current="true">Panorama 360°</span>
+              <button onClick={() => setImmersiveMode('vrbox')} title="Casque carton : écran dédoublé + gyroscope"
+                className="whitespace-nowrap rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-stone-200 hover:bg-white/20">VR Box</button>
+              <button onClick={() => setImmersiveMode('webxr')} title={xrSupported ? 'Casque WebXR / Meta Quest' : 'WebXR — sera proposé si un casque est détecté'}
+                className="whitespace-nowrap rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-stone-200 hover:bg-white/20">WebXR / Meta Quest</button>
+            </div>
 
             {(!pLoaded || !viewerReady) && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
