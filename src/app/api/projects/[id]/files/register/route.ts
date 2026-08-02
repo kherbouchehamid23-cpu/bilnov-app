@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError } from '@/lib/auth';
 import { getProjectAccess } from '@/lib/access';
 import { isUploadAllowed, uploadHint, type UploadRulesConfig } from '@/lib/uploadRules';
+import { assertStorageAllowed } from '@/lib/storageQuota';
+import { formatBytes } from '@/lib/packs';
 
 function detectFileType(mimeType: string, filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
@@ -48,6 +50,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const rules = (project?.uploadRules ?? null) as UploadRulesConfig | null;
     if (!isUploadAllowed(detectedType, nodeType, rules)) {
       return apiError(uploadHint(nodeType, rules), 'FILE_TYPE_NOT_ALLOWED', 415);
+    }
+
+    // Module PACKS §13 — enforcement du quota de stockage (no-op tant qu'aucun pack plafonné
+    // n'est souscrit, donc sans impact sur les organisations existantes).
+    const org = await prisma.organization.findUnique({ where: { id: user.organizationId }, select: { storageUsedBytes: true } });
+    const usedBytes = org ? Number(org.storageUsedBytes) : 0;
+    const quota = await assertStorageAllowed(user.organizationId, usedBytes, Number(sizeBytes));
+    if (!quota.ok) {
+      return apiError(`Capacité de stockage atteinte (${formatBytes(quota.limitBytes)}). Augmentez votre capacité pour ajouter ce fichier.`, 'STORAGE_LIMIT_REACHED', 402);
     }
 
     const file = await prisma.file.create({

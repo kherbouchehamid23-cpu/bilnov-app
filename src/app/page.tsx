@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Ruler, Compass, Share2, Play, ArrowRight } from 'lucide-react';
+import PublicPricing from '@/components/PublicPricing';
 
 const FEATURES = [
   { Icon: Ruler, k: 'F·01', title: 'Mesure accrochée', desc: 'Distances, surfaces, cotation. Accrochage extrémité / milieu / intersection, verrouillage orthogonal.' },
@@ -78,6 +79,9 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* Tarifs (Module PACKS §9) — dynamique : masqué tant qu'aucun pack n'est publié */}
+      <PublicPricing />
 
       <footer className="px-6 sm:px-10 pb-10 mx-auto" style={{ maxWidth: 1180, borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 28, display: 'flex', justifyContent: 'space-between', color: '#6b7c98', fontSize: 12, fontFamily: 'JetBrains Mono, monospace' }}>
         <span>BILNOV — le plan, la mesure, la pièce. © 2026</span>

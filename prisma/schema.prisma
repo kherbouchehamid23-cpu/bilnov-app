@@ -841,3 +841,124 @@ enum CommentLocationType {
   SITE_DIARY
   MEETING
 }
+
+// ===========================================================================
+// MODULE PACKS D'ABONNEMENT (Doc « Création et gestion des packs »)
+// Tout est dynamique : prix, limites et fonctionnalités sont pilotés par
+// l'administrateur. Aucune valeur métier n'est codée en dur dans l'application.
+// ===========================================================================
+
+enum PackStatus {
+  DRAFT
+  PUBLISHED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum PackOptionType {
+  STORAGE
+  SEAT
+  GENERIC
+}
+
+enum PackOptionPeriod {
+  MONTHLY
+  ANNUAL
+  ONE_TIME
+}
+
+enum PromoDiscountType {
+  PERCENT
+  FIXED
+}
+
+// Un pack commercialisable (§1, §3, §5).
+model Pack {
+  id                String     @id @default(uuid())
+  slug              String     @unique
+  name              String
+  description       String?
+  monthlyPriceCents Int        @default(0) @map("monthly_price_cents")
+  annualPriceCents  Int?       @map("annual_price_cents")
+  currency          String     @default("DZD")
+  trialDays         Int        @default(0) @map("trial_days")
+  status            PackStatus @default(DRAFT)
+  highlighted       Boolean    @default(false)
+  position          Int        @default(0)
+  // Limites quantitatives (null = illimité) — §5.
+  maxProjects        Int?      @map("max_projects")
+  maxFilesPerProject Int?      @map("max_files_per_project")
+  maxCollaborators   Int?      @map("max_collaborators")
+  storageBytes       BigInt?   @map("storage_bytes")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  features PackFeature[]
+
+  @@map("packs")
+}
+
+// Catalogue de fonctionnalités géré par l'admin (§4). Chaque entrée = un droit activable.
+model PlanFeature {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  label       String
+  description String?
+  category    String?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  packFeatures PackFeature[]
+
+  @@map("plan_features")
+}
+
+// Activation d'une fonctionnalité pour un pack donné (§4).
+model PackFeature {
+  id         String  @id @default(uuid())
+  packId     String  @map("pack_id")
+  featureKey String  @map("feature_key")
+  enabled    Boolean @default(false)
+  position   Int     @default(0)
+
+  pack    Pack        @relation(fields: [packId], references: [id], onDelete: Cascade)
+  feature PlanFeature @relation(fields: [featureKey], references: [key], onDelete: Cascade)
+
+  @@unique([packId, featureKey])
+  @@map("pack_features")
+}
+
+// Options à la carte (§11) : stockage additionnel, sièges, divers.
+model PackOption {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  type        PackOptionType   @default(GENERIC)
+  priceCents  Int              @map("price_cents")
+  currency    String           @default("DZD")
+  period      PackOptionPeriod @default(MONTHLY)
+  unitBytes   BigInt?          @map("unit_bytes")
+  status      PackStatus       @default(DRAFT)
+  position    Int              @default(0)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@map("pack_options")
+}
+
+// Codes promotionnels (§3, §11).
+model PromoCode {
+  id             String            @id @default(uuid())
+  code           String            @unique
+  description    String?
+  discountType   PromoDiscountType @map("discount_type")
+  discountValue  Int               @map("discount_value")
+  packId         String?           @map("pack_id")
+  maxRedemptions Int?              @map("max_redemptions")
+  redeemedCount  Int               @default(0) @map("redeemed_count")
+  active         Boolean           @default(true)
+  expiresAt      DateTime?         @map("expires_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  @@map("promo_codes")
+}
