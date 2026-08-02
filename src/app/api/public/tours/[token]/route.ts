@@ -31,7 +31,7 @@ export async function GET(
             panoramaType: true, stereoLayout: true,
             // §1 — dérivés légers (aperçu + miniature) pour un chargement rapide (connexions lentes).
             thumbnailKey: true, previewKey: true,
-            hotspots: { where: { visible: true }, select: { id: true, type: true, positionYaw: true, positionPitch: true, targetSceneId: true, content: true, iconId: true, iconColor: true, iconScale: true } },
+            hotspots: { where: { visible: true }, select: { id: true, type: true, positionYaw: true, positionPitch: true, targetSceneId: true, content: true, iconId: true, iconColor: true, iconScale: true, iconOpacity: true } },
           },
         },
         levels: { orderBy: { position: 'asc' }, select: { id: true, name: true, position: true, planImageUrl: true } },
