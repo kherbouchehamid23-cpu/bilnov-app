@@ -5,7 +5,7 @@
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { isDirection, hotspotLabel } from '@/lib/tour';
-import { projectionFromScene, oneEyePanoramaUrl, revokeCroppedUrl } from '@/lib/stereoCrop';
+import { layoutFromScene, oneEyeUrl, revokeCroppedUrl } from '@/lib/stereoCrop';
 import { kindFromContent, arrivalTarget } from '@/lib/tourHotspots';
 import { levelForScene, type LevelLite } from '@/lib/tourMap';
 import { viewerKeyAction, neighborSceneId, preloadUrls } from '@/lib/tourViewer';
@@ -111,10 +111,12 @@ export default function PublicTourPage() {
         // §1 — on charge l'APERÇU léger (webp ~4096) plutôt que l'original lourd : chargement
         // bien plus rapide (Algérie / 4G / connexions lentes). Repli sur l'original si absent.
         const base = s.previewUrl || s.imageUrl;
-        const proj = projectionFromScene(s.panoramaType, s.stereoLayout);
-        if (proj === 'mono') { panoById[s.id] = base; return; }
+        // §STÉRÉO — sur écran plat on affiche UN œil (gauche par défaut), recadré selon la
+        // disposition RÉELLE (TB/BT/LR/RL). Jamais les deux moitiés ensemble. Mono = inchangé.
+        const lay = layoutFromScene(s.panoramaType, s.stereoLayout);
+        if (lay === 'MONO') { panoById[s.id] = base; return; }
         try {
-          const u = await oneEyePanoramaUrl(base, proj);
+          const u = await oneEyeUrl(base, lay, 'left');
           panoById[s.id] = u;
           if (u.startsWith('blob:')) createdBlobs.push(u);
         } catch { panoById[s.id] = base; }
