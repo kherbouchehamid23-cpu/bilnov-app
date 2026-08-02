@@ -11,7 +11,7 @@
 // montrer l'image dédoublée. Mono = inchangé.
 
 import { useEffect, useRef, useState } from 'react';
-import { projectionFromScene, oneEyePanoramaUrl, revokeCroppedUrl } from '@/lib/stereoCrop';
+import { layoutFromScene, oneEyeUrl, revokeCroppedUrl } from '@/lib/stereoCrop';
 
 export interface PairScene {
   id: string; name: string; url: string;
@@ -72,11 +72,12 @@ function useSideViewer(scene: PairScene, seed: Pos, onPlace: (yaw: number, pitch
       } catch { /* init failed */ }
       el.addEventListener('click', onClick);
     };
-    // §1 (anomalie) — scène stéréo : afficher UN œil recadré (comme le viewer une-image).
-    const proj = projectionFromScene(scene.panoramaType, scene.stereoLayout);
-    if (proj === 'mono') { init(scene.url); }
+    // §1 (anomalie) — scène stéréo : afficher UN œil recadré (comme le viewer une-image),
+    // selon la disposition réelle (TB/BT/LR/RL).
+    const lay = layoutFromScene(scene.panoramaType, scene.stereoLayout);
+    if (lay === 'MONO') { init(scene.url); }
     else {
-      void oneEyePanoramaUrl(scene.url, proj)
+      void oneEyeUrl(scene.url, lay, 'left')
         .then((u) => { if (cancelled) { revokeCroppedUrl(u); return; } if (u.startsWith('blob:')) cropBlob = u; init(u); })
         .catch(() => init(scene.url));
     }

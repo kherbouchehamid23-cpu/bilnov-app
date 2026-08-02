@@ -19,6 +19,7 @@
 // les deux cas. Mono : sphère couche 0 (les deux yeux voient l'identique).
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { isDirection } from '@/lib/tour';
+import { layoutFromScene } from '@/lib/stereoCrop';
 
 export interface ImmersiveScene {
   id: string;
@@ -89,6 +90,9 @@ export default function PublicImmersiveViewer({ scenes, initialSceneId, initialM
   const [xrSupported, setXrSupported] = useState<boolean | null>(null);
   const [cardboard, setCardboard] = useState(false);
   const [gyroOn, setGyroOn] = useState(false);
+  const [invertEyes, setInvertEyes] = useState(false);
+  const invertRef = useRef(false);
+  useEffect(() => { invertRef.current = invertEyes; }, [invertEyes]);
 
   const hostRef = useRef<HTMLDivElement>(null);
   const vrBtnRef = useRef<HTMLDivElement>(null);
@@ -160,13 +164,19 @@ export default function PublicImmersiveViewer({ scenes, initialSceneId, initialM
       while (grp.children.length) { const c = grp.children.pop(); c.geometry?.dispose?.(); c.material?.dispose?.(); }
       curTexRef.current?.dispose?.();
       curTexRef.current = tex;
-      const layout = (s.stereoLayout || '').toUpperCase();
-      const lay = layout === 'SBS' || layout === 'LR' ? 'SBS' : layout === 'TB' || layout === 'OU' ? 'TB' : null;
-      const isStereo = (s.panoramaType || '').toUpperCase() === 'STEREO' && !!lay;
-      if (isStereo) {
-        const axis: 'u' | 'v' = lay === 'TB' ? 'v' : 'u';
-        const leftOffset = lay === 'TB' ? 0.5 : 0;   // TB : œil gauche = moitié haute ; SBS : moitié gauche
-        const rightOffset = lay === 'TB' ? 0 : 0.5;
+      // §STÉRÉO — une texture PAR ŒIL (couche 1 = gauche, couche 2 = droit ; convention
+      // StereoCamera + WebXRManager). UV.v : le HAUT de l'image = v∈[0.5,1] (offset 0.5).
+      //   TB : gauche=haut(0.5)  droit=bas(0)   | BT : gauche=bas(0)   droit=haut(0.5)
+      //   LR : gauche=gauche(0)  droit=droite(.5)| RL : gauche=droite(.5) droit=gauche(0)
+      const lay = layoutFromScene(s.panoramaType, s.stereoLayout);
+      if (lay !== 'MONO') {
+        const axis: 'u' | 'v' = lay === 'TB' || lay === 'BT' ? 'v' : 'u';
+        let leftOffset: number, rightOffset: number;
+        if (lay === 'TB') { leftOffset = 0.5; rightOffset = 0; }
+        else if (lay === 'BT') { leftOffset = 0; rightOffset = 0.5; }
+        else if (lay === 'LR') { leftOffset = 0; rightOffset = 0.5; }
+        else { leftOffset = 0.5; rightOffset = 0; } // RL
+        if (invertRef.current) { const t = leftOffset; leftOffset = rightOffset; rightOffset = t; }
         const sphereL = buildSphere(THREE, tex, { axis, offset: leftOffset }); sphereL.layers.set(1);
         const sphereR = buildSphere(THREE, tex, { axis, offset: rightOffset }); sphereR.layers.set(2);
         grp.add(sphereL); grp.add(sphereR);
@@ -416,6 +426,13 @@ export default function PublicImmersiveViewer({ scenes, initialSceneId, initialM
   const enterWebXR = () => { try { (vrBtnRef.current?.querySelector('button') as HTMLButtonElement | null)?.click(); } catch { /* noop */ } };
 
   const curScene = scenes.find((s) => s.id === currentSceneId) ?? null;
+  const curStereo = curScene ? layoutFromScene(curScene.panoramaType, curScene.stereoLayout) !== 'MONO' : false;
+  // §STÉRÉO — inverse œil gauche/droit (si le relief est ressenti à l'envers dans le casque).
+  const toggleInvertEyes = () => {
+    setInvertEyes((v) => { invertRef.current = !v; return !v; });
+    const s = dataRef.current.find((x) => x.id === curRef.current);
+    if (s) void applyScene(s);
+  };
   const infoTitle = info && typeof info.content?.title === 'string' ? info.content.title as string : 'Information';
   const infoText = info && typeof info.content?.text === 'string' ? info.content.text as string : '';
   const infoUrl = info && typeof info.content?.url === 'string' ? info.content.url as string : '';
@@ -438,6 +455,7 @@ export default function PublicImmersiveViewer({ scenes, initialSceneId, initialM
           <button onClick={() => enterCardboard()} className={chipCls(false)} title="Casque carton (écran dédoublé + gyroscope)">VR Box</button>
           <button onClick={enterWebXR} className={chipCls(false)} title={xrSupported ? 'Casque WebXR / Meta Quest' : 'WebXR indisponible sur cet appareil'}>WebXR / Meta Quest</button>
           <button onClick={toggleGyro} className={chipCls(gyroOn)} title="Gyroscope (mobile)">🧭</button>
+          {curStereo && <button onClick={toggleInvertEyes} className={chipCls(invertEyes)} title="Inverser œil gauche/droit (relief inversé)">⇄ Inverser les yeux</button>}
         </div>
       )}
 
