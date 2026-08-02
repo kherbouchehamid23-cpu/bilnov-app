@@ -436,8 +436,15 @@ export default function PublicImmersiveViewer({ scenes, initialSceneId, initialM
           <span className="mx-1 hidden text-xs text-stone-500 sm:inline">|</span>
           <button onClick={() => { exitCardboard(); }} className={chipCls(!cardboard)} title="Panorama 360°">Panorama 360°</button>
           <button onClick={() => enterCardboard()} className={chipCls(false)} title="Casque carton (écran dédoublé + gyroscope)">VR Box</button>
-          {xrSupported && <button onClick={enterWebXR} className={chipCls(false)} title="Casque WebXR / Meta Quest">WebXR / Meta Quest</button>}
+          <button onClick={enterWebXR} className={chipCls(false)} title={xrSupported ? 'Casque WebXR / Meta Quest' : 'WebXR indisponible sur cet appareil'}>WebXR / Meta Quest</button>
           <button onClick={toggleGyro} className={chipCls(gyroOn)} title="Gyroscope (mobile)">🧭</button>
+        </div>
+      )}
+
+      {/* Repli clair si WebXR demandé mais indisponible (pas de casque / navigateur non compatible). */}
+      {!cardboard && initialMode === 'webxr' && xrSupported === false && (
+        <div className="absolute top-16 left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1.5 text-center text-xs text-stone-200">
+          WebXR indisponible sur cet appareil — explorez à la souris/au doigt, ou essayez « VR Box » sur mobile.
         </div>
       )}
 
