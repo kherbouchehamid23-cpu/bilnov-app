@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { uploadFileDirect } from '@/lib/upload';
-import { projectionFromScene, oneEyePanoramaUrl, revokeCroppedUrl } from '@/lib/stereoCrop';
+import { layoutFromScene, oneEyeUrl, revokeCroppedUrl } from '@/lib/stereoCrop';
 import { hotspotLabel, isDirection } from '@/lib/tour';
 import { buildHotspotPayload, buildReturnPayload, kindFromContent, type HotspotKind, type HotspotPayload } from '@/lib/tourHotspots';
 import { qualityReport, type DirectionLink } from '@/lib/tourQuality';
@@ -247,7 +247,7 @@ export default function TourEditorPage() {
     // on affiche UN œil recadré (over/under → moitié haute, side-by-side → moitié gauche) pour
     // que le panorama ne soit pas déformé et que le placement des hotspots corresponde à ce que
     // voient les visiteurs (viewer public / PSV appliquent le même recadrage).
-    const proj = projectionFromScene(currentScene.panoramaType, currentScene.stereoLayout);
+    const stereoLayoutKind = layoutFromScene(currentScene.panoramaType, currentScene.stereoLayout);
     let cancelledInit = false;
     let cropBlob: string | null = null;
     const initViewer = (panoramaUrl: string): void => {
@@ -264,11 +264,12 @@ export default function TourEditorPage() {
         pannellumInstanceRef.current.on('load', () => setLoadErrorSceneId((prev) => (prev === sceneAtInit ? null : prev)));
       } catch { setLoadErrorSceneId(sceneAtInit); }
     };
-    if (proj === 'mono') {
+    if (stereoLayoutKind === 'MONO') {
       initViewer(baseUrl);
     } else {
-      // Recadrage depuis l'original signé (CORS-propre) ; repli sur l'image entière si échec.
-      void oneEyePanoramaUrl(currentScene.imageUrl, proj)
+      // Recadrage un œil (gauche) selon la disposition réelle (TB/BT/LR/RL) depuis l'original
+      // signé (CORS-propre) ; repli sur l'image entière si échec.
+      void oneEyeUrl(currentScene.imageUrl, stereoLayoutKind, 'left')
         .then((u) => { if (cancelledInit) { revokeCroppedUrl(u); return; } if (u.startsWith('blob:')) cropBlob = u; initViewer(u); })
         .catch(() => initViewer(baseUrl));
     }
@@ -1189,10 +1190,14 @@ export default function TourEditorPage() {
                 <span className="px-1.5 text-[10px] uppercase text-stone-400">Panorama</span>
                 {([
                   { pt: 'MONO', sl: null, label: 'Mono', title: 'Panorama monoscopique' },
-                  { pt: 'STEREO', sl: 'TB', label: 'Stéréo ⬍', title: 'Stéréoscopique haut/bas' },
-                  { pt: 'STEREO', sl: 'SBS', label: 'Stéréo ⬌', title: 'Stéréoscopique côte à côte' },
+                  { pt: 'STEREO', sl: 'TB', label: 'Stéréo ⬍ TB', title: 'Stéréo haut/bas — œil gauche en haut' },
+                  { pt: 'STEREO', sl: 'BT', label: 'Stéréo ⬍ BT', title: 'Stéréo bas/haut — œil gauche en bas' },
+                  { pt: 'STEREO', sl: 'LR', label: 'Stéréo ⬌ LR', title: 'Stéréo gauche/droite — œil gauche à gauche' },
+                  { pt: 'STEREO', sl: 'RL', label: 'Stéréo ⬌ RL', title: 'Stéréo droite/gauche — œil gauche à droite' },
                 ] as const).map((o) => {
-                  const active = (currentScene.panoramaType ?? 'MONO') === o.pt && (o.pt === 'MONO' || (currentScene.stereoLayout ?? 'TB') === o.sl);
+                  const savedLay = (currentScene.stereoLayout ?? 'TB').toUpperCase();
+                  const normLay = savedLay === 'SBS' ? 'LR' : savedLay; // compat ancien libellé SBS
+                  const active = (currentScene.panoramaType ?? 'MONO') === o.pt && (o.pt === 'MONO' || normLay === o.sl);
                   return (
                     <button key={o.label} title={o.title}
                       onClick={() => void setScenePanorama(o.pt, o.sl)}
