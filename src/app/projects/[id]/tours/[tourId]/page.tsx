@@ -7,7 +7,7 @@ import { layoutFromScene, oneEyeUrl, revokeCroppedUrl } from '@/lib/stereoCrop';
 import { hotspotLabel, isDirection } from '@/lib/tour';
 import { buildHotspotPayload, buildReturnPayload, kindFromContent, type HotspotKind, type HotspotPayload } from '@/lib/tourHotspots';
 import { qualityReport, type DirectionLink } from '@/lib/tourQuality';
-import { defaultIconFor } from '@/lib/tourIcons';
+import { defaultIconFor, iconSvg } from '@/lib/tourIcons';
 import { levelForScene, type LevelLite } from '@/lib/tourMap';
 import { buildShareUrl, buildEmbedCode } from '@/lib/tourShare';
 import {
@@ -155,7 +155,7 @@ export default function TourEditorPage() {
   const [draggingHotspot, setDraggingHotspot] = useState<string | null>(null);
   const dragCoordsRef = useRef<{ yaw: number; pitch: number } | null>(null);
   const dragMarkerRef = useRef<HTMLDivElement | null>(null);
-  const beginHotspotDragRef = useRef<(hid: string) => void>(() => {});
+  const beginHotspotPressRef = useRef<(hid: string, ev: MouseEvent | TouchEvent, onClickEdit: () => void) => void>(() => {});
 
   // V4b — niveaux & plans 2D.
   const [levels, setLevels] = useState<Level[]>([]);
@@ -220,26 +220,32 @@ export default function TourEditorPage() {
     if (currentScene.derivStatus === 'MISSING') return;
     const hs = hotspots.map((h) => ({
       id: h.id, pitch: h.positionPitch, yaw: h.positionYaw,
-      cssClass: isDirection(h.type) ? 'pnlm-hotspot bilnov-dir' : 'pnlm-hotspot bilnov-info',
+      cssClass: 'pnlm-hotspot bilnov-hs',
       clickHandlerFunc: () => {
-        // §2 — en mode « Modifier les hotspots », un clic (sans glisser) ouvre l'édition.
-        if (dragCoordsRef.current) { dragCoordsRef.current = null; return; } // c'était un glisser, pas un clic
-        if (hotspotEditModeRef.current) { startEditHotspotRef.current(h); return; }
+        // Hors mode édition : navigation (direction) ou fiche info. En mode édition, le clic est
+        // géré par le « press » (mousedown/up) du createTooltipFunc → pas de double ouverture.
+        if (hotspotEditModeRef.current) return;
         if (isDirection(h.type)) { const t = scenesRef.current.find((s) => s.id === h.targetSceneId); if (t) setCurrentScene(t); } else setInfoModal(h);
       },
-      // §2 (anomalie) — poignée de glisser-déposer : en mode édition, cliquer-maintenir sur le
-      // hotspot lance le déplacement (l'overlay suit la souris/le doigt jusqu'au relâchement).
+      // §10 (anomalie 1) — RENDU DE L'ICÔNE CHOISIE pour TOUS les types (video, pdf, image, url,
+      // audio…), pas seulement direction/info. §2 (anomalie 2) — « press » : un clic simple ouvre
+      // l'édition, un glisser (au-delà d'un seuil) déplace le hotspot (fin de la régression).
       createTooltipFunc: (div: HTMLElement) => {
+        const kind = kindFromContent(h.type, h.content);
+        const iconId = (typeof h.iconId === 'string' && h.iconId) ? h.iconId : defaultIconFor(kind);
+        const color = typeof h.iconColor === 'string' && h.iconColor ? h.iconColor : '#ffffff';
+        const scale = typeof h.iconScale === 'number' && h.iconScale > 0 ? h.iconScale : 1;
+        const wrap = Math.round(38 * scale), glyph = Math.round(22 * scale);
+        div.innerHTML = `<span class="bilnov-hs-pin" style="width:${wrap}px;height:${wrap}px">${iconSvg(iconId, { color, size: glyph, opacity: typeof h.iconOpacity === 'number' ? h.iconOpacity : 1 })}</span>`;
         div.style.cursor = 'grab';
         const down = (ev: Event) => {
           if (!hotspotEditModeRef.current) return;
-          ev.stopPropagation(); ev.preventDefault();
-          beginHotspotDragRef.current(h.id);
+          ev.stopPropagation();
+          beginHotspotPressRef.current(h.id, ev as MouseEvent | TouchEvent, () => startEditHotspotRef.current(h));
         };
         div.addEventListener('mousedown', down);
         div.addEventListener('touchstart', down, { passive: false });
       },
-      createTooltipArgs: h.id,
     }));
     const sceneAtInit = currentScene.id;
     const baseUrl = currentScene.previewUrl ? currentScene.previewUrl : (currentScene.panoramaProxy ? `${currentScene.panoramaProxy}?token=${getToken()}` : currentScene.imageUrl);
@@ -401,25 +407,41 @@ export default function TourEditorPage() {
       setHotspots((prev) => prev.map((h) => h.id === hid ? { ...h, positionYaw: yaw, positionPitch: pitch } : h));
     } catch { void reloadHotspots(); }
   };
-  const beginHotspotDrag = (hid: string): void => { dragCoordsRef.current = null; setDraggingHotspot(hid); };
-  useEffect(() => { beginHotspotDragRef.current = beginHotspotDrag; });
-  const onDragMove = (e: React.MouseEvent | React.TouchEvent): void => {
-    const inst = pannellumInstanceRef.current; if (!inst) return;
-    const pt: { clientX: number; clientY: number } = 'touches' in e
-      ? (e.touches[0] ?? { clientX: 0, clientY: 0 })
-      : { clientX: (e as React.MouseEvent).clientX, clientY: (e as React.MouseEvent).clientY };
-    const host = viewerRef.current?.getBoundingClientRect();
-    if (dragMarkerRef.current && host) {
-      dragMarkerRef.current.style.left = `${pt.clientX - host.left}px`;
-      dragMarkerRef.current.style.top = `${pt.clientY - host.top}px`;
-    }
-    try { const c = inst.mouseEventToCoords(pt as unknown as MouseEvent); dragCoordsRef.current = { pitch: c[0], yaw: c[1] }; } catch { /* noop */ }
+  // §2 (anomalie 2) — « press » : on n'entre en glisser-déposer QU'APRÈS un vrai déplacement
+  // (seuil ~6 px). Un clic simple (sans mouvement) ouvre le panneau d'édition (fin de la
+  // régression). Tout se gère sur `document` → la surcouche visuelle ne capte plus le mouseup.
+  const beginHotspotPress = (hid: string, downEv: MouseEvent | TouchEvent, onClickEdit: () => void): void => {
+    const start = 'touches' in downEv ? downEv.touches[0] : downEv;
+    const startX = start ? start.clientX : 0, startY = start ? start.clientY : 0;
+    let moved = false;
+    dragCoordsRef.current = null;
+    const move = (e: MouseEvent | TouchEvent): void => {
+      const pt = 'touches' in e ? e.touches[0] : e;
+      if (!pt) return;
+      if (!moved) {
+        if (Math.hypot(pt.clientX - startX, pt.clientY - startY) < 6) return;
+        moved = true; setDraggingHotspot(hid);
+      }
+      const inst = pannellumInstanceRef.current; if (!inst) return;
+      const host = viewerRef.current?.getBoundingClientRect();
+      if (dragMarkerRef.current && host) {
+        dragMarkerRef.current.style.left = `${pt.clientX - host.left}px`;
+        dragMarkerRef.current.style.top = `${pt.clientY - host.top}px`;
+      }
+      try { const c = inst.mouseEventToCoords(pt as unknown as MouseEvent); dragCoordsRef.current = { pitch: c[0], yaw: c[1] }; } catch { /* noop */ }
+      if ('cancelable' in e && e.cancelable) e.preventDefault();
+    };
+    const up = (): void => {
+      document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+      document.removeEventListener('touchmove', move); document.removeEventListener('touchend', up);
+      const c = dragCoordsRef.current; dragCoordsRef.current = null; setDraggingHotspot(null);
+      if (moved && c) { void patchHotspotPosition(hid, c.yaw, c.pitch); }
+      else { onClickEdit(); }
+    };
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    document.addEventListener('touchmove', move, { passive: false }); document.addEventListener('touchend', up);
   };
-  const endHotspotDrag = (): void => {
-    const hid = draggingHotspot; const c = dragCoordsRef.current;
-    setDraggingHotspot(null);
-    if (hid && c) void patchHotspotPosition(hid, c.yaw, c.pitch);
-  };
+  useEffect(() => { beginHotspotPressRef.current = beginHotspotPress; });
 
   // §3 — enregistrement atomique de la paire A↔B via l'endpoint dédié. Lève en cas d'échec
   // (le constructeur affiche l'erreur). Succès → recharge les hotspots de la scène courante.
@@ -1119,18 +1141,23 @@ export default function TourEditorPage() {
             <>
               {/* Pannellum container */}
               <div ref={viewerRef} className={`flex-1 ${hotspotEditMode ? 'hs-editing' : ''}`} style={{ minHeight: '500px', background: '#000' }} />
-              {/* §2 — en mode édition, les hotspots sont visuellement distingués (halo). */}
-              <style>{`.hs-editing .pnlm-hotspot{box-shadow:0 0 0 3px #34d399,0 0 12px rgba(52,211,153,.8);border-radius:9999px;cursor:grab}`}</style>
-              {/* §2 (anomalie) — surcouche de glisser-déposer : capte le déplacement du pointeur
-                  (souris/doigt) sans faire pivoter le panorama, et pose un marqueur qui suit le
-                  curseur. Le relâchement enregistre la nouvelle position. */}
+              {/* §2 — halo en mode édition + pastille d'icône (rendu de l'icône choisie, tous types). */}
+              <style>{`
+                .bilnov-hs-pin{display:flex;align-items:center;justify-content:center;border-radius:9999px;
+                  background:rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.9);
+                  box-shadow:0 3px 10px rgba(0,0,0,.4);transition:transform .12s}
+                .bilnov-hs:hover .bilnov-hs-pin{transform:scale(1.1)}
+                .hs-editing .pnlm-hotspot{cursor:grab}
+                .hs-editing .bilnov-hs-pin{box-shadow:0 0 0 3px #34d399,0 0 12px rgba(52,211,153,.8)}
+              `}</style>
+              {/* §2 (anomalie 2) — surcouche PUREMENT VISUELLE pendant un glisser (marqueur qui suit
+                  le curseur). Les événements sont gérés sur `document` → elle ne capte pas le mouseup
+                  (pointer-events: none) : un clic simple ouvre bien l'édition. */}
               {draggingHotspot && (
-                <div className="absolute inset-0 z-30 cursor-grabbing" style={{ touchAction: 'none' }}
-                  onMouseMove={onDragMove} onMouseUp={endHotspotDrag} onMouseLeave={endHotspotDrag}
-                  onTouchMove={onDragMove} onTouchEnd={endHotspotDrag} onTouchCancel={endHotspotDrag}>
-                  <div ref={dragMarkerRef} className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+                <div className="pointer-events-none absolute inset-0 z-30">
+                  <div ref={dragMarkerRef} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
                     style={{ width: 36, height: 36, border: '3px solid #34d399', boxShadow: '0 0 14px rgba(52,211,153,.95)' }} />
-                  <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-emerald-600/95 px-4 py-1.5 text-xs font-medium text-white">
+                  <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-emerald-600/95 px-4 py-1.5 text-xs font-medium text-white">
                     Glissez le hotspot puis relâchez pour poser
                   </div>
                 </div>
