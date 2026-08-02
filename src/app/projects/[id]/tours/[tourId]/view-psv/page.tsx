@@ -16,7 +16,7 @@ import Link from 'next/link';
 import { isDirection } from '@/lib/tour';
 import { iconSvg } from '@/lib/tourIcons';
 
-interface Scene { id: string; name: string; imageUrl: string; isInitial: boolean; position: number; panoramaProxy?: string; panoramaType?: string | null; stereoLayout?: string | null; hidden?: boolean; }
+interface Scene { id: string; name: string; imageUrl: string; thumbnailUrl?: string | null; previewUrl?: string | null; isInitial: boolean; position: number; panoramaProxy?: string; panoramaType?: string | null; stereoLayout?: string | null; hidden?: boolean; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; iconId?: string | null; iconColor?: string | null; iconScale?: number | null; iconOpacity?: number | null; visible?: boolean; }
 interface ApiResponse<T> { data: T; success: boolean; }
 type Projection = 'mono' | 'ou' | 'sbs';
@@ -113,7 +113,9 @@ export default function TourViewerPsvPage() {
   useEffect(() => { projRef.current = projection; }, [projection]);
 
   const getToken = (): string => typeof window !== 'undefined' ? localStorage.getItem('bilnov_token') ?? '' : '';
-  const panoUrl = (s: Scene): string => s.panoramaProxy ? `${s.panoramaProxy}?token=${getToken()}` : s.imageUrl;
+  // §1 — aperçu léger (webp ~4096) en priorité pour un chargement rapide (connexions lentes) ;
+  // repli sur le proxy /raw puis l'original. PSV recadre l'œil via panoData même sur l'aperçu.
+  const panoUrl = (s: Scene): string => s.previewUrl ? s.previewUrl : (s.panoramaProxy ? `${s.panoramaProxy}?token=${getToken()}` : s.imageUrl);
 
   const markersFor = useCallback((sceneId: string) => {
     const hs = dataRef.current.hs[sceneId] ?? [];
@@ -343,7 +345,7 @@ export default function TourViewerPsvPage() {
               className="relative shrink-0 rounded-lg overflow-hidden"
               style={{ width: 96, height: 56, border: s.id === currentSceneId ? '2px solid #7ef0ff' : '1px solid rgba(255,255,255,.18)' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={s.imageUrl} alt={s.name} className="w-full h-full object-cover" />
+              <img src={s.thumbnailUrl || s.imageUrl} alt={s.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
               <span className="absolute left-1 bottom-1 text-[10px] px-1 rounded" style={{ background: 'rgba(0,0,0,.6)', color: '#fff' }}>{s.name}</span>
             </button>
           ))}
