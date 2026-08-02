@@ -384,6 +384,28 @@ export default function TourHotspotPanel(props: Props) {
                   value={form[f.name]} onChange={props.onChange}
                   form={form} kind={kind} onUploadFile={props.onUploadFile} />
               ))}
+              {/* §3 — l'aller-retour est une OPTION du hotspot Direction (pas une fonctionnalité
+                  séparée). Choix intégré ici, après la scène cible. « Aller-retour » ouvre ensuite
+                  l'écran de placement des deux flèches (A→B et B→A). Absent en mode édition. */}
+              {kind === 'DIRECTION' && !props.editMode && (
+                <fieldset className="rounded-lg border border-stone-200 p-3">
+                  <legend className="px-1 text-xs font-medium text-stone-500">Sens de la direction</legend>
+                  <label className="mb-2 flex items-start gap-2 text-sm text-slate-700">
+                    <input type="radio" name="pairMode" className="mt-0.5"
+                      checked={(form.pairMode ?? 'simple') === 'simple'}
+                      onChange={() => props.onChange('pairMode', 'simple')} />
+                    <span><span className="font-medium">Direction simple A → B</span>
+                      <span className="block text-xs text-stone-500">Une seule flèche, de la scène actuelle vers la scène cible.</span></span>
+                  </label>
+                  <label className="flex items-start gap-2 text-sm text-slate-700">
+                    <input type="radio" name="pairMode" className="mt-0.5"
+                      checked={form.pairMode === 'roundtrip'}
+                      onChange={() => props.onChange('pairMode', 'roundtrip')} />
+                    <span><span className="font-medium">Direction aller-retour A ↔ B</span>
+                      <span className="block text-xs text-stone-500">Crée aussi le retour B → A. Vous placerez les deux flèches (A et B) à l’étape suivante.</span></span>
+                  </label>
+                </fieldset>
+              )}
               <IconPicker kind={kind} form={form} onChange={props.onChange} />
               {errors.length > 0 && (
                 <ul className="rounded-lg bg-red-50 p-2 text-xs text-red-600">
@@ -415,7 +437,9 @@ export default function TourHotspotPanel(props: Props) {
             <div className="flex gap-2">
               <button onClick={props.onSubmit}
                 className="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-medium text-white hover:bg-violet-500">
-                {props.editMode ? 'Enregistrer les modifications' : 'Enregistrer'}
+                {props.editMode
+                  ? 'Enregistrer les modifications'
+                  : (kind === 'DIRECTION' && form.pairMode === 'roundtrip' ? 'Continuer → placer A et B' : 'Enregistrer')}
               </button>
               <button onClick={props.onCancel}
                 className="rounded-lg bg-stone-100 px-4 py-2 text-sm text-slate-700 hover:bg-stone-200">
