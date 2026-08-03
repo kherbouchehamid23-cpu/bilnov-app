@@ -367,7 +367,7 @@ export default function ProjectPage() {
                 <button onClick={() => window.location.reload()} className="btn-primary" style={{ minHeight: 40 }}><RotateCw size={16} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} /> Réessayer</button>
               </div>
             ) : (
-              <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Chargement...</div>
+              <div className="inline-flex items-center gap-2 text-sm" style={{ color: 'var(--text-muted)' }}><span aria-hidden style={{ width: 18, height: 18, borderRadius: '50%', border: '2px solid var(--border)', borderTopColor: 'var(--text-muted)', display: 'inline-block', animation: 'ui-spin .7s linear infinite' }} />Chargement…</div>
             )}
       </div>
     );
