@@ -37,6 +37,9 @@ export default function DashboardPage() {
   const [view, setView] = useState<View>('active');
   const [menuId, setMenuId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmProject, setConfirmProject] = useState<Project | null>(null);
+  const [confirmText, setConfirmText] = useState('');
+  const [purging, setPurging] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) { router.push('/login'); return; }
@@ -64,6 +67,20 @@ export default function DashboardPage() {
       alert('Action impossible pour le moment. Réessayez.');
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const purge = async () => {
+    if (!confirmProject) return;
+    setPurging(true);
+    try {
+      await api.delete(`/api/projects/${confirmProject.id}?permanent=true`);
+      setProjects(prev => prev.filter(p => p.id !== confirmProject.id));
+      setConfirmProject(null); setConfirmText('');
+    } catch {
+      alert('Suppression définitive impossible pour le moment. Réessayez.');
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -110,6 +127,11 @@ export default function DashboardPage() {
               </button>
             ))}
           </div>
+          {view === 'trash' && projects.length > 0 && (
+            <p className="text-xs mt-3 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" style={{ background: 'rgba(239,68,68,.1)', color: '#EF4444' }}>
+              <AlertTriangle size={13} /> Depuis la corbeille, vous pouvez restaurer un projet ou le supprimer définitivement.
+            </p>
+          )}
         </div>
 
         {loading ? (
@@ -173,10 +195,16 @@ export default function DashboardPage() {
                     <div className="absolute z-20 rounded-xl shadow-lg overflow-hidden file-menu-pop" style={{ top: 52, right: 14, minWidth: 200 }}
                       onClick={(e) => e.stopPropagation()}>
                       {view === 'trash' ? (
-                        <button className="flex items-center gap-2 w-full text-left px-4 text-sm" style={{ minHeight: 46, color: 'var(--text)' }}
-                          onClick={() => { void act(project.id, 'restore'); }}>
-                          <RotateCcw size={15} /> Restaurer
-                        </button>
+                        <>
+                          <button className="flex items-center gap-2 w-full text-left px-4 text-sm" style={{ minHeight: 46, color: 'var(--text)' }}
+                            onClick={() => { void act(project.id, 'restore'); }}>
+                            <RotateCcw size={15} /> Restaurer
+                          </button>
+                          <button className="flex items-center gap-2 w-full text-left px-4 text-sm" style={{ minHeight: 46, color: '#EF4444', borderTop: '1px solid var(--border)' }}
+                            onClick={() => { setMenuId(null); setConfirmProject(project); setConfirmText(''); }}>
+                            <Trash2 size={15} /> Supprimer définitivement
+                          </button>
+                        </>
                       ) : (
                         <>
                           {view === 'archived' ? (
@@ -204,6 +232,42 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+
+      {confirmProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.5)' }}
+          onClick={() => { if (!purging) { setConfirmProject(null); setConfirmText(''); } }}>
+          <div className="rounded-2xl w-full max-w-md p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: 'rgba(239,68,68,.14)' }}>
+                <Trash2 size={22} style={{ color: '#EF4444' }} />
+              </div>
+              <h3 className="text-lg font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Supprimer définitivement</h3>
+            </div>
+            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+              Cette action est <b style={{ color: 'var(--text)' }}>irréversible</b>. Le projet, ses fichiers, visites, mesures et commentaires seront supprimés définitivement.
+              Pour confirmer, saisissez le nom du projet : <b style={{ color: 'var(--text)' }}>{confirmProject.name}</b>
+            </p>
+            <input autoFocus value={confirmText} onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="Nom du projet" className="input mb-4" disabled={purging}
+              onKeyDown={(e) => { if (e.key === 'Enter' && confirmText === confirmProject.name && !purging) void purge(); }} />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setConfirmProject(null); setConfirmText(''); }} disabled={purging}
+                className="btn-secondary text-sm" style={{ minHeight: 40 }}>Annuler</button>
+              <button onClick={() => { void purge(); }} disabled={purging || confirmText !== confirmProject.name}
+                className="text-sm px-4 rounded-lg font-medium"
+                style={{
+                  minHeight: 40,
+                  background: confirmText === confirmProject.name ? '#EF4444' : 'var(--surface-2)',
+                  color: confirmText === confirmProject.name ? '#fff' : 'var(--text-light)',
+                  cursor: confirmText === confirmProject.name && !purging ? 'pointer' : 'not-allowed',
+                }}>
+                {purging ? 'Suppression…' : 'Supprimer définitivement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
