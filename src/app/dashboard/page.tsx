@@ -47,7 +47,7 @@ export default function DashboardPage() {
           </div>
           <span className="font-bold text-base" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Bilnov</span>
           <div className="flex-1" />
-          <Link href="/projects/new" className="btn-primary text-sm" style={{ minHeight: 40 }}><Plus size={16} /> Nouveau projet</Link>
+          <Link href="/projects/new" className="btn-primary text-sm" style={{ minHeight: 40 }}><Plus size={16} /><span className="hidden sm:inline"> Nouveau projet</span></Link>
           <ThemeToggle />
           <NotificationsBell />
           <div className="flex items-center gap-2 pl-2 ml-1 border-l" style={{ borderColor: 'var(--border)' }}>

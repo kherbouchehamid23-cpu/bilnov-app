@@ -398,7 +398,7 @@ export default function ProjectPage() {
             <ThemeToggle />
           {tab === 'files' && canUpload && (
             <label className={`btn-primary text-sm cursor-pointer ${uploading ? 'opacity-60' : ''}`} style={{ minHeight: 40 }}>
-              {uploading ? 'Upload...' : (<><Plus size={15} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Fichier</>)}
+              {uploading ? 'Upload...' : (<><Plus size={15} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} /><span className="hidden sm:inline">Fichier</span></>)}
               <input type="file" multiple accept={uploadAccept} title={uploadMsg} className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
             </label>
           )}
