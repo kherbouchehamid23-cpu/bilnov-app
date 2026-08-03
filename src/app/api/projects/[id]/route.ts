@@ -76,7 +76,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     });
     const activeBytes = files
       .filter(f => f.status === 'ACTIVE')
-      .reduce((sum, f) => sum + (f.sizeBytes as bigint), 0n);
+      .reduce((sum, f) => sum + (f.sizeBytes as bigint), BigInt(0));
 
     // Suppression en base, ordre des cles etrangeres (enfants d'abord). Cascade
     // automatique du schema : nodes, krpanoTours, comments (+ leurs enfants).
@@ -94,7 +94,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       await tx.projectMember.deleteMany({ where: { projectId: params.id } });
       await tx.notification.deleteMany({ where: { projectId: params.id } });
       await tx.project.delete({ where: { id: params.id } });
-      if (activeBytes > 0n) {
+      if (activeBytes > BigInt(0)) {
         await tx.organization.update({
           where: { id: user.organizationId },
           data: { storageUsedBytes: { decrement: activeBytes } },
