@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
 
@@ -22,6 +22,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
   const [form, setForm] = useState<FormState>({ firstName: '', lastName: '', email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -46,7 +47,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="lg-immersif" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div className="lg-immersif safe-x safe-top safe-bottom" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ width: '100%', maxWidth: 440 }}>
         <div className="flex items-center gap-2.5 mb-8">
           <span aria-hidden style={{ width: 13, height: 13, borderRadius: '4px 4px 4px 1px', background: 'linear-gradient(135deg,#22d3ee,#4F46E5)', boxShadow: '0 0 18px rgba(79,70,229,.9)' }} />
@@ -58,21 +59,26 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="lg-label">Prénom</label>
-                <input type="text" value={form.firstName} onChange={handleChange('firstName')} required className="lg-input" placeholder="Jean" />
+                <label className="lg-label" htmlFor="reg-first">Prénom</label>
+                <input id="reg-first" type="text" autoComplete="given-name" value={form.firstName} onChange={handleChange('firstName')} required className="lg-input" placeholder="Jean" />
               </div>
               <div>
-                <label className="lg-label">Nom</label>
-                <input type="text" value={form.lastName} onChange={handleChange('lastName')} required className="lg-input" placeholder="Dupont" />
+                <label className="lg-label" htmlFor="reg-last">Nom</label>
+                <input id="reg-last" type="text" autoComplete="family-name" value={form.lastName} onChange={handleChange('lastName')} required className="lg-input" placeholder="Dupont" />
               </div>
             </div>
             <div>
-              <label className="lg-label">Email</label>
-              <input type="email" value={form.email} onChange={handleChange('email')} required className="lg-input" placeholder="vous@exemple.com" />
+              <label className="lg-label" htmlFor="reg-email">Email</label>
+              <input id="reg-email" type="email" autoComplete="email" inputMode="email" value={form.email} onChange={handleChange('email')} required className="lg-input" placeholder="vous@exemple.com" />
             </div>
             <div>
-              <label className="lg-label">Mot de passe</label>
-              <input type="password" value={form.password} onChange={handleChange('password')} required minLength={8} className="lg-input" placeholder="Min. 8 caractères" />
+              <label className="lg-label" htmlFor="reg-password">Mot de passe</label>
+              <div style={{ position: 'relative' }}>
+                <input id="reg-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={form.password} onChange={handleChange('password')} required minLength={8} className="lg-input" style={{ paddingRight: 46 }} placeholder="Min. 8 caractères" />
+                <button type="button" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} aria-pressed={showPassword} style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 10, border: 0, background: 'transparent', color: '#9fb0c9', cursor: 'pointer' }}>
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
             {error && (<div className="lg-error">{error}</div>)}
             <button type="submit" disabled={loading} className="lg-pill-solid" style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px', borderRadius: 13, fontWeight: 500, fontSize: 15, border: 0, cursor: 'pointer' }}>

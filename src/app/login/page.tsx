@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Compass, ArrowRight } from 'lucide-react';
+import { Compass, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
 
@@ -21,6 +21,7 @@ export default function LoginPage() {
   const { setAuth } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -42,7 +43,7 @@ export default function LoginPage() {
 
   return (
     <div className="lg-immersif lg-authgrid">
-      <div className="flex flex-col items-center justify-center p-8">
+      <div className="flex flex-col items-center justify-center p-8 safe-x safe-top safe-bottom">
         <div className="w-full" style={{ maxWidth: 380 }}>
           <div className="flex items-center gap-2.5 mb-10">
             <span aria-hidden style={{ width: 13, height: 13, borderRadius: '4px 4px 4px 1px', background: 'linear-gradient(135deg,#22d3ee,#4F46E5)', boxShadow: '0 0 18px rgba(79,70,229,.9)' }} />
@@ -52,12 +53,17 @@ export default function LoginPage() {
           <p style={{ color: '#9fb0c9', fontSize: 14, marginBottom: 28 }}>Connectez-vous à votre espace BILNOV</p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="lg-label">Email</label>
-              <input type="email" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)} required className="lg-input" placeholder="vous@exemple.com" />
+              <label className="lg-label" htmlFor="login-email">Email</label>
+              <input id="login-email" type="email" autoComplete="email" inputMode="email" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)} required className="lg-input" placeholder="vous@exemple.com" />
             </div>
             <div>
-              <label className="lg-label">Mot de passe</label>
-              <input type="password" value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)} required className="lg-input" placeholder="••••••••" />
+              <label className="lg-label" htmlFor="login-password">Mot de passe</label>
+              <div style={{ position: 'relative' }}>
+                <input id="login-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)} required className="lg-input" style={{ paddingRight: 46 }} placeholder="••••••••" />
+                <button type="button" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} aria-pressed={showPassword} style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 10, border: 0, background: 'transparent', color: '#9fb0c9', cursor: 'pointer' }}>
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
             {error && (<div className="lg-error">{error}</div>)}
             <button type="submit" disabled={loading} className="lg-pill-solid" style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px', borderRadius: 13, fontWeight: 500, fontSize: 15, border: 0, cursor: 'pointer' }}>
