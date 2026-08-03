@@ -19,6 +19,7 @@ export default function HomePage() {
           <span className="font-bold" style={{ fontFamily: 'Syne, sans-serif', letterSpacing: '.14em', color: '#f4f7fd' }}>BILNOV</span>
         </div>
         <div className="flex items-center gap-3">
+          <a href="#tarifs" className="lg-pill-ghost text-sm whitespace-nowrap" style={{ padding: "10px 18px", borderRadius: 13, fontWeight: 500 }}>Tarifs</a>
           <Link href="/login" className="lg-pill-ghost text-sm whitespace-nowrap" style={{ padding: '10px 18px', borderRadius: 13, fontWeight: 500 }}>Se connecter</Link>
           <Link href="/register" className="lg-pill-solid text-sm whitespace-nowrap" style={{ padding: '10px 18px', borderRadius: 13, fontWeight: 500 }}>Essai gratuit</Link>
         </div>
