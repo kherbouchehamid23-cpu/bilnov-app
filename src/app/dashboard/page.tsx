@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import MobileNav from '@/components/MobileNav';
-import { Plus, LogOut, Building2, Home, Wrench, FileText, Compass } from 'lucide-react';
+import { Plus, LogOut, Building2, Home, Wrench, FileText, Compass, AlertTriangle, RotateCw } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
 import NotificationsBell from '@/components/NotificationsBell';
@@ -19,12 +19,13 @@ export default function DashboardPage() {
   const { user, isAuthenticated, logout } = useAuthStore();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) { router.push('/login'); return; }
     api.get<{ data: { projects: Project[] } }>('/api/projects')
       .then(r => setProjects(r.data.projects ?? []))
-      .catch(() => {})
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [isAuthenticated, router]);
 
@@ -76,7 +77,14 @@ export default function DashboardPage() {
               <div key={i} className="rounded-2xl border p-6 h-40 skeleton" style={{ borderColor: 'var(--border)' }} />
             ))}
           </div>
-        ) : projects.length === 0 ? (
+        ) : error ? (
+              <div className="flex flex-col items-center justify-center py-24 text-center">
+                <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'rgba(255,120,90,.14)' }}><AlertTriangle size={34} style={{ color: '#ff785a' }} /></div>
+                <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Impossible de charger vos projets</h3>
+                <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Vérifiez votre connexion, puis réessayez.</p>
+                <button onClick={() => window.location.reload()} className="btn-primary"><RotateCw size={16} /> Réessayer</button>
+              </div>
+            ) : projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'var(--violet-light)' }}><Building2 size={36} style={{ color: 'var(--violet)' }} /></div>
             <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Aucun projet</h3>
