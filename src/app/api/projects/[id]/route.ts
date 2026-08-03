@@ -31,7 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const body = await req.json();
     const project = await prisma.project.updateMany({
       where: { id: params.id, organizationId: user.organizationId },
-      data: { name: body.name, description: body.description, sector: body.sector },
+      data: { name: body.name, description: body.description, sector: body.sector, status: body.status, deletedAt: body.status === 'ACTIVE' ? null : undefined },
     });
 
     return apiSuccess(project);

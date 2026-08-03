@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { accessibleProjectIds } from '@/lib/access';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,9 +13,17 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get('page') ?? '1');
     const limit = parseInt(searchParams.get('limit') ?? '20');
 
+    const view = searchParams.get('view') ?? 'active';
+    const statusFilter: Prisma.ProjectWhereInput =
+      view === 'archived'
+        ? { status: 'ARCHIVED', deletedAt: null }
+        : view === 'trash'
+          ? { deletedAt: { not: null } }
+          : { status: 'ACTIVE', deletedAt: null };
+
     const { ownProjectsOrgId, memberProjectIds } = await accessibleProjectIds(user);
     const where = {
-      deletedAt: null,
+      ...statusFilter,
       OR: [
         { organizationId: ownProjectsOrgId },
         ...(memberProjectIds.length ? [{ id: { in: memberProjectIds } }] : []),
