@@ -405,3 +405,31 @@ a:focus-visible, button:focus-visible, [role="button"]:focus-visible, input:focu
   -webkit-overflow-scrolling: touch;
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* Lot 7 - Boite a outils responsive (additif, opt-in) - etats(15), tables(10), viewers(7), perf(14) */
+.ui-state{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;max-width:460px;margin:0 auto;padding:44px 22px}
+.ui-state-icon{width:58px;height:58px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:rgba(127,140,168,.12);color:#6b7c98;font-size:26px}
+.ui-state-icon-error{background:rgba(255,120,90,.14);color:#ff785a;font-weight:700}
+.ui-state-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:600;margin:2px 0 0;color:#0d1220}
+.ui-state-desc{font-size:14px;line-height:1.55;color:#5b6b86;margin:0}
+.ui-state-actions{margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.lg-immersif .ui-state-title,.lg-app .ui-state-title{color:#f4f7fd}
+.lg-immersif .ui-state-desc,.lg-app .ui-state-desc{color:#9fb0c9}
+.ui-loader{display:inline-flex;align-items:center;gap:9px;font-size:14px;color:#9fb0c9}
+.ui-spinner{width:18px;height:18px;border-radius:50%;border:2px solid rgba(127,140,168,.28);border-top-color:currentColor;animation:ui-spin .7s linear infinite;flex:0 0 auto}
+@keyframes ui-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.ui-spinner{animation-duration:1.5s}}
+@media (max-width:640px){
+table.resp-cards,table.resp-cards thead,table.resp-cards tbody,table.resp-cards tr,table.resp-cards td{display:block;width:100%}
+table.resp-cards thead{position:absolute;left:-9999px}
+table.resp-cards tr{margin:0 0 12px;border:1px solid rgba(127,140,168,.22);border-radius:14px;padding:6px 14px;background:rgba(127,140,168,.05)}
+table.resp-cards td{display:flex;justify-content:space-between;gap:14px;padding:8px 0;border:0;text-align:right}
+table.resp-cards td::before{content:attr(data-label);font-weight:600;opacity:.72;text-align:left}
+}
+@media (max-width:767px){
+.viewer-fullbleed{position:relative;width:100vw;margin-left:calc(50% - 50vw);border-radius:0}
+.viewer-toolbar{flex-wrap:wrap;gap:8px}
+.viewer-toolbar > *{min-height:44px}
+}
+.cv-auto{content-visibility:auto;contain-intrinsic-size:auto 480px}
+.cv-auto-sm{content-visibility:auto;contain-intrinsic-size:auto 240px}
