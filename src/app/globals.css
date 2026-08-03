@@ -327,3 +327,14 @@ a:focus-visible, button:focus-visible, [role="button"]:focus-visible, input:focu
 .min-h-dvh { min-height: 100vh; min-height: 100dvh; }
 .h-dvh { height: 100vh; height: 100dvh; }
 .auto-cols { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+
+
+/* Doc UI/UX 6 - barre de navigation mobile (bottom tab bar). */
+.bilnov-mobilenav { display: none; }
+@media (max-width: 767px) {
+  .bilnov-mobilenav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; display: flex; align-items: stretch; justify-content: space-around; background: rgba(10,14,26,.92); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border-top: 1px solid rgba(255,255,255,.12); padding-bottom: env(safe-area-inset-bottom); }
+  .lg-app { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+  .bmn-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 62px; color: #9fb0c9; font-size: 11px; font-family: 'DM Sans', sans-serif; background: transparent; border: 0; cursor: pointer; text-decoration: none; }
+  .bmn-item.bmn-active { color: #f4f7fd; }
+  .bmn-fab { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-top: -16px; border-radius: 16px; background: linear-gradient(135deg,#5b53ff,#22d3ee); color: #fff; box-shadow: 0 8px 24px rgba(79,70,229,.5); }
+}

@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import MobileNav from '@/components/MobileNav';
 import { api } from '@/lib/api-client';
 import { fetchWithAuth } from '@/lib/auth-client';
 import dynamic from 'next/dynamic';
@@ -363,6 +364,7 @@ export default function ProjectPage() {
 
   return (
     <div className="lg-app min-h-screen flex flex-col" style={{ background: 'var(--surface)' }}>
+      <MobileNav />
       {/* Header */}
       <header className="sticky top-0 z-40 glass border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-7xl mx-auto flex items-center gap-2">

@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import MobileNav from '@/components/MobileNav';
 import { Plus, LogOut, Building2, Home, Wrench, FileText, Compass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
@@ -36,6 +37,7 @@ export default function DashboardPage() {
 
   return (
     <div className="lg-app min-h-screen" style={{ background: 'var(--surface)' }}>
+      <MobileNav />
       <header className="sticky top-0 z-40 glass border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
           <div className="rounded-lg flex items-center justify-center" style={{ width: 32, height: 32, background: 'var(--violet)' }}>
