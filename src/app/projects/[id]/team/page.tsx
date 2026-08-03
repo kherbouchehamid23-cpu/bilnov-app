@@ -51,6 +51,7 @@ export default function TeamPage() {
 
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [nodes, setNodes] = useState<TreeNode[]>([]);
   const [rootCount, setRootCount] = useState(0);
@@ -81,9 +82,9 @@ export default function TeamPage() {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json() as ApiResponse<{ members: Member[] }>;
-      setMembers(data.data?.members ?? []);
+      setMembers(data.data?.members ?? []); setLoadError(false);
     } catch {
-      setMembers([]);
+      setMembers([]); setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -331,7 +332,14 @@ export default function TeamPage() {
                 <div key={i} className="h-20 rounded-2xl skeleton" />
               ))}
             </div>
-          ) : members.length === 0 ? (
+          ) : loadError ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'rgba(255,120,90,.14)' }}>⚠️</div>
+                <h3 className="font-bold text-base mb-2" style={{ color: 'var(--text)' }}>Impossible de charger les intervenants</h3>
+                <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Vérifiez votre connexion, puis réessayez.</p>
+                <button onClick={() => window.location.reload()} className="btn-primary text-sm">Réessayer</button>
+              </div>
+            ) : members.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4"
                 style={{ background: 'var(--violet-light)' }}>

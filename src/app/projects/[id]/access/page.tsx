@@ -47,6 +47,7 @@ export default function AccessCodesPage() {
 
   const [codes, setCodes] = useState<AccessCode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [nodes, setNodes] = useState<TreeNode[]>([]);
   const [rootCount, setRootCount] = useState(0);
@@ -82,9 +83,9 @@ export default function AccessCodesPage() {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json() as ApiResponse<{ codes: AccessCode[] }>;
-      setCodes(data.data?.codes ?? []);
+      setCodes(data.data?.codes ?? []); setLoadError(false);
     } catch {
-      setCodes([]);
+      setCodes([]); setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -449,7 +450,14 @@ export default function AccessCodesPage() {
             <div className="space-y-3">
               {[1, 2].map(i => <div key={i} className="h-24 rounded-2xl skeleton" />)}
             </div>
-          ) : codes.length === 0 ? (
+          ) : loadError ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4" style={{ background: 'rgba(255,120,90,.14)' }}>⚠️</div>
+                <h3 className="font-bold text-base mb-2" style={{ color: 'var(--text)' }}>Impossible de charger les codes de partage</h3>
+                <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Vérifiez votre connexion, puis réessayez.</p>
+                <button onClick={() => window.location.reload()} className="btn-primary text-sm">Réessayer</button>
+              </div>
+            ) : codes.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-4"
                 style={{ background: 'var(--violet-light)' }}>
