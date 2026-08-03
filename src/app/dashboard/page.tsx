@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import MobileNav from '@/components/MobileNav';
-import { Plus, LogOut, Building2, Home, Wrench, FileText, Compass, AlertTriangle, RotateCw } from 'lucide-react';
+import { Plus, LogOut, Building2, Home, Wrench, FileText, Compass, AlertTriangle, RotateCw, MoreHorizontal, Archive, Trash2, RotateCcw } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
 import NotificationsBell from '@/components/NotificationsBell';
@@ -14,20 +14,38 @@ interface Project {
   _count: { files: number; tours: number; members: number };
 }
 
+type View = 'active' | 'archived' | 'trash';
+
+const VIEWS: { k: View; label: string }[] = [
+  { k: 'active', label: 'Actifs' },
+  { k: 'archived', label: 'Archivés' },
+  { k: 'trash', label: 'Corbeille' },
+];
+
+const EMPTY: Record<View, { title: string; desc: string }> = {
+  active: { title: 'Aucun projet', desc: 'Créez votre premier projet pour commencer.' },
+  archived: { title: 'Aucun projet archivé', desc: 'Les projets que vous archivez apparaîtront ici.' },
+  trash: { title: 'Corbeille vide', desc: 'Les projets supprimés arrivent ici et restent restaurables.' },
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user, isAuthenticated, logout } = useAuthStore();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [view, setView] = useState<View>('active');
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) { router.push('/login'); return; }
-    api.get<{ data: { projects: Project[] } }>('/api/projects')
+    setLoading(true); setError(false); setMenuId(null);
+    api.get<{ data: { projects: Project[] } }>(`/api/projects?view=${view}`)
       .then(r => setProjects(r.data.projects ?? []))
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, router, view]);
 
   const handleLogout = async () => {
     try { await api.post('/api/auth/logout', {}); } catch {}
@@ -35,10 +53,24 @@ export default function DashboardPage() {
     router.push('/login');
   };
 
+  const act = async (id: string, kind: 'archive' | 'unarchive' | 'trash' | 'restore') => {
+    if (kind === 'trash' && !confirm('Mettre ce projet à la corbeille ? Vous pourrez le restaurer ensuite.')) return;
+    setMenuId(null); setBusyId(id);
+    try {
+      if (kind === 'trash') await api.delete(`/api/projects/${id}`);
+      else await api.patch(`/api/projects/${id}`, { status: kind === 'archive' ? 'ARCHIVED' : 'ACTIVE' });
+      setProjects(prev => prev.filter(p => p.id !== id));
+    } catch {
+      alert('Action impossible pour le moment. Réessayez.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const initials = user ? user.firstName[0] + user.lastName[0] : 'U';
 
   return (
-    <div className="lg-app min-h-screen" style={{ background: 'var(--surface)' }}>
+    <div className="lg-app min-h-screen" style={{ background: 'var(--surface)' }} onClick={() => menuId && setMenuId(null)}>
       <MobileNav />
       <header className="sticky top-0 z-40 glass border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -63,12 +95,21 @@ export default function DashboardPage() {
 
       <main className="max-w-6xl mx-auto px-4 py-6">
         <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold mb-1" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-3" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
             Mes projets
           </h1>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            {projects.length} projet{projects.length !== 1 ? 's' : ''}
-          </p>
+          <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: 'var(--surface-2)' }}>
+            {VIEWS.map(v => (
+              <button key={v.k} type="button" onClick={() => setView(v.k)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                style={{
+                  background: view === v.k ? 'var(--violet)' : 'transparent',
+                  color: view === v.k ? '#fff' : 'var(--text-muted)',
+                }}>
+                {v.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
@@ -78,28 +119,30 @@ export default function DashboardPage() {
             ))}
           </div>
         ) : error ? (
-              <div className="flex flex-col items-center justify-center py-24 text-center">
-                <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'rgba(255,120,90,.14)' }}><AlertTriangle size={34} style={{ color: '#ff785a' }} /></div>
-                <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Impossible de charger vos projets</h3>
-                <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Vérifiez votre connexion, puis réessayez.</p>
-                <button onClick={() => window.location.reload()} className="btn-primary"><RotateCw size={16} /> Réessayer</button>
-              </div>
-            ) : projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'var(--violet-light)' }}><Building2 size={36} style={{ color: 'var(--violet)' }} /></div>
-            <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Aucun projet</h3>
-            <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Créez votre premier projet pour commencer.</p>
-            <Link href="/projects/new" className="btn-primary">Créer mon premier projet</Link>
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'rgba(255,120,90,.14)' }}><AlertTriangle size={34} style={{ color: '#ff785a' }} /></div>
+            <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Impossible de charger vos projets</h3>
+            <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>Vérifiez votre connexion, puis réessayez.</p>
+            <button onClick={() => window.location.reload()} className="btn-primary"><RotateCw size={16} /> Réessayer</button>
+          </div>
+        ) : projects.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'var(--violet-light)' }}>
+              {view === 'trash' ? <Trash2 size={34} style={{ color: 'var(--violet)' }} /> : view === 'archived' ? <Archive size={34} style={{ color: 'var(--violet)' }} /> : <Building2 size={36} style={{ color: 'var(--violet)' }} />}
+            </div>
+            <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{EMPTY[view].title}</h3>
+            <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>{EMPTY[view].desc}</p>
+            {view === 'active' && <Link href="/projects/new" className="btn-primary">Créer mon premier projet</Link>}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map(project => (
-              <Link key={project.id} href={'/projects/' + project.id}>
-                <div className="file-card rounded-2xl p-6">
+            {projects.map(project => {
+              const inner = (
+                <div className="file-card rounded-2xl p-6" style={{ opacity: busyId === project.id ? 0.5 : 1 }}>
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: 'var(--violet-light)' }}>
                     {project.structureType === 'BUILDING' ? <Home size={18} style={{ color: 'var(--violet)' }} /> : <Wrench size={18} style={{ color: 'var(--violet)' }} />}
                   </div>
-                  <h3 className="font-bold text-base mb-1 truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
+                  <h3 className="font-bold text-base mb-1 truncate pr-8" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>
                     {project.name}
                   </h3>
                   {project.sector && (
@@ -112,8 +155,52 @@ export default function DashboardPage() {
                     <span className="inline-flex items-center gap-1"><Compass size={13} /> {project._count?.tours ?? 0}</span>
                   </div>
                 </div>
-              </Link>
-            ))}
+              );
+              return (
+                <div key={project.id} className="relative">
+                  {view === 'trash'
+                    ? <div style={{ cursor: 'default' }}>{inner}</div>
+                    : <Link href={'/projects/' + project.id} className="block">{inner}</Link>}
+
+                  <button type="button" aria-label="Actions du projet"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuId(menuId === project.id ? null : project.id); }}
+                    className="absolute rounded-lg flex items-center justify-center file-menu-btn"
+                    style={{ top: 14, right: 14, width: 34, height: 34 }}>
+                    <MoreHorizontal size={16} />
+                  </button>
+
+                  {menuId === project.id && (
+                    <div className="absolute z-20 rounded-xl shadow-lg overflow-hidden file-menu-pop" style={{ top: 52, right: 14, minWidth: 200 }}
+                      onClick={(e) => e.stopPropagation()}>
+                      {view === 'trash' ? (
+                        <button className="flex items-center gap-2 w-full text-left px-4 text-sm" style={{ minHeight: 46, color: 'var(--text)' }}
+                          onClick={() => { void act(project.id, 'restore'); }}>
+                          <RotateCcw size={15} /> Restaurer
+                        </button>
+                      ) : (
+                        <>
+                          {view === 'archived' ? (
+                            <button className="flex items-center gap-2 w-full text-left px-4 text-sm" style={{ minHeight: 46, color: 'var(--text)' }}
+                              onClick={() => { void act(project.id, 'unarchive'); }}>
+                              <RotateCcw size={15} /> Désarchiver
+                            </button>
+                          ) : (
+                            <button className="flex items-center gap-2 w-full text-left px-4 text-sm" style={{ minHeight: 46, color: 'var(--text)' }}
+                              onClick={() => { void act(project.id, 'archive'); }}>
+                              <Archive size={15} /> Archiver
+                            </button>
+                          )}
+                          <button className="flex items-center gap-2 w-full text-left px-4 text-sm" style={{ minHeight: 46, color: '#EF4444' }}
+                            onClick={() => { void act(project.id, 'trash'); }}>
+                            <Trash2 size={15} /> Mettre à la corbeille
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </main>
