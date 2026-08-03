@@ -258,6 +258,7 @@ export default function TeamPage() {
                 <label className="block text-sm font-medium mb-3" style={{ color: 'var(--text)' }}>
                   Permissions
                 </label>
+                <button type="button" onClick={() => setForm(prev => ({ ...prev, canView: true, canUpload: true, canDownload: true, canShare: true }))} className="text-xs mb-2 px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>✓ Tous les droits</button>
                 <div className="grid grid-cols-2 gap-3">
                   {([
                     { key: 'canView' as const, label: '👁️ Voir les fichiers', desc: 'Accès en lecture' },
@@ -414,7 +415,8 @@ export default function TeamPage() {
             </h3>
             <div>
               <p className="text-sm font-medium mb-2" style={{ color: 'var(--text)' }}>Permissions</p>
-              <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => setEditPerms({ canView: true, canUpload: true, canDownload: true, canShare: true, canMeasure: true, canComment: true, canReply: true, canValidate: true })} className="text-xs mb-2 px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>✓ Tous les droits</button>
+                <div className="flex flex-wrap gap-2">
                 {([
                   ['canView', '👁️ Voir'],
                   ['canDownload', '⬇️ Télécharger'],
