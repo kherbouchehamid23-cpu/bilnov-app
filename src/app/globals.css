@@ -445,3 +445,9 @@ html[data-theme="light"] .lg-app .input{background:#ffffff;border-color:#e7e5e4;
 html[data-theme="light"] .lg-app .btn-secondary{background:#f5f5f4;border-color:#e7e5e4;color:var(--text)}
 html[data-theme="light"] .lg-app .btn-secondary:hover{background:#ede9fe;border-color:rgba(107,70,193,.45);color:#1c1917}
 html[data-theme="light"] .lg-app .skeleton{background:linear-gradient(90deg,rgba(0,0,0,.04) 25%,rgba(0,0,0,.09) 50%,rgba(0,0,0,.04) 75%);background-size:200% 100%}
+
+/* Lot theme (doc 13) - bouton ... des cartes fichiers + menu, adaptes au theme clair/sombre */
+.file-menu-btn{background:rgba(15,22,38,.72);border:1px solid rgba(255,255,255,.16);color:#f4f7fd;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+html[data-theme="light"] .lg-app .file-menu-btn{background:rgba(255,255,255,.9);border-color:rgba(0,0,0,.1);color:#1c1917}
+.file-menu-pop{background:#0f1626;border:1px solid var(--border)}
+html[data-theme="light"] .lg-app .file-menu-pop{background:#ffffff;border-color:#e7e5e4}

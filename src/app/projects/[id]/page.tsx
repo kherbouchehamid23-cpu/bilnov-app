@@ -498,15 +498,15 @@ export default function ProjectPage() {
                       {/* menu ... */}
                       <button type="button"
                         onClick={e => { e.stopPropagation(); setMenuFileId(menuFileId === file.id ? null : file.id); }}
-                        className="absolute rounded-lg flex items-center justify-center"
-                        style={{ top: 14, right: 14, width: 34, height: 34, background: 'rgba(15,22,38,.82)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+                        className="absolute rounded-lg flex items-center justify-center file-menu-btn"
+                        style={{ top: 14, right: 14, width: 34, height: 34 }}>
                         ⋯
                       </button>
 
                       {menuFileId === file.id && editingFileId !== file.id && (
-                        <div className="absolute z-10 rounded-xl shadow-lg overflow-hidden"
-                          style={{ top: 50, right: 14, background: '#0f1626', border: '1px solid var(--border)', minWidth: 150 }}>
-                          <button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44 }}
+                        <div className="absolute z-10 rounded-xl shadow-lg overflow-hidden file-menu-pop"
+                          style={{ top: 50, right: 14, minWidth: 150 }}>
+                          <button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44, color: 'var(--text)' }}
                             onClick={() => { setEditingFileId(file.id); setEditingFileName(file.name); setMenuFileId(null); }}>
                             <Pencil size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 6 }} />Renommer
                           </button>
