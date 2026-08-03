@@ -1,4 +1,5 @@
 'use client';
+import ThemeToggle from '@/components/ThemeToggle';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -384,6 +385,7 @@ export default function ProjectPage() {
             <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#FEF3C7', color: '#92400E' }} title="Vous êtes invité sur ce projet">Invité</span>
           )}
           <div className="flex-1" />
+            <ThemeToggle />
           {tab === 'files' && canUpload && (
             <label className={`btn-primary text-sm cursor-pointer ${uploading ? 'opacity-60' : ''}`} style={{ minHeight: 40 }}>
               {uploading ? 'Upload...' : (<><Plus size={15} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Fichier</>)}
