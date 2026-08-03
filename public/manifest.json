@@ -1,0 +1,15 @@
+{
+  "name": "Bilnov",
+  "short_name": "Bilnov",
+  "description": "Plateforme SaaS de gestion, visualisation 3D/360 et collaboration.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#05060c",
+  "theme_color": "#05060c",
+  "lang": "fr",
+  "dir": "ltr",
+  "categories": ["productivity", "business"],
+  "icons": []
+}

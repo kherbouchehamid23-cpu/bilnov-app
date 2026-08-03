@@ -338,3 +338,70 @@ a:focus-visible, button:focus-visible, [role="button"]:focus-visible, input:focu
   .bmn-item.bmn-active { color: #f4f7fd; }
   .bmn-fab { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-top: -16px; border-radius: 16px; background: linear-gradient(135deg,#5b53ff,#22d3ee); color: #fff; box-shadow: 0 8px 24px rgba(79,70,229,.5); }
 }
+
+
+/* ==========================================================================
+   Amelioration UI/UX responsive - Lot 3 (additif, opt-in)
+   Bloc 100% additif : aucune regle existante n'est modifiee. Les utilitaires
+   ci-dessous ne s'appliquent qu'aux elements portant explicitement les classes
+   (opt-in), sauf le bandeau reseau, global mais neutre tant que la connexion
+   n'est pas perdue.
+   ========================================================================== */
+
+.bilnov-netstatus {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 1200;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  max-width: calc(100vw - 24px);
+  padding: 11px 18px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #f4f7fd;
+  background: rgba(12, 16, 28, .92);
+  border: 1px solid rgba(255, 255, 255, .12);
+  box-shadow: 0 10px 34px rgba(2, 6, 20, .5);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  animation: bilnov-netstatus-in .28s ease-out;
+}
+.bilnov-netstatus-off { border-color: rgba(255, 120, 90, .5); }
+.bilnov-netstatus-on { border-color: rgba(57, 230, 168, .5); }
+.bilnov-netstatus-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.bilnov-netstatus-off .bilnov-netstatus-dot { background: #ff785a; box-shadow: 0 0 12px #ff785a; }
+.bilnov-netstatus-on .bilnov-netstatus-dot { background: #39e6a8; box-shadow: 0 0 12px #39e6a8; }
+@keyframes bilnov-netstatus-in {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (max-width: 767px) {
+  .bilnov-netstatus { bottom: calc(76px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bilnov-netstatus { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .form-1col-mobile { grid-template-columns: 1fr !important; }
+  .stack-mobile { display: flex !important; flex-direction: column !important; align-items: stretch !important; }
+  .full-mobile { width: 100% !important; }
+  .hide-mobile { display: none !important; }
+}
+@media (min-width: 641px) {
+  .show-mobile { display: none !important; }
+}
+
+.modal-safe {
+  max-height: 100dvh;
+  max-height: 100svh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: env(safe-area-inset-bottom);
+}
