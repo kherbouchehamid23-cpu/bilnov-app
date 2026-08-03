@@ -542,7 +542,7 @@ export default function ProjectPage() {
 
           {/* TOURS — visites 360 + krpano unifiees */}
           {tab === 'tours' && (
-            <VisitesPanel projectId={id} canManage={canManage} getToken={getToken} />
+            <VisitesPanel projectId={id} canManage={canManage || canUpload} getToken={getToken} />
           )}
 
           {/* TEAM */}
