@@ -7,6 +7,7 @@ import { Plus, LogOut, Building2, Home, Wrench, FileText, Compass } from 'lucide
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
 import NotificationsBell from '@/components/NotificationsBell';
+import ThemeToggle from '@/components/ThemeToggle';
 
 interface Project {
   id: string; name: string; sector: string | null; structureType: string;
@@ -46,6 +47,7 @@ export default function DashboardPage() {
           <span className="font-bold text-base" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Bilnov</span>
           <div className="flex-1" />
           <Link href="/projects/new" className="btn-primary text-sm" style={{ minHeight: 40 }}><Plus size={16} /> Nouveau projet</Link>
+          <ThemeToggle />
           <NotificationsBell />
           <div className="flex items-center gap-2 pl-2 ml-1 border-l" style={{ borderColor: 'var(--border)' }}>
             <div className="rounded-full flex items-center justify-center text-xs font-bold text-white"
