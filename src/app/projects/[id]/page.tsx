@@ -12,7 +12,7 @@ import { isBimOr3D } from '@/lib/bim';
 import { uploadFileDirect } from '@/lib/upload';
 import { acceptAttr, uploadHint, type UploadRulesConfig } from '@/lib/uploadRules';
 import { makeThumb, getCachedThumb } from '@/lib/thumbs';
-import { Building2, DoorOpen, Package, Pin, Image as ImageIcon, Globe, FileText, Video, Box, Ruler, Building, Folder, Users, Link2, MessageSquare, Layers, Hourglass, Info, Pencil, Trash2, Plus, type LucideIcon } from 'lucide-react';
+import { Building2, DoorOpen, Package, Pin, Image as ImageIcon, Globe, FileText, Video, Box, Ruler, Building, Folder, Users, Link2, MessageSquare, Layers, Hourglass, Info, Pencil, Trash2, Plus, AlertTriangle, RotateCw, type LucideIcon } from 'lucide-react';
 
 const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
 const Model3DViewer = dynamic(() => import('@/components/Model3DViewer'), { ssr: false });
@@ -61,6 +61,7 @@ export default function ProjectPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('files');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [cadFile, setCadFile] = useState<{ id: string; name: string } | null>(null);
@@ -131,7 +132,7 @@ export default function ProjectPage() {
     ]).then(([p, n]) => {
       setProject(p.data);
       setNodes(n.data?.nodes ?? []);
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch(() => setError(true)).finally(() => setLoading(false));
     void loadFiles(null);
   }, [id, loadFiles]);
 
@@ -355,10 +356,19 @@ export default function ProjectPage() {
   const uploadAccept = acceptAttr(selectedNodeType, uploadRules);
   const uploadMsg = uploadHint(selectedNodeType, uploadRules);
 
-  if (loading) {
+  if (loading || error) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--surface)' }}>
-        <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Chargement...</div>
+        {error ? (
+              <div className="flex flex-col items-center gap-3 text-center px-6">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(255,120,90,.14)' }}><AlertTriangle size={30} style={{ color: '#ff785a' }} /></div>
+                <div className="text-base font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Impossible de charger ce projet</div>
+                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Vérifiez votre connexion, puis réessayez.</div>
+                <button onClick={() => window.location.reload()} className="btn-primary" style={{ minHeight: 40 }}><RotateCw size={16} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} /> Réessayer</button>
+              </div>
+            ) : (
+              <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Chargement...</div>
+            )}
       </div>
     );
   }
