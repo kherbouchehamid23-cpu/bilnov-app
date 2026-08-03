@@ -6,6 +6,11 @@ export const metadata: Metadata = {
   title: 'Bilnov — Gestion de projets visuels',
   description: 'Plateforme SaaS de gestion, visualisation 3D/360° et collaboration.',
   manifest: '/manifest.json',
+  icons: {
+    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
+    shortcut: ['/icon.svg'],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
   applicationName: 'Bilnov',
   appleWebApp: {
     capable: true,
