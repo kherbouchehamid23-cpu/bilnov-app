@@ -31,6 +31,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr">
       <body>
+        {/* anti-flash: applique le theme choisi avant le premier rendu (defaut = sombre) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('bilnov-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();",
+          }}
+        />
         {children}
         <NetworkStatus />
       </body>
