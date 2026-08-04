@@ -37,13 +37,13 @@ type Tab = 'files' | 'tours' | 'team' | 'access' | 'comments';
 
 // Type d'enfant déduit du type parent (ex: étage -> pièce)
 const childTypeOf: Record<string, string> = {
-  floor: 'room', room: 'zone', zone: 'custom', custom: 'custom',
+  floor: 'room', room: 'zone', zone: 'custom', custom: 'custom', building: 'block', block: 'level', level: 'floor', apartment: 'room', local: 'custom', outdoor: 'custom',
 };
 const nodeTypeLabel: Record<string, string> = {
-  floor: 'Étage', room: 'Pièce', zone: 'Zone', custom: 'Espace',
+  floor: 'Étage', room: 'Pièce', zone: 'Zone', custom: 'Espace', building: 'Bâtiment', block: 'Bloc', level: 'Niveau', apartment: 'Appartement', local: 'Local', outdoor: 'Extérieur',
 };
 const NODE_ICON: Record<string, LucideIcon> = {
-  floor: Building2, room: DoorOpen, zone: Package, custom: Pin,
+  floor: Building2, room: DoorOpen, zone: Package, custom: Pin, building: Building, block: Layers, level: Layers, apartment: Building2, local: Box, outdoor: Package,
 };
 const FILE_ICON: Record<string, LucideIcon> = {
   IMAGE: ImageIcon, IMAGE_360: Globe, PDF: FileText, VIDEO: Video,
@@ -291,7 +291,11 @@ export default function ProjectPage() {
   const renderAddForm = (): React.ReactNode => (
     <div className="my-1 mx-1 p-2 rounded-xl" style={{ background: 'var(--violet-light)' }}>
       <p className="text-xs font-semibold mb-1" style={{ color: 'var(--violet)' }}>
-        Nouveau : {nodeTypeLabel[addingUnder?.type ?? 'floor']}
+        Nouveau :</p>
+            <select className="input text-sm mb-2" value={addingUnder?.type ?? 'floor'} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setAddingUnder(prev => (prev ? { ...prev, type: e.target.value } : prev))}>
+              {Object.keys(nodeTypeLabel).map(t => (<option key={t} value={t}>{nodeTypeLabel[t]}</option>))}
+            </select>
+            <p style={{ display: 'none' }}>
       </p>
       <input
         className="input text-sm mb-2" autoFocus
