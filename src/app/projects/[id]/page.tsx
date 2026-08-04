@@ -82,6 +82,7 @@ export default function ProjectPage() {
   const [finalPreview, setFinalPreview] = useState(false);
   const [spacesFileId, setSpacesFileId] = useState<string | null>(null);
   const [spacesSel, setSpacesSel] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const access = project?.access;
   const isOwner = access ? access.canManage : true;
@@ -495,6 +496,7 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
               <div className="flex items-center gap-2 mb-4">
                 <button onClick={() => setDrawerOpen(true)}
                   className="md:hidden btn-secondary text-sm" style={{ minHeight: 40 }}><Layers size={15} /> Structure</button>
+                  <button type="button" onClick={() => setViewMode(v => v === 'grid' ? 'list' : 'grid')} className="btn-secondary text-sm" style={{ minHeight: 40 }} title="Basculer grille / liste">{viewMode === 'grid' ? 'Liste' : 'Grille'}</button>
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   {selectedNodeName ? <><b style={{ color: 'var(--text)' }}>{selectedNodeName}</b> · </> : null}
                   {files.length} fichier{files.length !== 1 ? 's' : ''}
@@ -533,7 +535,7 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                <div className={viewMode === 'list' ? 'flex flex-col gap-2' : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3'}>
                   {shownFiles.map(file => (
                     <div key={file.id} className="file-card relative" style={{ padding: 10 }}>
                       <button type="button" onClick={() => { void openFile(file.id); }} disabled={!!openingId}
