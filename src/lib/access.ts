@@ -19,6 +19,13 @@ export interface ProjectAccess {
   canComment: boolean;
   canReply: boolean;
   canValidate: boolean;
+  // Droits fichiers fins (§4). Owner = tout ; member = ses booléens.
+  canModify: boolean;
+  canDelete: boolean;
+  canAnnotate: boolean;
+  canCreateVersion: boolean;
+  canArchive: boolean;
+  canReject: boolean;
   // owner : peut gérer (inviter, supprimer espaces, créer codes). member : non.
   canManage: boolean;
   // null = accès à tout le projet ; sinon liste des nœuds autorisés (member).
@@ -53,6 +60,12 @@ export async function getProjectAccess(
       canComment: true,
       canReply: true,
       canValidate: true,
+      canModify: true,
+      canDelete: true,
+      canAnnotate: true,
+      canCreateVersion: true,
+      canArchive: true,
+      canReject: true,
       canManage: true,
       allowedNodeIds: null,
       allowedFileIds: null,
@@ -71,6 +84,12 @@ export async function getProjectAccess(
       canComment: true,
       canReply: true,
       canValidate: true,
+      canModify: true,
+      canDelete: true,
+      canAnnotate: true,
+      canCreateVersion: true,
+      canArchive: true,
+      canReject: true,
       expiresAt: true,
       allowedNodeIds: true,
       allowedFileIds: true,
@@ -92,6 +111,12 @@ export async function getProjectAccess(
     canComment: member.canComment,
     canReply: member.canReply,
     canValidate: member.canValidate,
+    canModify: member.canModify,
+    canDelete: member.canDelete,
+    canAnnotate: member.canAnnotate,
+    canCreateVersion: member.canCreateVersion,
+    canArchive: member.canArchive,
+    canReject: member.canReject,
     canManage: false,
     allowedNodeIds: (member.allowedNodeIds && member.allowedNodeIds.length > 0)
       ? member.allowedNodeIds

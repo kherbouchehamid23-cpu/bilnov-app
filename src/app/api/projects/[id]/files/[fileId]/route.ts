@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 import { deleteFile as deleteFileFromStorage } from '@/lib/storage';
+import { getProjectAccess } from '@/lib/access';
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string; fileId: string } }) {
   try {
@@ -12,6 +13,10 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string; 
     if (!file || file.projectId !== params.id || file.deletedAt || file.status !== 'ACTIVE') {
       return apiError('Fichier introuvable', 'NOT_FOUND', 404);
     }
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access) return apiError('Accès refusé', 'FORBIDDEN', 403);
+    if (!access.canModify) return apiError('Modification non autorisée', 'FORBIDDEN', 403);
 
     const body = await req.json() as { name?: string; nodeId?: string | null };
     if (!body.name || !body.name.trim()) {
@@ -42,6 +47,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     if (!file || file.projectId !== params.id || file.deletedAt || file.status !== 'ACTIVE') {
       return apiError('Fichier introuvable', 'NOT_FOUND', 404);
     }
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access) return apiError('Accès refusé', 'FORBIDDEN', 403);
+    if (!access.canDelete) return apiError('Suppression non autorisée', 'FORBIDDEN', 403);
 
     try {
       await deleteFileFromStorage(file.storageKey);
