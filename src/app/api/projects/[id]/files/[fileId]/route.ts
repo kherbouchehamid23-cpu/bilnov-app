@@ -18,18 +18,34 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string; 
     if (!access) return apiError('Accès refusé', 'FORBIDDEN', 403);
     if (!access.canModify) return apiError('Modification non autorisée', 'FORBIDDEN', 403);
 
-    const body = await req.json() as { name?: string; nodeId?: string | null };
+    const body = await req.json() as { name?: string; nodeId?: string | null; nodeIds?: string[] };
     if (!body.name || !body.name.trim()) {
       return apiError('Nom du fichier requis', 'VALIDATION_ERROR', 400);
     }
+
+    const hasSpaces = Array.isArray(body.nodeIds);
+    const spaceIds = hasSpaces ? [...new Set((body.nodeIds as string[]).filter(Boolean))] : [];
+    const primaryNodeId = hasSpaces
+      ? (spaceIds[0] ?? null)
+      : (body.nodeId === undefined ? file.nodeId : body.nodeId);
 
     const updatedFile = await prisma.file.update({
       where: { id: file.id },
       data: {
         name: body.name.trim(),
-        nodeId: body.nodeId === undefined ? file.nodeId : body.nodeId,
+        nodeId: primaryNodeId,
       },
     });
+
+    if (hasSpaces) {
+      await prisma.fileSpace.deleteMany({ where: { fileId: file.id } });
+      if (spaceIds.length) {
+        await prisma.fileSpace.createMany({
+          data: spaceIds.map((nid) => ({ fileId: file.id, nodeId: nid })),
+          skipDuplicates: true,
+        });
+      }
+    }
 
     return apiSuccess(updatedFile);
   } catch (error) {

@@ -145,9 +145,24 @@ model ProjectStructureNode {
   children ProjectStructureNode[] @relation("NodeChildren")
   files    File[]
   tours    VirtualTour[]
+  fileSpaces FileSpace[]
 
   krpanoTours  KrpanoTour[]
   @@map("project_structure_nodes")
+}
+
+model FileSpace {
+  id        String   @id @default(uuid())
+  fileId    String   @map("file_id")
+  nodeId    String   @map("node_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  file File                 @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  node ProjectStructureNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, nodeId])
+  @@index([nodeId])
+  @@map("file_spaces")
 }
 
 model ProjectMember {
@@ -203,6 +218,7 @@ model File {
   node     ProjectStructureNode? @relation(fields: [nodeId], references: [id])
   annotations CadAnnotation[]
   measurements CadMeasurement[]
+  spaces FileSpace[]
   uploader User                  @relation(fields: [uploaderId], references: [id])
 
   @@map("files")

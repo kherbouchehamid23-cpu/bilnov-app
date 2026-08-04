@@ -26,12 +26,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     };
 
     if (nodeId || nodeIdsParam) {
-      where.nodeId = nodeIdsParam ? { in: nodeIdsParam.split(',').map((v) => v.trim()).filter(Boolean) } : nodeId;
+      const ids = nodeIdsParam ? nodeIdsParam.split(',').map((v) => v.trim()).filter(Boolean) : (nodeId ? [nodeId] : []);
+      if (ids.length) {
+        where.AND = [...(Array.isArray(where.AND) ? where.AND : []), { OR: [{ nodeId: { in: ids } }, { spaces: { some: { nodeId: { in: ids } } } }] }];
+      }
     }
 
     const files = await prisma.file.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      include: { spaces: { select: { nodeId: true } } },
     });
 
     return apiSuccess({ files });
