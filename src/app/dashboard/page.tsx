@@ -172,6 +172,8 @@ export default function DashboardPage() {
                       {project.sector}
                     </span>
                   )}
+                  {(project as { location?: string | null }).location && (<p className="text-xs mt-2 truncate" style={{ color: 'var(--text-muted)' }}>Lieu : {(project as { location?: string | null }).location}</p>)}
+                  {(project as { clientName?: string | null }).clientName && (<p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>MOA : {(project as { clientName?: string | null }).clientName}</p>)}
                   <div className="flex gap-4 mt-3 pt-3 border-t text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
                     <span className="inline-flex items-center gap-1"><FileText size={13} /> {project._count?.files ?? 0}</span>
                     <span className="inline-flex items-center gap-1"><Compass size={13} /> {project._count?.tours ?? 0}</span>

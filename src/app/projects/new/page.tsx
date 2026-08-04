@@ -16,6 +16,8 @@ interface FormState {
   description: string;
   structureType: string;
   sector: string;
+  location: string;
+  clientName: string;
 }
 
 export default function NewProjectPage() {
@@ -25,6 +27,8 @@ export default function NewProjectPage() {
     description: '',
     structureType: 'BUILDING',
     sector: '',
+    location: '',
+    clientName: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -121,6 +125,15 @@ export default function NewProjectPage() {
               <option value="Événementiel">Événementiel</option>
               <option value="Autre">Autre</option>
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>Adresse / localisation</label>
+            <input type="text" value={form.location} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(prev => ({ ...prev, location: e.target.value }))} maxLength={200} className="input" placeholder="Ex: 12 rue de la Paix, 75002 Paris" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>Maître d'ouvrage</label>
+            <input type="text" value={form.clientName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm(prev => ({ ...prev, clientName: e.target.value }))} maxLength={120} className="input" placeholder="Ex: SCI Bilnov" />
           </div>
 
           {error && (

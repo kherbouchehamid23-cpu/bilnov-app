@@ -97,6 +97,8 @@ model Project {
   description    String?
   structureType  StructureType @default(BUILDING) @map("structure_type")
   sector         String?
+  location       String?       @map("location")
+  clientName     String?       @map("client_name")
   coverUrl       String?       @map("cover_url")
   uploadRules    Json?         @map("upload_rules")
   cadUnit        String        @default("cm") @map("cad_unit")

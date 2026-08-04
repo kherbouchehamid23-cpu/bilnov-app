@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
 
-    const { name, description, structureType, sector } = await req.json();
+    const { name, description, structureType, sector, location, clientName } = await req.json();
 
     if (!name) return apiError('Le nom est requis', 'VALIDATION_ERROR', 400);
 
@@ -65,6 +65,8 @@ export async function POST(req: NextRequest) {
         description,
         structureType: structureType ?? 'BUILDING',
         sector,
+        location: location ?? null,
+        clientName: clientName ?? null,
         organizationId: user.organizationId,
         createdById: user.sub,
       },
