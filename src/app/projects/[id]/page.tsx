@@ -27,7 +27,7 @@ interface StructureNode {
 }
 interface FileItem {
   id: string; name: string; fileType: string; mimeType: string;
-  sizeBytes: string | number | bigint; nodeId: string | null;
+  sizeBytes: string | number | bigint; nodeId: string | null; spaces?: { nodeId: string }[];
 }
 interface NodesApiResponse { data: { nodes: StructureNode[] }; }
 interface FilesApiResponse { data: { files: FileItem[] }; }
@@ -80,6 +80,8 @@ export default function ProjectPage() {
   const [drawerOpen, setDrawerOpen] = useState(false); // arbre mobile
   const [fileCat, setFileCat] = useState<CategoryKey | 'all'>('all');
   const [finalPreview, setFinalPreview] = useState(false);
+  const [spacesFileId, setSpacesFileId] = useState<string | null>(null);
+  const [spacesSel, setSpacesSel] = useState<string[]>([]);
 
   const access = project?.access;
   const isOwner = access ? access.canManage : true;
@@ -200,6 +202,23 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
       if (!res.ok) throw new Error('Erreur modification');
       await loadFiles(expandNodeIds(nodes, selectedNodeIds));
       setEditingFileId(null); setEditingFileName('');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur');
+    } finally { setActionLoadingId(null); }
+  }
+
+  async function saveSpaces(fileId: string): Promise<void> {
+    setActionLoadingId(fileId);
+    try {
+      const target = files.find(f => f.id === fileId);
+      const res = await fetchWithAuth(`/api/projects/${id}/files/${fileId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: target ? target.name : '', nodeIds: spacesSel }),
+      });
+      if (!res.ok) throw new Error('Erreur');
+      setSpacesFileId(null);
+      await loadFiles(expandNodeIds(nodes, selectedNodeIds));
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Erreur');
     } finally { setActionLoadingId(null); }
@@ -545,6 +564,7 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
                       {menuFileId === file.id && editingFileId !== file.id && (
                         <div className="absolute z-10 rounded-xl shadow-lg overflow-hidden file-menu-pop"
                           style={{ top: 50, right: 14, minWidth: 150 }}>
+                          {canModify && (<button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44, color: 'var(--violet)' }} onClick={() => { setSpacesFileId(file.id); setSpacesSel((file.spaces ?? []).map(sp => sp.nodeId)); setMenuFileId(null); }}><Layers size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 6 }} />Espaces</button>)}
                           {canModify && (<button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44, color: 'var(--text)' }}
                             onClick={() => { setEditingFileId(file.id); setEditingFileName(file.name); setMenuFileId(null); }}>
                             <Pencil size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 6 }} />Renommer
@@ -556,6 +576,24 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
                         </div>
                       )}
                       </>)}
+
+                      {spacesFileId === file.id && (
+                        <div className="mt-2 p-2 rounded-xl" style={{ background: 'var(--surface-2)' }}>
+                          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Espaces du fichier</p>
+                          <div className="max-h-40 overflow-auto space-y-1">
+                            {flatNodes(nodes).map(n => (
+                              <label key={n.id} className="flex items-center gap-2 text-sm">
+                                <input type="checkbox" checked={spacesSel.includes(n.id)} onChange={() => setSpacesSel(prev => prev.includes(n.id) ? prev.filter(x => x !== n.id) : [...prev, n.id])} />
+                                <span className="truncate">{n.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="flex gap-2 mt-2">
+                            <button onClick={() => { void saveSpaces(file.id); }} disabled={actionLoadingId === file.id} className="btn-primary text-xs flex-1" style={{ minHeight: 38 }}>{actionLoadingId === file.id ? '...' : 'Enregistrer'}</button>
+                            <button onClick={() => { setSpacesFileId(null); }} className="btn-secondary text-xs" style={{ minHeight: 38 }}>Annuler</button>
+                          </div>
+                        </div>
+                      )}
 
                       {editingFileId === file.id && (
                         <div className="mt-2 space-y-2">
@@ -650,6 +688,13 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
       )}
     </div>
   );
+}
+
+function flatNodes(list: StructureNode[]): StructureNode[] {
+  const out: StructureNode[] = [];
+  const walk = (ns: StructureNode[]): void => { for (const n of ns) { out.push(n); walk(n.children); } };
+  walk(list);
+  return out;
 }
 
 function expandNodeIds(list: StructureNode[], targetIds: string[]): string[] {
