@@ -79,12 +79,15 @@ export default function ProjectPage() {
   const [creatingNode, setCreatingNode] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false); // arbre mobile
   const [fileCat, setFileCat] = useState<CategoryKey | 'all'>('all');
+  const [finalPreview, setFinalPreview] = useState(false);
 
   const access = project?.access;
-  const canUpload = access ? access.canUpload : true;
-  const canManage = access ? access.canManage : true;
-const canModify = access ? (access.canModify ?? access.canUpload) : true;
-const canDelete = access ? (access.canDelete ?? access.canManage) : true;
+  const isOwner = access ? access.canManage : true;
+  const previewGuest = isOwner && finalPreview;
+  const canUpload = (access ? access.canUpload : true) && !previewGuest;
+  const canManage = isOwner && !previewGuest;
+const canModify = (access ? (access.canModify ?? access.canUpload) : true) && !previewGuest;
+const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !previewGuest;
   const isGuest = access ? access.role === 'member' : false;
 
   const getToken = (): string =>
@@ -408,6 +411,11 @@ const canDelete = access ? (access.canDelete ?? access.canManage) : true;
           )}
           <div className="flex-1" />
             <ThemeToggle />
+            {isOwner && (
+              <button type="button" onClick={() => setFinalPreview(v => !v)} className="text-sm rounded-lg px-3" style={{ minHeight: 40, fontWeight: 500, color: finalPreview ? '#92400E' : 'var(--violet)', background: finalPreview ? '#FEF3C7' : 'var(--violet-light)' }} title="Basculer entre le mode gestion et l'aperçu client">
+                {finalPreview ? 'Aperçu client — Revenir' : 'Vue client'}
+              </button>
+            )}
           {tab === 'files' && canUpload && (
             <label className={`btn-primary text-sm cursor-pointer ${uploading ? 'opacity-60' : ''}`} style={{ minHeight: 40 }}>
               {uploading ? 'Upload...' : (<><Plus size={15} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} /><span className="hidden sm:inline">Fichier</span></>)}
