@@ -17,6 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const scope = await resolveScope(params.id, access.allowedNodeIds, access.allowedFileIds);
 
     const nodeId = req.nextUrl.searchParams.get('nodeId');
+    const nodeIdsParam = req.nextUrl.searchParams.get('nodeIds');
     const where: any = {
       projectId: params.id,
       status: 'ACTIVE',
@@ -24,8 +25,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       ...scopeFileWhere(scope),
     };
 
-    if (nodeId) {
-      where.nodeId = nodeId;
+    if (nodeId || nodeIdsParam) {
+      where.nodeId = nodeIdsParam ? { in: nodeIdsParam.split(',').map((v) => v.trim()).filter(Boolean) } : nodeId;
     }
 
     const files = await prisma.file.findMany({
