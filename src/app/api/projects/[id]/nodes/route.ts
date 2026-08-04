@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { getProjectAccess } from '@/lib/access';
 
 // Recursively build tree from flat list
 interface NodeWithChildren {
@@ -46,6 +47,9 @@ export async function GET(
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
 
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
+
     const flat = await prisma.projectStructureNode.findMany({
       where: { projectId: params.id },
       include: { _count: { select: { files: true, tours: true } } },
@@ -70,6 +74,10 @@ export async function POST(
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access) return apiError('Accès refusé', 'FORBIDDEN', 403);
+    if (!access.canManage && !access.canUpload) return apiError('Gestion des espaces non autorisée', 'FORBIDDEN', 403);
 
     const body = await req.json() as {
       name?: string;
