@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { logAudit } from '@/lib/audit';
 import { deleteFile as deleteFileFromStorage } from '@/lib/storage';
 import { getProjectAccess } from '@/lib/access';
 
@@ -47,6 +48,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string; 
       }
     }
 
+    await logAudit({ projectId: params.id, userId: user.sub, action: 'file.update', entityType: 'file', entityId: file.id });
     return apiSuccess(updatedFile);
   } catch (error) {
     console.error('PUT file error:', error);
@@ -87,6 +89,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       data: { storageUsedBytes: { decrement: file.sizeBytes as bigint } },
     });
 
+    await logAudit({ projectId: params.id, userId: user.sub, action: 'file.delete', entityType: 'file', entityId: file.id });
     return apiSuccess({ id: file.id });
   } catch (error) {
     console.error('DELETE file error:', error);

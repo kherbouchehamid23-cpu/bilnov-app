@@ -167,6 +167,20 @@ model FileSpace {
   @@map("file_spaces")
 }
 
+model AuditLog {
+  id         String   @id @default(uuid())
+  projectId  String?  @map("project_id")
+  userId     String?  @map("user_id")
+  action     String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([projectId, createdAt])
+  @@map("audit_logs")
+}
+
 model ProjectMember {
   id               String    @id @default(uuid())
   projectId        String    @map("project_id")

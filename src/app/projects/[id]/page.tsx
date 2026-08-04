@@ -431,6 +431,7 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
           )}
           <div className="flex-1" />
             <ThemeToggle />
+            {isOwner && (<Link href={`/projects/${id}/audit`} className="text-sm rounded-lg px-3" style={{ minHeight: 40, display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)' }} title="Journal d'audit">Journal</Link>)}
             {isOwner && (
               <button type="button" onClick={() => setFinalPreview(v => !v)} className="text-sm rounded-lg px-3" style={{ minHeight: 40, fontWeight: 500, color: finalPreview ? '#92400E' : 'var(--violet)', background: finalPreview ? '#FEF3C7' : 'var(--violet-light)' }} title="Basculer entre le mode gestion et l'aperçu client">
                 {finalPreview ? 'Aperçu client — Revenir' : 'Vue client'}

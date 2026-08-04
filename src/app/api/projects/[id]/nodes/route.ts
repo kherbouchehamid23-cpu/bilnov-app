@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { logAudit } from '@/lib/audit';
 import { getProjectAccess } from '@/lib/access';
 
 // Recursively build tree from flat list
@@ -104,6 +105,7 @@ export async function POST(
       include: { _count: { select: { files: true, tours: true } } },
     });
 
+    await logAudit({ projectId: params.id, userId: user.sub, action: 'node.create', entityType: 'node', entityId: node.id });
     return apiSuccess({ ...node, children: [] }, 201);
   } catch (error) {
     return apiError(

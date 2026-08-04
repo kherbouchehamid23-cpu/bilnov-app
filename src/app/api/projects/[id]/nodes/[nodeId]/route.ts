@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { logAudit } from '@/lib/audit';
 import { getProjectAccess } from '@/lib/access';
 
 export async function DELETE(
@@ -27,6 +28,7 @@ export async function DELETE(
       where: { id: params.nodeId },
     });
 
+    await logAudit({ projectId: params.id, userId: user.sub, action: 'node.delete', entityType: 'node', entityId: params.nodeId });
     return apiSuccess({ message: 'Espace supprimé' });
   } catch (error) {
     return apiError(
@@ -66,6 +68,7 @@ export async function PATCH(
       },
     });
 
+    await logAudit({ projectId: params.id, userId: user.sub, action: 'node.update', entityType: 'node', entityId: params.nodeId });
     return apiSuccess(node);
   } catch (error) {
     return apiError(

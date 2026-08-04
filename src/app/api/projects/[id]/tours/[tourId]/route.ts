@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { logAudit } from '@/lib/audit';
 import { getProjectAccess } from '@/lib/access';
 
 export async function GET(
@@ -39,6 +40,7 @@ export async function PATCH(
     if (data.status === 'PUBLISHED') data.publishedAt = new Date();
     if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
     const updated = await prisma.virtualTour.update({ where: { id: params.tourId }, data });
+    await logAudit({ projectId: params.id, userId: user.sub, action: 'tour.update', entityType: 'tour', entityId: params.tourId });
     return apiSuccess(updated);
   } catch {
     return apiError('Erreur', 'INTERNAL_ERROR', 500);
