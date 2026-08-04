@@ -59,7 +59,8 @@ export default function ProjectPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [nodes, setNodes] = useState<StructureNode[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
   const [tab, setTab] = useState<Tab>('files');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -114,8 +115,8 @@ export default function ProjectPage() {
     }
   }, []);
 
-  const loadFiles = useCallback(async (nodeId: string | null): Promise<void> => {
-    const qs = nodeId ? `?nodeId=${nodeId}` : '';
+  const loadFiles = useCallback(async (nodeIds: string[]): Promise<void> => {
+    const qs = nodeIds.length ? `?nodeIds=${nodeIds.join(',')}` : '';
     const r = await api.get<FilesApiResponse>(`/api/projects/${id}/files${qs}`);
     const fileList = r.data?.files ?? [];
     setFiles(fileList);
@@ -135,10 +136,10 @@ export default function ProjectPage() {
       setProject(p.data);
       setNodes(n.data?.nodes ?? []);
     }).catch(() => setError(true)).finally(() => setLoading(false));
-    void loadFiles(null);
+    void loadFiles([]);
   }, [id, loadFiles]);
 
-  useEffect(() => { void loadFiles(selectedNodeId); }, [selectedNodeId, loadFiles]);
+  useEffect(() => { void loadFiles(expandNodeIds(nodes, selectedNodeIds)); }, [selectedNodeIds, nodes, loadFiles]);
   const openedFromQueryRef = useRef(false);
   useEffect(() => {
     if (openedFromQueryRef.current || typeof window === 'undefined' || files.length === 0) return;
@@ -155,7 +156,7 @@ export default function ProjectPage() {
       for (const file of Array.from(list)) {
         await uploadFileDirect(file, id, getToken(), selectedNodeId ?? null);
       }
-      await loadFiles(selectedNodeId);
+      await loadFiles(expandNodeIds(nodes, selectedNodeIds));
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Erreur upload');
     } finally {
@@ -192,7 +193,7 @@ export default function ProjectPage() {
         body: JSON.stringify({ name: editingFileName.trim() }),
       });
       if (!res.ok) throw new Error('Erreur modification');
-      await loadFiles(selectedNodeId);
+      await loadFiles(expandNodeIds(nodes, selectedNodeIds));
       setEditingFileId(null); setEditingFileName('');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Erreur');
@@ -205,7 +206,7 @@ export default function ProjectPage() {
     try {
       const res = await fetchWithAuth(`/api/projects/${id}/files/${fileId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Erreur suppression');
-      await loadFiles(selectedNodeId);
+      await loadFiles(expandNodeIds(nodes, selectedNodeIds));
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Erreur');
     } finally { setActionLoadingId(null); setMenuFileId(null); }
@@ -239,12 +240,12 @@ export default function ProjectPage() {
     try {
       await fetchWithAuth(`/api/projects/${id}/nodes/${nodeId}`, { method: 'DELETE' });
       await reloadNodes();
-      if (selectedNodeId === nodeId) setSelectedNodeId(null);
+      setSelectedNodeIds(prev => prev.filter(x => x !== nodeId));
     } catch { alert('Erreur suppression'); }
   }
 
   function selectNode(nodeId: string | null) {
-    setSelectedNodeId(nodeId);
+    setSelectedNodeIds(prev => nodeId === null ? [] : (prev.includes(nodeId) ? prev.filter(x => x !== nodeId) : [...prev, nodeId]));
     setDrawerOpen(false); // referme le tiroir mobile après sélection
   }
 
@@ -254,13 +255,13 @@ export default function ProjectPage() {
       <div key={node.id}>
         <div className="flex items-center gap-1" style={{ paddingLeft: `${depth * 14}px` }}>
           <button
-            onClick={() => selectNode(node.id === selectedNodeId ? null : node.id)}
+            onClick={() => selectNode(node.id)}
             className="flex-1 flex items-center gap-2 px-3 rounded-xl text-sm text-left"
             style={{
               minHeight: 44,
-              background: selectedNodeId === node.id ? 'var(--violet-light)' : 'transparent',
-              color: selectedNodeId === node.id ? 'var(--violet)' : 'var(--text)',
-              fontWeight: selectedNodeId === node.id ? 600 : 400,
+              background: selectedNodeIds.includes(node.id) ? 'var(--violet-light)' : 'transparent',
+              color: selectedNodeIds.includes(node.id) ? 'var(--violet)' : 'var(--text)',
+              fontWeight: selectedNodeIds.includes(node.id) ? 600 : 400,
             }}>
             <span><NodeIco t={node.nodeType} size={16} /></span>
             <span className="flex-1 truncate">{node.name}</span>
@@ -326,9 +327,9 @@ export default function ProjectPage() {
         className="flex items-center gap-2 px-3 rounded-xl text-sm text-left"
         style={{
           minHeight: 44,
-          background: selectedNodeId === null ? 'var(--violet-light)' : 'transparent',
-          color: selectedNodeId === null ? 'var(--violet)' : 'var(--text)',
-          fontWeight: selectedNodeId === null ? 600 : 400,
+          background: selectedNodeIds.length === 0 ? 'var(--violet-light)' : 'transparent',
+          color: selectedNodeIds.length === 0 ? 'var(--violet)' : 'var(--text)',
+          fontWeight: selectedNodeIds.length === 0 ? 600 : 400,
         }}>
         <Folder size={16} /><span className="flex-1">Tous les fichiers</span>
       </button>
@@ -466,6 +467,18 @@ export default function ProjectPage() {
                   {files.length} fichier{files.length !== 1 ? 's' : ''}
                 </p>
               </div>
+              {selectedNodeIds.length > 0 && (
+                <div className="flex items-center flex-wrap gap-2 mb-3 text-xs">
+                  <span className="font-semibold" style={{ color: 'var(--violet)' }}>Filtre actif :</span>
+                  {selectedNodeIds.map(nid => (
+                    <span key={nid} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>
+                      {findNodeName(nodes, nid) ?? 'Espace'}
+                      <button type="button" aria-label="Retirer" onClick={() => setSelectedNodeIds(prev => prev.filter(x => x !== nid))} style={{ lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                  <button type="button" onClick={() => setSelectedNodeIds([])} className="underline" style={{ color: 'var(--text-muted)' }}>Réinitialiser</button>
+                </div>
+              )}
               <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1">
                 <button type="button" onClick={() => setFileCat('all')} className="px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap" style={{ background: fileCat === 'all' ? 'var(--violet)' : 'var(--surface-2)', color: fileCat === 'all' ? '#fff' : 'var(--text-muted)' }}>Tous <span style={{ opacity: .6 }}>{files.length}</span></button>
                 {visibleCats.map(c => (
@@ -615,6 +628,20 @@ export default function ProjectPage() {
       )}
     </div>
   );
+}
+
+function expandNodeIds(list: StructureNode[], targetIds: string[]): string[] {
+  const targets = new Set(targetIds);
+  const out: string[] = [];
+  const walk = (nodes: StructureNode[], parentIncluded: boolean): void => {
+    for (const n of nodes) {
+      const inc = parentIncluded || targets.has(n.id);
+      if (inc) out.push(n.id);
+      walk(n.children, inc);
+    }
+  };
+  walk(list, false);
+  return out;
 }
 
 function findNodeType(list: StructureNode[], targetId: string): string | null {
