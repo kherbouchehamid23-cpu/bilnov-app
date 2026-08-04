@@ -19,7 +19,7 @@ const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false }
 const Model3DViewer = dynamic(() => import('@/components/Model3DViewer'), { ssr: false });
 const VisitesPanel = dynamic(() => import('@/components/VisitesPanel'), { ssr: false });
 
-interface ProjectAccess { role: 'owner' | 'member'; canView: boolean; canUpload: boolean; canDownload: boolean; canShare: boolean; canManage: boolean; }
+interface ProjectAccess { role: 'owner' | 'member'; canView: boolean; canUpload: boolean; canDownload: boolean; canShare: boolean; canModify?: boolean; canDelete?: boolean; canAnnotate?: boolean; canManage: boolean; }
 interface Project { id: string; name: string; sector: string | null; structureType: string; access?: ProjectAccess; uploadRules?: UploadRulesConfig | null; }
 interface StructureNode {
   id: string; name: string; nodeType: string; position: number;
@@ -83,6 +83,8 @@ export default function ProjectPage() {
   const access = project?.access;
   const canUpload = access ? access.canUpload : true;
   const canManage = access ? access.canManage : true;
+const canModify = access ? (access.canModify ?? access.canUpload) : true;
+const canDelete = access ? (access.canDelete ?? access.canManage) : true;
   const isGuest = access ? access.role === 'member' : false;
 
   const getToken = (): string =>
@@ -524,6 +526,7 @@ export default function ProjectPage() {
                       </button>
 
                       {/* menu ... */}
+                      {(canModify || canDelete) && (<>
                       <button type="button"
                         onClick={e => { e.stopPropagation(); setMenuFileId(menuFileId === file.id ? null : file.id); }}
                         className="absolute rounded-lg flex items-center justify-center file-menu-btn"
@@ -534,16 +537,17 @@ export default function ProjectPage() {
                       {menuFileId === file.id && editingFileId !== file.id && (
                         <div className="absolute z-10 rounded-xl shadow-lg overflow-hidden file-menu-pop"
                           style={{ top: 50, right: 14, minWidth: 150 }}>
-                          <button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44, color: 'var(--text)' }}
+                          {canModify && (<button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44, color: 'var(--text)' }}
                             onClick={() => { setEditingFileId(file.id); setEditingFileName(file.name); setMenuFileId(null); }}>
                             <Pencil size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 6 }} />Renommer
-                          </button>
-                          <button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44, color: '#EF4444' }}
+                          </button>)}
+                          {canDelete && (<button className="block w-full text-left px-4 text-sm" style={{ minHeight: 44, color: '#EF4444' }}
                             onClick={() => { void deleteFile(file.id); }}>
                             <Trash2 size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 6 }} />Supprimer
-                          </button>
+                          </button>)}
                         </div>
                       )}
+                      </>)}
 
                       {editingFileId === file.id && (
                         <div className="mt-2 space-y-2">
@@ -611,6 +615,12 @@ export default function ProjectPage() {
         </main>
       </div>
 
+      {tab === 'files' && canUpload && (
+        <label className="md:hidden fixed z-30 flex items-center justify-center" style={{ right: 16, bottom: 76, width: 56, height: 56, borderRadius: 9999, background: 'var(--violet)', color: '#fff', boxShadow: '0 8px 24px rgba(124,58,237,.4)' }} title={uploadMsg}>
+          <Plus size={24} />
+          <input type="file" multiple accept={uploadAccept} className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
+        </label>
+      )}
       {/* Bottom nav mobile */}
       <nav className="md:hidden fixed left-0 right-0 bottom-0 z-30 flex justify-around border-t"
         style={{ background: '#0b1120', borderColor: 'var(--border)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
