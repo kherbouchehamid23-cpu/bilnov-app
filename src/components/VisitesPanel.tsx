@@ -240,6 +240,9 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
                 {canManage && (
                   <Link href={`/projects/${projectId}/tours/${t.id}`} className="inline-block text-xs font-medium hover:underline" style={{ color: 'var(--violet)' }}><Pencil size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Gérer les scènes</Link>
                 )}
+                {canManage && t.status !== 'PUBLISHED' && (
+                  <button type="button" onClick={async (e) => { e.preventDefault(); await fetchWithAuth(`/api/projects/${projectId}/tours/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'PUBLISHED' }) }); load(); }} className="inline-block text-xs font-medium hover:underline" style={{ color: '#10B981' }}>✓ Finaliser</button>
+                )}
                 <Link href={`/projects/${projectId}/tours/${t.id}/view-psv`} className="inline-block text-xs hover:underline" style={{ color: 'var(--text-muted)' }}><Eye size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Voir</Link>
               </div>
             </div>
