@@ -7,7 +7,7 @@ import bcrypt from 'bcryptjs';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, password, firstName, lastName } = body;
+    const { email, password, firstName, lastName, profession, professionOther } = body;
 
     if (!email || !password || !firstName || !lastName) {
       return apiError('Tous les champs sont requis', 'VALIDATION_ERROR', 400);
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     const passwordHash = await hashPassword(password);
 
     const user = await prisma.user.create({
-      data: { email, passwordHash, firstName, lastName },
+      data: { email, passwordHash, firstName, lastName, profession: profession || null, professionOther: professionOther || null },
     });
 
     const org = await prisma.organization.create({

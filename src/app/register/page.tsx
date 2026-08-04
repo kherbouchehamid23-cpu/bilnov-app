@@ -16,12 +16,12 @@ interface AuthResponse {
   };
 }
 
-interface FormState { firstName: string; lastName: string; email: string; password: string; }
+interface FormState { firstName: string; lastName: string; email: string; password: string; profession: string; professionOther: string; }
 
 export default function RegisterPage() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
-  const [form, setForm] = useState<FormState>({ firstName: '', lastName: '', email: '', password: '' });
+  const [form, setForm] = useState<FormState>({ firstName: '', lastName: '', email: '', password: '', profession: '', professionOther: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -80,6 +80,19 @@ export default function RegisterPage() {
                 </button>
               </div>
             </div>
+            <div>
+              <label className="lg-label" htmlFor="reg-profession">Votre métier <span style={{ color: '#9fb0c9', fontWeight: 400 }}>(optionnel)</span></label>
+              <select id="reg-profession" value={form.profession} onChange={(e) => setForm(prev => ({ ...prev, profession: e.target.value, professionOther: e.target.value === 'Autre' ? prev.professionOther : '' }))} className="lg-input">
+                <option value="">— Sélectionner —</option>
+                {['Architecte','Maître d\'ouvrage','Maître d\'œuvre','Bureau d\'études','Promoteur immobilier','Géomètre','Entreprise du bâtiment','Artisan','Agent immobilier','Diagnostiqueur','Autre'].map(p => (<option key={p} value={p}>{p}</option>))}
+              </select>
+            </div>
+            {form.profession === 'Autre' && (
+              <div>
+                <label className="lg-label" htmlFor="reg-profession-other">Précisez votre métier</label>
+                <input id="reg-profession-other" type="text" value={form.professionOther} onChange={handleChange('professionOther')} className="lg-input" placeholder="Votre métier" />
+              </div>
+            )}
             {error && (<div className="lg-error">{error}</div>)}
             <button type="submit" disabled={loading} className="lg-pill-solid" style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '13px', borderRadius: 13, fontWeight: 500, fontSize: 15, border: 0, cursor: 'pointer' }}>
               {loading ? 'Création...' : (<>Démarrer l&apos;essai gratuit <ArrowRight size={17} /></>)}
