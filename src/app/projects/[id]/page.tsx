@@ -9,6 +9,7 @@ import { fetchWithAuth } from '@/lib/auth-client';
 import dynamic from 'next/dynamic';
 import { isCadFile } from '@/lib/cad';
 import { isBimOr3D } from '@/lib/bim';
+import { CATEGORIES, categoryOfFileType, type CategoryKey } from '@/lib/fileCategories';
 import { uploadFileDirect } from '@/lib/upload';
 import { acceptAttr, uploadHint, type UploadRulesConfig } from '@/lib/uploadRules';
 import { makeThumb, getCachedThumb } from '@/lib/thumbs';
@@ -76,6 +77,7 @@ export default function ProjectPage() {
   const [nodeName, setNodeName] = useState('');
   const [creatingNode, setCreatingNode] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false); // arbre mobile
+  const [fileCat, setFileCat] = useState<CategoryKey | 'all'>('all');
 
   const access = project?.access;
   const canUpload = access ? access.canUpload : true;
@@ -355,6 +357,9 @@ export default function ProjectPage() {
   const uploadRules = project?.uploadRules ?? null;
   const uploadAccept = acceptAttr(selectedNodeType, uploadRules);
   const uploadMsg = uploadHint(selectedNodeType, uploadRules);
+  const catCounts = files.reduce((m, f) => { const k = categoryOfFileType(f.fileType); m[k] = (m[k] || 0) + 1; return m; }, {} as Record<string, number>);
+  const visibleCats = CATEGORIES.filter(c => (catCounts[c.key] || 0) > 0 || canUpload);
+  const shownFiles = fileCat === 'all' ? files : files.filter(f => categoryOfFileType(f.fileType) === fileCat);
 
   if (loading || error) {
     return (
@@ -461,6 +466,12 @@ export default function ProjectPage() {
                   {files.length} fichier{files.length !== 1 ? 's' : ''}
                 </p>
               </div>
+              <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1">
+                <button type="button" onClick={() => setFileCat('all')} className="px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap" style={{ background: fileCat === 'all' ? 'var(--violet)' : 'var(--surface-2)', color: fileCat === 'all' ? '#fff' : 'var(--text-muted)' }}>Tous <span style={{ opacity: .6 }}>{files.length}</span></button>
+                {visibleCats.map(c => (
+                  <button key={c.key} type="button" onClick={() => setFileCat(c.key)} className="px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap" style={{ background: fileCat === c.key ? 'var(--violet)' : 'var(--surface-2)', color: fileCat === c.key ? '#fff' : 'var(--text-muted)' }}>{c.label} <span style={{ opacity: .6 }}>{catCounts[c.key] || 0}</span></button>
+                ))}
+              </div>
               {canUpload && uploadAccept && (
                 <p className="text-xs mb-3 inline-flex items-center gap-1 px-2 py-1 rounded-lg"
                   style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>
@@ -468,7 +479,7 @@ export default function ProjectPage() {
                 </p>
               )}
 
-              {files.length === 0 ? (
+              {shownFiles.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <div className="mb-3"><Folder size={48} style={{ color: 'var(--text-light)' }} /></div>
                   <p style={{ color: 'var(--text-muted)' }}>
@@ -477,7 +488,7 @@ export default function ProjectPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {files.map(file => (
+                  {shownFiles.map(file => (
                     <div key={file.id} className="file-card relative" style={{ padding: 10 }}>
                       <button type="button" onClick={() => { void openFile(file.id); }} disabled={!!openingId}
                         className="w-full text-left" style={{ background: 'transparent' }}>
