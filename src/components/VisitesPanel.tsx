@@ -14,6 +14,7 @@ interface Props {
   projectId: string;
   canManage: boolean;          // owner : peut créer/supprimer
   getToken: () => string;
+  publishedOnly?: boolean;
 }
 
 function fmtSize(b: number): string {
@@ -22,7 +23,7 @@ function fmtSize(b: number): string {
   return mb >= 1 ? `${mb.toFixed(1)} Mo` : `${(b / 1024).toFixed(0)} Ko`;
 }
 
-export default function VisitesPanel({ projectId, canManage, getToken }: Props) {
+export default function VisitesPanel({ projectId, canManage, getToken, publishedOnly }: Props) {
   const [tours360, setTours360] = useState<Tour360[]>([]);
   const [krpano, setKrpano] = useState<KrpanoTour[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,7 +223,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Cartes 360° */}
-          {tours360.map(t => (
+          {(publishedOnly ? tours360.filter(t => t.status === 'PUBLISHED') : tours360).map(t => (
             <div key={`t360-${t.id}`} className="file-card rounded-2xl p-5">
               {/* La carte ouvre l'éditeur (gestion des scènes) pour un gestionnaire, sinon le viewer. */}
               <Link href={canManage ? `/projects/${projectId}/tours/${t.id}` : `/projects/${projectId}/tours/${t.id}/view-psv`} className="block">
@@ -249,7 +250,7 @@ export default function VisitesPanel({ projectId, canManage, getToken }: Props) 
           ))}
 
           {/* Cartes krpano */}
-          {krpano.map(t => (
+          {(publishedOnly ? krpano.filter(t => t.status === 'READY') : krpano).map(t => (
             <div key={`kp-${t.id}`} className="file-card rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet-light)' }}><Landmark size={24} style={{ color: 'var(--violet)' }} /></div>

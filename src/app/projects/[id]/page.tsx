@@ -529,7 +529,7 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
               )}
 
               {fileCat === 'tours360' && (
-                <div className="mb-4"><VisitesPanel projectId={id} canManage={canManage || canUpload} getToken={getToken} /></div>
+                <div className="mb-4"><VisitesPanel projectId={id} canManage={canManage || canUpload} getToken={getToken} publishedOnly /></div>
               )}
               {shownFiles.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
