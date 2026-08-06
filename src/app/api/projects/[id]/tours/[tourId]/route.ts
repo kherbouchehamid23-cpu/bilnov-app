@@ -31,7 +31,7 @@ export async function PATCH(
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
     const access = await getProjectAccess(user, params.id);
     if (!access) return apiError('Accès refusé', 'FORBIDDEN', 403);
-    if (!access.canManage && !access.canUpload) return apiError('Action non autorisée', 'FORBIDDEN', 403);
+    if (!access.canManage) return apiError('Action réservée au propriétaire', 'FORBIDDEN', 403);
     const tour = await prisma.virtualTour.findFirst({ where: { id: params.tourId, projectId: params.id } });
     if (!tour) return apiError('Introuvable', 'NOT_FOUND', 404);
     const body = (await req.json()) as { status?: string; name?: string };

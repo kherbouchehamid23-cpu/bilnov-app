@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { getProjectAccess } from '@/lib/access';
 import { deletePrefix } from '@/lib/krpano';
 import { deleteFile as deleteZipFromStorage } from '@/lib/storage';
 
@@ -17,6 +18,8 @@ export async function GET(
     if (!tour || tour.projectId !== params.id || tour.deletedAt) {
       return apiError('Tour introuvable', 'NOT_FOUND', 404);
     }
+    const accessV = await getProjectAccess(user, params.id);
+    if (!accessV || !accessV.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
     return apiSuccess(tour);
   } catch (error) {
     return apiError(
@@ -40,6 +43,9 @@ export async function PUT(
     if (!tour || tour.projectId !== params.id || tour.deletedAt) {
       return apiError('Tour introuvable', 'NOT_FOUND', 404);
     }
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canManage) return apiError('Action réservée au propriétaire', 'FORBIDDEN', 403);
 
     const body = (await req.json()) as { name?: string; description?: string };
     if (body.name !== undefined && !body.name.trim()) {
@@ -76,6 +82,9 @@ export async function DELETE(
     if (!tour || tour.projectId !== params.id || tour.deletedAt) {
       return apiError('Tour introuvable', 'NOT_FOUND', 404);
     }
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canManage) return apiError('Action réservée au propriétaire', 'FORBIDDEN', 403);
 
     // 1) Supprimer tous les fichiers extraits sous le préfixe R2
     try {

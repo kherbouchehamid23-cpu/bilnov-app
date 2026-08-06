@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { getProjectAccess } from '@/lib/access';
 
 // GET : liste des tours krpano d'un projet (optionnellement filtrés par node)
 export async function GET(
@@ -10,6 +11,9 @@ export async function GET(
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+
+    const accessV = await getProjectAccess(user, params.id);
+    if (!accessV || !accessV.canView) return apiError('Accès refusé', 'FORBIDDEN', 403);
 
     const nodeId = req.nextUrl.searchParams.get('nodeId');
     const where: { projectId: string; deletedAt: null; nodeId?: string } = {
@@ -42,6 +46,9 @@ export async function POST(
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canManage) return apiError('Action réservée au propriétaire', 'FORBIDDEN', 403);
 
     const body = (await req.json()) as {
       zipKey?: string;

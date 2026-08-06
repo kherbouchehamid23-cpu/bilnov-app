@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { getProjectAccess } from '@/lib/access';
 import { krpanoClient, krpanoBucket } from '@/lib/krpano';
 import { randomUUID } from 'crypto';
 
@@ -14,6 +15,9 @@ export async function POST(
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canManage) return apiError('Action réservée au propriétaire', 'FORBIDDEN', 403);
 
     const body = (await req.json()) as { filename?: string };
     const filename = body.filename ?? 'tour.zip';

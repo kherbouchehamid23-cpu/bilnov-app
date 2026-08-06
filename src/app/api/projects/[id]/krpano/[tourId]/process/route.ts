@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { getProjectAccess } from '@/lib/access';
 import { extractZipToStorage } from '@/lib/krpano';
 
 // Décompresse le ZIP du tour et republie tous les fichiers sur R2 sous le préfixe
@@ -14,6 +15,9 @@ export async function POST(
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+
+    const access = await getProjectAccess(user, params.id);
+    if (!access || !access.canManage) return apiError('Action réservée au propriétaire', 'FORBIDDEN', 403);
 
     const tour = await prisma.krpanoTour.findUnique({ where: { id: tourId } });
     if (!tour || tour.projectId !== params.id || tour.deletedAt) {
