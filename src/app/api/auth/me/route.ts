@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { subscriptionState } from '@/lib/subscription';
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,6 +24,8 @@ export async function GET(req: NextRequest) {
       organizationId: user.organization?.id ?? null,
       organizationName: user.organization?.name ?? null,
       plan: user.organization?.plan ?? 'TRIAL',
+      planExpiresAt: user.organization?.planExpiresAt ?? null,
+      subscription: subscriptionState(user.organization ?? null),
     });
   } catch (error) {
     return apiError('Erreur serveur', 'INTERNAL_ERROR', 500);

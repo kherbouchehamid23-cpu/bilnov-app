@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { JwtPayload } from '@/lib/auth';
+import { writeAllowed } from '@/lib/subscription';
 
 // Niveau d'accès d'un utilisateur à un projet donné.
 // Deux chemins :
@@ -33,6 +34,19 @@ export interface ProjectAccess {
   allowedFileIds: string[] | null;
 }
 
+// Abonnement expire (au-dela de la grace) => consultation seule : on neutralise
+// toutes les capacites d'ecriture, on garde la lecture et le telechargement.
+function applyBilling(a: ProjectAccess, writable: boolean): ProjectAccess {
+  if (writable) return a;
+  return {
+    ...a,
+    canUpload: false, canShare: false, canMeasure: false, canComment: false,
+    canReply: false, canValidate: false, canModify: false, canDelete: false,
+    canAnnotate: false, canCreateVersion: false, canArchive: false, canReject: false,
+    canManage: false,
+  };
+}
+
 /**
  * Détermine l'accès d'un user (depuis le JWT) à un projet.
  * Renvoie null si le projet n'existe pas / est supprimé / l'utilisateur n'y a
@@ -44,13 +58,14 @@ export async function getProjectAccess(
 ): Promise<ProjectAccess | null> {
   const project = await prisma.project.findFirst({
     where: { id: projectId, deletedAt: null },
-    select: { id: true, organizationId: true },
+    select: { id: true, organizationId: true, organization: { select: { plan: true, planExpiresAt: true } } },
   });
   if (!project) return null;
+  const wr = writeAllowed(project.organization);
 
   // Chemin OWNER : même organisation que le projet
   if (user.organizationId && project.organizationId === user.organizationId) {
-    return {
+    return applyBilling({
       role: 'owner',
       canView: true,
       canUpload: true,
@@ -69,7 +84,7 @@ export async function getProjectAccess(
       canManage: true,
       allowedNodeIds: null,
       allowedFileIds: null,
-    };
+    }, wr);
   }
 
   // Chemin MEMBER : intervenant invité
@@ -101,7 +116,7 @@ export async function getProjectAccess(
   if (member.expiresAt && new Date(member.expiresAt) < new Date()) return null;
   if (!member.canView) return null; // sans canView, aucun accès utile
 
-  return {
+  return applyBilling({
     role: 'member',
     canView: member.canView,
     canUpload: member.canUpload,
@@ -124,7 +139,7 @@ export async function getProjectAccess(
     allowedFileIds: (member.allowedFileIds && member.allowedFileIds.length > 0)
       ? member.allowedFileIds
       : null,
-  };
+  }, wr);
 }
 
 /**
