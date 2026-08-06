@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
 import NotificationsBell from '@/components/NotificationsBell';
 import ThemeToggle from '@/components/ThemeToggle';
+import AdminLink from '@/components/AdminLink';
 
 interface Project {
   id: string; name: string; sector: string | null; structureType: string;
@@ -98,6 +99,7 @@ export default function DashboardPage() {
           <div className="flex-1" />
           <Link href="/projects/new" className="btn-primary text-sm" style={{ minHeight: 40 }}><Plus size={16} /><span className="hidden sm:inline"> Nouveau projet</span></Link>
           <Link href="/abonnement" className="text-sm hidden sm:inline" style={{ color: 'var(--text-muted)' }}>Abonnement</Link>
+          <AdminLink />
           <ThemeToggle />
           <NotificationsBell />
           <div className="flex items-center gap-2 pl-2 ml-1 border-l" style={{ borderColor: 'var(--border)' }}>

@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api-client';
 import { annualSavingsPct, formatBytes, gbToBytes, bytesToGb, formatMajorUnits } from '@/lib/packs';
+import AdminNav from '@/components/AdminNav';
 
 interface Feature { id?: string; key: string; label: string; description?: string | null; category?: string | null; position: number; }
 interface PackFeature { featureKey: string; enabled: boolean; position: number; }
@@ -110,6 +111,7 @@ export default function AdminPacksPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#0b0d14', color: '#e5e7eb', padding: '32px 20px', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <AdminNav active="packs" />
         <header style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, marginBottom: 8 }}>
           <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em' }}>Abonnements &amp; facturation</h1>
           <span style={{ fontSize: 13, color: '#9ca3af' }}>Gestion des packs</span>
