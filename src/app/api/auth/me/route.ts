@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
       plan: user.organization?.plan ?? 'TRIAL',
       planExpiresAt: user.organization?.planExpiresAt ?? null,
       subscription: subscriptionState(user.organization ?? null),
+      isOwner: user.organization ? user.organization.ownerId === user.id : false,
     });
   } catch (error) {
     return apiError('Erreur serveur', 'INTERNAL_ERROR', 500);
