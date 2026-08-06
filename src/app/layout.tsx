@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import NetworkStatus from '@/components/NetworkStatus';
+import SubscriptionBanner from '@/components/SubscriptionBanner';
 
 export const metadata: Metadata = {
   title: 'Bilnov — Gestion de projets visuels',
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               "(function(){try{var t=localStorage.getItem('bilnov-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();",
           }}
         />
+        <SubscriptionBanner />
         {children}
         <NetworkStatus />
       </body>

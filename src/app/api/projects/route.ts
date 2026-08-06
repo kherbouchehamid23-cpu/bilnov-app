@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { accessibleProjectIds } from '@/lib/access';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
+import { writeAllowed } from '@/lib/subscription';
 import { Prisma } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
@@ -54,6 +55,9 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
+
+    const org = await prisma.organization.findUnique({ where: { id: user.organizationId }, select: { plan: true, planExpiresAt: true } });
+    if (!writeAllowed(org)) return apiError('Abonnement expiré : renouvelez pour créer un projet.', 'FORBIDDEN', 403);
 
     const { name, description, structureType, sector, location, clientName } = await req.json();
 
