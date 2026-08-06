@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, apiError, apiSuccess } from '@/lib/auth';
 import { subscriptionState } from '@/lib/subscription';
+import { isPlatformAdminEmail } from '@/lib/adminAuth';
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
       planExpiresAt: user.organization?.planExpiresAt ?? null,
       subscription: subscriptionState(user.organization ?? null),
       isOwner: user.organization ? user.organization.ownerId === user.id : false,
+      isPlatformAdmin: isPlatformAdminEmail(user.email),
     });
   } catch (error) {
     return apiError('Erreur serveur', 'INTERNAL_ERROR', 500);
