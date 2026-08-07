@@ -28,3 +28,13 @@ export function clearSession(): void {
   localStorage.removeItem('bilnov_token');
   localStorage.removeItem('bilnov-auth');
 }
+
+// Session expiree (>4h d'inactivite ou deconnexion) : on nettoie et on oriente vers la
+// reconnexion avec un motif clair affiche sur la page de connexion.
+export function sessionExpiredRedirect(): void {
+  if (typeof window === 'undefined') return;
+  clearSession();
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login?expired=idle';
+  }
+}

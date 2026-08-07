@@ -1,5 +1,5 @@
 'use client';
-import { refreshAccessToken, clearSession } from '@/lib/session';
+import { refreshAccessToken, sessionExpiredRedirect } from '@/lib/session';
 
 export async function fetchWithAuth(url: string, options: RequestInit = {}, _retry = false): Promise<Response> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('bilnov_token') : null;
@@ -17,8 +17,7 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}, _ret
   if (res.status === 401 && !_retry && typeof window !== 'undefined') {
     const nt = await refreshAccessToken();
     if (nt) return fetchWithAuth(url, options, true);
-    clearSession();
-    window.location.href = '/login';
+    sessionExpiredRedirect();
   }
 
   return res;

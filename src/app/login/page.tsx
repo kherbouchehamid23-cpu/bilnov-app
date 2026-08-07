@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Compass, ArrowRight, Eye, EyeOff } from 'lucide-react';
@@ -24,6 +24,12 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('expired') === 'idle') {
+      setNotice("Votre session a expiré après 4 heures d'inactivité. Reconnectez-vous pour continuer.");
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -51,6 +57,7 @@ export default function LoginPage() {
           </div>
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 32, fontWeight: 700, color: '#f4f7fd', margin: '0 0 8px' }}>Bon retour</h1>
           <p style={{ color: '#9fb0c9', fontSize: 14, marginBottom: 28 }}>Connectez-vous à votre espace BILNOV</p>
+          {notice && (<div style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.4)', color: '#fcd34d', borderRadius: 10, padding: '10px 14px', fontSize: 13.5, marginBottom: 18 }}>{notice}</div>)}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="lg-label" htmlFor="login-email">Email</label>

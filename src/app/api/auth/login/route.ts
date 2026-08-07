@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { comparePassword, signAccessToken, signRefreshToken, apiError, apiSuccess } from '@/lib/auth';
+import { comparePassword, signAccessToken, signRefreshToken, apiError, apiSuccess, IDLE_SECONDS } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 
 export async function POST(req: NextRequest) {
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.id,
         tokenHash,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + IDLE_SECONDS * 1000),
       },
     });
 
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     });
 
     response.headers.set('Set-Cookie',
-      `refresh_token=${refreshToken}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${7 * 24 * 60 * 60}`
+      `refresh_token=${refreshToken}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${IDLE_SECONDS}`
     );
 
     return response;

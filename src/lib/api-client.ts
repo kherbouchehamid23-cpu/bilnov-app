@@ -1,4 +1,4 @@
-import { refreshAccessToken } from '@/lib/session';
+import { refreshAccessToken, sessionExpiredRedirect } from '@/lib/session';
 
 const BASE = '';  // Même domaine — pas besoin d'URL externe
 
@@ -23,6 +23,7 @@ export async function apiFetch<T = unknown>(
   if (res.status === 401 && !_retry && typeof window !== 'undefined') {
     const nt = await refreshAccessToken();
     if (nt) return apiFetch<T>(path, options, true);
+    sessionExpiredRedirect();
   }
 
   const data = await res.json();

@@ -5,6 +5,10 @@ import { NextRequest } from 'next/server';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'fallback_secret_change_in_prod';
 
+// Politique de session : 4h d'inactivite max (fenetre glissante), plafond absolu 30 jours.
+export const IDLE_SECONDS = 4 * 60 * 60;
+export const REFRESH_MAX_SECONDS = 30 * 24 * 60 * 60;
+
 export interface JwtPayload {
   sub: string;
   email: string;
@@ -18,7 +22,7 @@ export function signAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): strin
 }
 
 export function signRefreshToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: REFRESH_MAX_SECONDS });
 }
 
 export function verifyToken(token: string): JwtPayload | null {
