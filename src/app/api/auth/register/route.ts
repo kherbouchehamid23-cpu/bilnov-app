@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, signAccessToken, signRefreshToken, apiError, apiSuccess } from '@/lib/auth';
+import { TRIAL_DAYS } from '@/lib/subscription';
 import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
       data: {
         name: `${firstName} ${lastName}`,
         ownerId: user.id,
-        planExpiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        planExpiresAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
       },
     });
 

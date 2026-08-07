@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { annualSavingsPct, priceForPeriod, formatMajorUnits, formatBytes, type BillingPeriod } from '@/lib/packs';
+import { TRIAL_DAYS } from '@/lib/subscription';
 
 interface PackFeatureRef { featureKey: string; position: number; }
 interface Pack {
@@ -106,9 +107,7 @@ export default function PublicPricing() {
               {savings > 0 && !unavailable && (
                 <div style={{ color: '#39e6a8', fontSize: 12.5, fontFamily: 'JetBrains Mono, monospace', marginBottom: 4 }}>Économie de {savings}%</div>
               )}
-              {pk.trialDays > 0 && (
-                <div style={{ color: '#7ef0ff', fontSize: 12.5, marginBottom: 8 }}>{pk.trialDays} jours d&apos;essai gratuit</div>
-              )}
+              <div style={{ color: '#7ef0ff', fontSize: 12.5, marginBottom: 8 }}>{TRIAL_DAYS} jours d&apos;essai gratuit</div>
 
               <Link href="/register" className="lg-pill-solid" style={{ display: 'block', textAlign: 'center', padding: '11px 18px', borderRadius: 12, fontWeight: 600, fontSize: 14.5, margin: '14px 0 16px' }}>
                 Choisir {pk.name}

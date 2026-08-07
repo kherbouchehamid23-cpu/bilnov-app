@@ -83,6 +83,7 @@ export default function ProjectPage() {
   const [spacesFileId, setSpacesFileId] = useState<string | null>(null);
   const [spacesSel, setSpacesSel] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [tours360Count, setTours360Count] = useState(0);
 
   const access = project?.access;
   const isOwner = access ? access.canManage : true;
@@ -129,6 +130,12 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
     const fileList = r.data?.files ?? [];
     setFiles(fileList);
     void loadThumbnails(fileList);
+    // 360° : compter les visites reelles (natives publiees + krpano finalises).
+    try {
+      const tr = await api.get<{ data: { items: { kind: string; status: string }[] } }>(`/api/projects/${id}/tours-unified${qs}`);
+      const its = tr.data?.items ?? [];
+      setTours360Count(its.filter(i => (i.kind === 'tour' && i.status === 'PUBLISHED') || (i.kind === 'krpano' && i.status === 'READY')).length);
+    } catch { /* ignore */ }
   }, [id, loadThumbnails]);
 
   const reloadNodes = useCallback(async () => {
@@ -148,6 +155,14 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
   }, [id, loadFiles]);
 
   useEffect(() => { void loadFiles(expandNodeIds(nodes, selectedNodeIds)); }, [selectedNodeIds, nodes, loadFiles]);
+  // Selection auto de la premiere categorie non vide (le filtre « Tous » a ete retire).
+  useEffect(() => {
+    if (fileCat !== 'all') return;
+    const cc = files.reduce((m, f) => { const k = categoryOfFileType(f.fileType); m[k] = (m[k] || 0) + 1; return m; }, {} as Record<string, number>);
+    cc.tours360 = tours360Count;
+    const first = CATEGORIES.find(c => (cc[c.key] || 0) > 0);
+    if (first) setFileCat(first.key);
+  }, [files, tours360Count, fileCat]);
   const openedFromQueryRef = useRef(false);
   useEffect(() => {
     if (openedFromQueryRef.current || typeof window === 'undefined' || files.length === 0) return;
@@ -388,7 +403,8 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
   const uploadAccept = acceptAttr(selectedNodeType, uploadRules);
   const uploadMsg = uploadHint(selectedNodeType, uploadRules);
   const catCounts = files.reduce((m, f) => { const k = categoryOfFileType(f.fileType); m[k] = (m[k] || 0) + 1; return m; }, {} as Record<string, number>);
-  const visibleCats = CATEGORIES.filter(c => (catCounts[c.key] || 0) > 0 || canUpload);
+  catCounts.tours360 = tours360Count;
+  const visibleCats = CATEGORIES.filter(c => (catCounts[c.key] || 0) > 0);
   const shownFiles = fileCat === 'all' ? files : files.filter(f => categoryOfFileType(f.fileType) === fileCat);
 
   if (loading || error) {
@@ -516,7 +532,6 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
                 </div>
               )}
               <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1">
-                <button type="button" onClick={() => setFileCat('all')} className="px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap" style={{ background: fileCat === 'all' ? 'var(--violet)' : 'var(--surface-2)', color: fileCat === 'all' ? '#fff' : 'var(--text-muted)' }}>Tous <span style={{ opacity: .6 }}>{files.length}</span></button>
                 {visibleCats.map(c => (
                   <button key={c.key} type="button" onClick={() => setFileCat(c.key)} className="px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap" style={{ background: fileCat === c.key ? 'var(--violet)' : 'var(--surface-2)', color: fileCat === c.key ? '#fff' : 'var(--text-muted)' }}>{c.label} <span style={{ opacity: .6 }}>{catCounts[c.key] || 0}</span></button>
                 ))}
@@ -528,10 +543,9 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
                 </p>
               )}
 
-              {fileCat === 'tours360' && (
+              {fileCat === 'tours360' ? (
                 <div className="mb-4"><VisitesPanel projectId={id} canManage={canManage} getToken={getToken} publishedOnly /></div>
-              )}
-              {shownFiles.length === 0 ? (
+              ) : shownFiles.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <div className="mb-3"><Folder size={48} style={{ color: 'var(--text-light)' }} /></div>
                   <p style={{ color: 'var(--text-muted)' }}>

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api-client';
+import { TRIAL_DAYS } from '@/lib/subscription';
 
 interface AuthResponse {
   data: {
@@ -55,7 +56,7 @@ export default function RegisterPage() {
         </div>
         <div className="lg-card" style={{ padding: 32 }}>
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 700, color: '#f4f7fd', margin: '0 0 4px' }}>Créer un compte</h1>
-          <p style={{ color: '#9fb0c9', fontSize: 14, marginBottom: 24 }}>Essai gratuit 14 jours · Sans carte bancaire</p>
+          <p style={{ color: '#9fb0c9', fontSize: 14, marginBottom: 24 }}>Essai gratuit {TRIAL_DAYS} jours · Sans carte bancaire</p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>

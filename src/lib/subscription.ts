@@ -2,6 +2,9 @@
 // periode de grace apres l'echeance (essai ou abonnement).
 export const GRACE_DAYS = 7;
 
+// Duree de l'essai gratuit (jours) — source unique : inscription + page Tarifs.
+export const TRIAL_DAYS = 14;
+
 export type SubState = 'trial' | 'active' | 'grace' | 'expired';
 
 interface OrgLike { plan: string; planExpiresAt: Date | string | null; }
