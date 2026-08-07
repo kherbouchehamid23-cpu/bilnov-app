@@ -1,8 +1,11 @@
+import { refreshAccessToken } from '@/lib/session';
+
 const BASE = '';  // Même domaine — pas besoin d'URL externe
 
 export async function apiFetch<T = unknown>(
   path: string,
   options: RequestInit = {},
+  _retry = false,
 ): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('bilnov_token') : null;
 
@@ -15,6 +18,12 @@ export async function apiFetch<T = unknown>(
       ...options.headers,
     },
   });
+
+  // Token court expire : rafraichissement transparent puis rejeu unique.
+  if (res.status === 401 && !_retry && typeof window !== 'undefined') {
+    const nt = await refreshAccessToken();
+    if (nt) return apiFetch<T>(path, options, true);
+  }
 
   const data = await res.json();
 
