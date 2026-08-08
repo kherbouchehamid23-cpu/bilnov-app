@@ -92,6 +92,7 @@ export default function ProjectPage() {
   const canManage = isOwner && !previewGuest;
 const canModify = (access ? (access.canModify ?? access.canUpload) : true) && !previewGuest;
 const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !previewGuest;
+const canShare = (access ? access.canShare : true) && !previewGuest;
   const isGuest = access ? access.role === 'member' : false;
 
   const getToken = (): string =>
@@ -389,9 +390,11 @@ const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !p
 
   const tabs: { key: Tab; label: string; Icon: LucideIcon; count?: number }[] = [
     { key: 'files', label: 'Fichiers', Icon: Folder, count: files.length },
-    { key: 'tours', label: 'Visites', Icon: Globe },
-    { key: 'team', label: 'Équipe', Icon: Users },
-    { key: 'access', label: 'Partage', Icon: Link2 },
+    // « Visites » retiré pour le visiteur : la 360° est un filtre de fichiers ; gestion réservée à l'abonné/architecte.
+    ...(canManage ? [{ key: 'tours' as Tab, label: 'Visites', Icon: Globe }] : []),
+    // Équipe / Partage : visibles seulement si le partage est autorisé (canShare) ou pour le gestionnaire.
+    ...((canManage || canShare) ? [{ key: 'team' as Tab, label: 'Équipe', Icon: Users }] : []),
+    ...((canManage || canShare) ? [{ key: 'access' as Tab, label: 'Partage', Icon: Link2 }] : []),
     { key: 'comments', label: 'Commentaires', Icon: MessageSquare },
   ];
 
