@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { Image as ImageIcon, Globe, FileText, Video, Box, Folder, Eye, Download, Hourglass, type LucideIcon } from 'lucide-react';
 
 const SharedCadViewer = dynamic(() => import('@/components/SharedCadViewer'), { ssr: false });
+import { CATEGORIES, categoryOfFileType, type CategoryKey } from '@/lib/fileCategories';
 
 interface Permissions {
   canView: boolean;
@@ -25,6 +26,7 @@ interface FileItem {
   fileType: string;
   sizeBytes: string | number | bigint;
   mimeType: string;
+  nodeId?: string | null;
 }
 
 interface FilesApiResponse {
@@ -48,6 +50,9 @@ export default function SharedProjectPage() {
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [cadFile, setCadFile] = useState<FileItem | null>(null);
+  const [nodesMap, setNodesMap] = useState<Record<string, string>>({});
+  const [fileCat, setFileCat] = useState<CategoryKey | 'all'>('all');
+  const [spaceId, setSpaceId] = useState<string>('all');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -70,6 +75,14 @@ export default function SharedProjectPage() {
       const fileList = data.data?.files ?? [];
       setFiles(fileList);
       void loadThumbnails(fileList, code);
+      // Structure : noms des espaces pour filtrer (interface structurée du visiteur).
+      try {
+        const nres = await fetch(`/api/shared/${projectId}/nodes?code=${code}`);
+        const nd = await nres.json();
+        const map: Record<string, string> = {};
+        for (const n of (nd.data?.nodes ?? [])) map[n.id] = n.name;
+        setNodesMap(map);
+      } catch { /* structure optionnelle */ }
     } catch {
       setFiles([]);
     } finally {
@@ -106,6 +119,14 @@ export default function SharedProjectPage() {
     } catch { alert('Erreur'); }
     finally { setOpeningId(null); }
   };
+
+  const catCounts = files.reduce((m, f) => { const k = categoryOfFileType(f.fileType); m[k] = (m[k] || 0) + 1; return m; }, {} as Record<string, number>);
+  const visibleCats = CATEGORIES.filter(c => (catCounts[c.key] || 0) > 0);
+  const spaceIds = Array.from(new Set(files.map(f => f.nodeId).filter(Boolean))) as string[];
+  const shownFiles = files.filter(f =>
+    (fileCat === 'all' || categoryOfFileType(f.fileType) === fileCat) &&
+    (spaceId === 'all' || f.nodeId === spaceId)
+  );
 
   const ICONS: Record<string, LucideIcon> = {
     IMAGE: ImageIcon, IMAGE_360: Globe, PDF: FileText,
@@ -162,18 +183,32 @@ export default function SharedProjectPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
+        {files.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-5">
+            <button onClick={() => setFileCat('all')} className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{ background: fileCat === 'all' ? 'var(--violet)' : 'var(--surface-2)', color: fileCat === 'all' ? '#fff' : 'var(--text-muted)' }}>Tous <span style={{ opacity: .6 }}>{files.length}</span></button>
+            {visibleCats.map(c => (
+              <button key={c.key} onClick={() => setFileCat(c.key)} className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{ background: fileCat === c.key ? 'var(--violet)' : 'var(--surface-2)', color: fileCat === c.key ? '#fff' : 'var(--text-muted)' }}>{c.label} <span style={{ opacity: .6 }}>{catCounts[c.key] || 0}</span></button>
+            ))}
+            {spaceIds.length > 0 && (
+              <select value={spaceId} onChange={(e) => setSpaceId(e.target.value)} className="px-3 py-1.5 rounded-lg text-sm" style={{ background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+                <option value="all">Tous les espaces</option>
+                {spaceIds.map(nid => <option key={nid} value={nid}>{nodesMap[nid] ?? 'Espace'}</option>)}
+              </select>
+            )}
+          </div>
+        )}
         <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-          {files.length} fichier{files.length !== 1 ? 's' : ''} disponible{files.length !== 1 ? 's' : ''}
+          {shownFiles.length} fichier{shownFiles.length !== 1 ? 's' : ''} affiché{shownFiles.length !== 1 ? 's' : ''}
         </p>
 
-        {files.length === 0 ? (
+        {shownFiles.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="mb-3"><Folder size={40} style={{ color: 'var(--text-light)' }} /></div>
             <p style={{ color: 'var(--text-muted)' }}>Aucun fichier disponible.</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {files.map(file => (
+            {shownFiles.map(file => (
               <button
                 key={file.id}
                 onClick={() => { void openFile(file.id); }}
