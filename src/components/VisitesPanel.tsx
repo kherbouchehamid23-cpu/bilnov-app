@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { fetchWithAuth } from '@/lib/auth-client';
 import { Globe, Landmark, Eye, Trash2, Pencil } from 'lucide-react';
 
-interface Tour360 { id: string; name: string; status: string; }
+interface Tour360 { id: string; name: string; status: string; coverUrl?: string | null; isPublic?: boolean; publicToken?: string | null; sceneCount?: number; visibleSceneCount?: number; }
 interface KrpanoTour {
   id: string; name: string; status: 'PROCESSING' | 'READY' | 'ERROR';
   fileCount: number; totalSize: number; sceneCount: number; entryKey: string;
@@ -226,7 +226,12 @@ export default function VisitesPanel({ projectId, canManage, getToken, published
           {(publishedOnly ? tours360.filter(t => t.status === 'PUBLISHED') : tours360).map(t => (
             <div key={`t360-${t.id}`} className="file-card rounded-2xl p-5">
               {/* La carte ouvre l'éditeur (gestion des scènes) pour un gestionnaire, sinon le viewer. */}
-              <Link href={canManage ? `/projects/${projectId}/tours/${t.id}` : `/projects/${projectId}/tours/${t.id}/view-psv`} className="block">
+              <Link href={canManage ? `/projects/${projectId}/tours/${t.id}` : (t.isPublic && t.publicToken ? `/public/${t.publicToken}` : `/projects/${projectId}/tours/${t.id}/view-psv`)} className="block">
+                {t.coverUrl && (
+                  <div className="w-full rounded-xl mb-3 overflow-hidden" style={{ height: 130, background: 'var(--surface-2)' }}>
+                    <img src={t.coverUrl} alt={t.name} className="w-full h-full object-cover" />
+                  </div>
+                )}
                 <div className="flex items-center justify-between mb-3">
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet-light)' }}><Globe size={24} style={{ color: 'var(--violet)' }} /></div>
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>360°</span>
@@ -237,6 +242,9 @@ export default function VisitesPanel({ projectId, canManage, getToken, published
                   {t.status === 'PUBLISHED' ? '● Publié' : '○ Brouillon'}
                 </span>
               </Link>
+              {typeof t.visibleSceneCount === 'number' && typeof t.sceneCount === 'number' && t.visibleSceneCount < t.sceneCount && (
+                <p className="mt-2 text-[11px]" style={{ color: '#B45309' }}>🚫 {t.sceneCount - t.visibleSceneCount} scène(s) masquée(s) du partage · {t.visibleSceneCount}/{t.sceneCount} visibles</p>
+              )}
               <div className="mt-3 flex items-center gap-4">
                 {canManage && (
                   <Link href={`/projects/${projectId}/tours/${t.id}`} className="inline-block text-xs font-medium hover:underline" style={{ color: 'var(--violet)' }}><Pencil size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Gérer les scènes</Link>
