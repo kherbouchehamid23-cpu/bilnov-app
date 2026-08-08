@@ -13,7 +13,7 @@ import { CATEGORIES, categoryOfFileType, type CategoryKey } from '@/lib/fileCate
 import { uploadFileDirect } from '@/lib/upload';
 import { acceptAttr, uploadHint, type UploadRulesConfig } from '@/lib/uploadRules';
 import { makeThumb, getCachedThumb } from '@/lib/thumbs';
-import { Building2, DoorOpen, Package, Pin, Image as ImageIcon, Globe, FileText, Video, Box, Ruler, Building, Folder, Users, Link2, MessageSquare, Layers, Hourglass, Info, Pencil, Trash2, Plus, AlertTriangle, RotateCw, type LucideIcon } from 'lucide-react';
+import { Building2, DoorOpen, Package, Pin, Image as ImageIcon, Globe, FileText, Video, Box, Ruler, Building, Folder, Users, Link2, MessageSquare, Layers, Hourglass, Info, Pencil, Trash2, Plus, AlertTriangle, RotateCw, Download, CheckCircle2, Circle, type LucideIcon } from 'lucide-react';
 
 const CadViewer = dynamic(() => import('@/components/CadViewer'), { ssr: false });
 const Model3DViewer = dynamic(() => import('@/components/Model3DViewer'), { ssr: false });
@@ -60,6 +60,10 @@ export default function ProjectPage() {
   const [nodes, setNodes] = useState<StructureNode[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  // Téléchargement multi-sélection (ZIP) — §3 « sélection totale ou partielle ».
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [zipping, setZipping] = useState(false);
   const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
   const [tab, setTab] = useState<Tab>('files');
   const [loading, setLoading] = useState(true);
@@ -94,6 +98,7 @@ export default function ProjectPage() {
 const canModify = (access ? (access.canModify ?? access.canUpload) : true) && !previewGuest;
 const canDelete = (access ? (access.canDelete ?? access.canManage) : true) && !previewGuest;
 const canShare = (access ? access.canShare : true) && !previewGuest;
+const canDownload = (access ? access.canDownload : true) && !previewGuest;
   const isGuest = access ? access.role === 'member' : false;
 
   const getToken = (): string =>
@@ -206,6 +211,40 @@ const canShare = (access ? access.canShare : true) && !previewGuest;
       window.open(`/api/file-proxy/${fileId}?token=${encodeURIComponent(getToken())}`, '_blank');
     } catch { alert('Erreur ouverture fichier'); }
     finally { setOpeningId(null); }
+  }
+
+  function toggleSelect(fileId: string): void {
+    setSelectedIds(prev => prev.includes(fileId) ? prev.filter(x => x !== fileId) : [...prev, fileId]);
+  }
+
+  function exitSelectMode(): void {
+    setSelectMode(false); setSelectedIds([]);
+  }
+
+  async function downloadZip(): Promise<void> {
+    if (!selectedIds.length || zipping) return;
+    setZipping(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${id}/files/download-zip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileIds: selectedIds }),
+      });
+      if (!res.ok) {
+        let msg = 'Échec du téléchargement';
+        try { const j = await res.json() as { error?: { message?: string } }; if (j?.error?.message) msg = j.error.message; } catch { /* garde le message par défaut */ }
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'bilnov-fichiers.zip';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      exitSelectMode();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur');
+    } finally { setZipping(false); }
   }
 
   async function saveFileName(fileId: string): Promise<void> {
@@ -518,6 +557,11 @@ const canShare = (access ? access.canShare : true) && !previewGuest;
                 <button onClick={() => setDrawerOpen(true)}
                   className="md:hidden btn-secondary text-sm" style={{ minHeight: 40 }}><Layers size={15} /> Structure</button>
                   <button type="button" onClick={() => setViewMode(v => v === 'grid' ? 'list' : 'grid')} className="btn-secondary text-sm" style={{ minHeight: 40 }} title="Basculer grille / liste">{viewMode === 'grid' ? 'Liste' : 'Grille'}</button>
+                {canDownload && fileCat !== 'tours360' && shownFiles.length > 0 && (
+                  <button type="button" onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)} className="btn-secondary text-sm" style={{ minHeight: 40 }} title="Sélection multiple pour téléchargement ZIP">
+                    {selectMode ? 'Annuler' : (<><Download size={15} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Sélectionner</>)}
+                  </button>
+                )}
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   {selectedNodeName ? <><b style={{ color: 'var(--text)' }}>{selectedNodeName}</b> · </> : null}
                   {files.length} fichier{files.length !== 1 ? 's' : ''}
@@ -547,6 +591,19 @@ const canShare = (access ? access.canShare : true) && !previewGuest;
                 </p>
               )}
 
+              {selectMode && fileCat !== 'tours360' && (
+                <div className="flex items-center flex-wrap gap-3 mb-3 px-3 py-2 rounded-xl" style={{ background: 'var(--violet-light)' }}>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--violet)' }}>{selectedIds.length} sélectionné{selectedIds.length !== 1 ? 's' : ''}</span>
+                  <button type="button" onClick={() => setSelectedIds(selectedIds.length === shownFiles.length ? [] : shownFiles.map(f => f.id))} className="text-xs underline" style={{ color: 'var(--violet)' }}>
+                    {selectedIds.length === shownFiles.length && shownFiles.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}
+                  </button>
+                  <div className="flex-1" />
+                  <button type="button" disabled={!selectedIds.length || zipping} onClick={() => { void downloadZip(); }} className="btn-primary text-sm" style={{ minHeight: 38, opacity: (!selectedIds.length || zipping) ? .6 : 1 }}>
+                    {zipping ? 'Préparation…' : (<><Download size={15} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Télécharger (ZIP)</>)}
+                  </button>
+                </div>
+              )}
+
               {fileCat === 'tours360' ? (
                 <div className="mb-4"><VisitesPanel projectId={id} canManage={canManage} getToken={getToken} publishedOnly /></div>
               ) : shownFiles.length === 0 ? (
@@ -559,8 +616,15 @@ const canShare = (access ? access.canShare : true) && !previewGuest;
               ) : (
                 <div className={viewMode === 'list' ? 'flex flex-col gap-2' : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3'}>
                   {shownFiles.map(file => (
-                    <div key={file.id} className="file-card relative" style={{ padding: 10 }}>
-                      <button type="button" onClick={() => { void openFile(file.id); }} disabled={!!openingId}
+                    <div key={file.id} className="file-card relative" style={{ padding: 10, ...(selectMode && selectedIds.includes(file.id) ? { outline: '2px solid var(--violet)', outlineOffset: '-2px' } : {}) }}>
+                      {selectMode && (
+                        <div className="absolute z-10" style={{ top: 14, left: 14, background: '#fff', borderRadius: 9999, lineHeight: 0 }}>
+                          {selectedIds.includes(file.id)
+                            ? <CheckCircle2 size={24} style={{ color: 'var(--violet)' }} />
+                            : <Circle size={24} style={{ color: 'var(--text-light)' }} />}
+                        </div>
+                      )}
+                      <button type="button" onClick={() => { if (selectMode) { toggleSelect(file.id); } else { void openFile(file.id); } }} disabled={!selectMode && !!openingId}
                         className="w-full text-left" style={{ background: 'transparent' }}>
                         <div className="w-full rounded-xl mb-2 flex items-center justify-center overflow-hidden"
                           style={{ height: 130, background: 'var(--surface-2)' }}>
@@ -577,7 +641,7 @@ const canShare = (access ? access.canShare : true) && !previewGuest;
                       </button>
 
                       {/* menu ... */}
-                      {(canModify || canDelete) && (<>
+                      {!selectMode && (canModify || canDelete) && (<>
                       <button type="button"
                         onClick={e => { e.stopPropagation(); setMenuFileId(menuFileId === file.id ? null : file.id); }}
                         className="absolute rounded-lg flex items-center justify-center file-menu-btn"
