@@ -28,11 +28,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const access = await getProjectAccess(user, params.id);
     if (!access || !access.canUpload) return apiError('Vous n\'avez pas le droit d\'ajouter des fichiers', 'FORBIDDEN', 403);
 
-    const body = await req.json() as { storageKey?: string; filename?: string; mimeType?: string; sizeBytes?: number; nodeId?: string | null };
-    const { storageKey, filename, mimeType, sizeBytes, nodeId } = body;
+    const body = await req.json() as { storageKey?: string; filename?: string; mimeType?: string; sizeBytes?: number; nodeId?: string | null; width?: number; height?: number };
+    const { storageKey, filename, mimeType, sizeBytes, nodeId, width, height } = body;
     if (!storageKey || !filename || !mimeType || sizeBytes === undefined) return apiError('Champs requis manquants', 'VALIDATION_ERROR', 400);
 
-    const detectedType = detectFileType(mimeType, filename);
+    let detectedType = detectFileType(mimeType, filename);
+
+    // Anomalie 3 — un panorama équirectangulaire a un ratio largeur/hauteur de 2:1.
+    // Détecté à l'upload (dimensions transmises par le client), on le classe en IMAGE_360
+    // pour qu'il rejoigne la catégorie 360° (viewer immersif) au lieu de « Images ».
+    // Tolérance ±5 % ; les photos classiques (3:2 ≈ 1.5, 16:9 ≈ 1.78) restent en IMAGE.
+    const hasDims = typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0;
+    const isEquirect = detectedType === 'IMAGE' && hasDims && Math.abs((width as number) / (height as number) - 2) <= 0.1;
+    if (isEquirect) detectedType = 'IMAGE_360';
+    const metadata = hasDims ? { width: width as number, height: height as number, equirectangular: isEquirect } : undefined;
 
     // Règle d'upload selon le niveau d'arborescence cible
     const project = await prisma.project.findUnique({
@@ -62,7 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
     const file = await prisma.file.create({
-      data: { projectId: params.id, nodeId: nodeId ?? null, uploaderId: user.sub, name: filename, fileType: detectedType as any, mimeType, storageKey, sizeBytes, status: 'ACTIVE' },
+      data: { projectId: params.id, nodeId: nodeId ?? null, uploaderId: user.sub, name: filename, fileType: detectedType as any, mimeType, storageKey, sizeBytes, status: 'ACTIVE', ...(metadata ? { metadata } : {}) },
     });
     await prisma.organization.update({ where: { id: user.organizationId }, data: { storageUsedBytes: { increment: sizeBytes } } });
     const json = JSON.stringify({ success: true, data: file }, (_k, v) => typeof v === 'bigint' ? Number(v) : v);

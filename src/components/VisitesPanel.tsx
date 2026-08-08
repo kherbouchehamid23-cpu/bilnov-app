@@ -5,6 +5,9 @@ import { fetchWithAuth } from '@/lib/auth-client';
 import { Globe, Landmark, Eye, Trash2, Pencil } from 'lucide-react';
 
 interface Tour360 { id: string; name: string; status: string; coverUrl?: string | null; isPublic?: boolean; publicToken?: string | null; sceneCount?: number; visibleSceneCount?: number; }
+// Anomalie 3 — panorama équirectangulaire brut détecté à l'upload (fichier IMAGE_360).
+// Il s'affiche ici (catégorie 360°) et non plus dans « Images ».
+interface Pano { id: string; name: string; coverUrl?: string | null; }
 interface KrpanoTour {
   id: string; name: string; status: 'PROCESSING' | 'READY' | 'ERROR';
   fileCount: number; totalSize: number; sceneCount: number; entryKey: string;
@@ -26,6 +29,7 @@ function fmtSize(b: number): string {
 export default function VisitesPanel({ projectId, canManage, getToken, publishedOnly }: Props) {
   const [tours360, setTours360] = useState<Tour360[]>([]);
   const [krpano, setKrpano] = useState<KrpanoTour[]>([]);
+  const [panos, setPanos] = useState<Pano[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [show360Form, setShow360Form] = useState(false);
@@ -41,12 +45,15 @@ export default function VisitesPanel({ projectId, canManage, getToken, published
 
   const load = useCallback(async () => {
     try {
-      const [a, b] = await Promise.all([
+      const [a, b, c] = await Promise.all([
         fetchWithAuth(`/api/projects/${projectId}/tours`).then(r => r.json()),
         fetchWithAuth(`/api/projects/${projectId}/krpano`).then(r => r.json()),
+        fetchWithAuth(`/api/projects/${projectId}/tours-unified`).then(r => r.json()).catch(() => null),
       ]);
       setTours360(a.data?.tours ?? []);
       setKrpano(b.data?.tours ?? []);
+      const items: Array<{ id: string; name: string; kind: string; coverUrl?: string | null }> = c?.data?.items ?? [];
+      setPanos(items.filter(it => it.kind === 'pano').map(it => ({ id: it.id, name: it.name, coverUrl: it.coverUrl ?? null })));
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, [projectId]);
@@ -144,7 +151,7 @@ export default function VisitesPanel({ projectId, canManage, getToken, published
     finally { setDeletingId(null); }
   }
 
-  const total = tours360.length + krpano.length;
+  const total = tours360.length + krpano.length + panos.length;
 
   return (
     <div>
@@ -282,6 +289,27 @@ export default function VisitesPanel({ projectId, canManage, getToken, published
                     {deletingId === t.id ? '…' : <Trash2 size={14} />}
                   </button>
                 )}
+              </div>
+            </div>
+          ))}
+
+          {/* Cartes panorama 360° brut (fichiers IMAGE_360 détectés à l'upload) — Anomalie 3 */}
+          {panos.map(p => (
+            <div key={`pano-${p.id}`} className="file-card rounded-2xl p-5">
+              <Link href={`/projects/${projectId}/files/${p.id}/pano`} className="block">
+                {p.coverUrl && (
+                  <div className="w-full rounded-xl mb-3 overflow-hidden" style={{ height: 130, background: 'var(--surface-2)' }}>
+                    <img src={p.coverUrl} alt={p.name} className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet-light)' }}><Globe size={24} style={{ color: 'var(--violet)' }} /></div>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>Panorama 360°</span>
+                </div>
+                <h3 className="font-bold text-base mb-1 truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{p.name}</h3>
+              </Link>
+              <div className="mt-3">
+                <Link href={`/projects/${projectId}/files/${p.id}/pano`} className="inline-block text-xs hover:underline" style={{ color: 'var(--text-muted)' }}><Eye size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Voir en immersif</Link>
               </div>
             </div>
           ))}
