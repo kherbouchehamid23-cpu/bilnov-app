@@ -110,6 +110,11 @@ export default function TourEditorPage() {
   const [editingName, setEditingName] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
+  // Refonte responsive/UX : tiroir scènes (mobile), menu d'actions secondaires (header),
+  // et repli de la barre Panorama (mono/stéréo) derrière un bouton. États purement d'affichage.
+  const [scenesOpen, setScenesOpen] = useState(false);
+  const [headerMenu, setHeaderMenu] = useState(false);
+  const [panoMenu, setPanoMenu] = useState(false);
   const [pannellumLoaded, setPannellumLoaded] = useState(false);
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
   const [addMode, setAddMode] = useState(false);
@@ -1070,27 +1075,21 @@ export default function TourEditorPage() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#0f0f0f' }}>
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-stone-800 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <Link href={`/projects/${id}`} className="text-stone-400 hover:text-white transition-colors text-sm">
-            ← Retour
-          </Link>
-          <Link href={`/projects/${id}/tours/${tourId}/view-psv`} className="text-stone-400 hover:text-white transition-colors text-sm">👁 Voir</Link>
-          <Link href={`/projects/${id}/tours/${tourId}/overview`} className="text-stone-400 hover:text-white transition-colors text-sm">✓ Qualité</Link>
-          <div className="w-px h-4 bg-stone-700" />
-          <span className="font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
+      <header className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-3 sm:py-4 border-b border-stone-800 flex-shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <Link href={`/projects/${id}`} className="text-stone-400 hover:text-white transition-colors text-sm whitespace-nowrap">← Retour</Link>
+          <div className="w-px h-4 bg-stone-700 hidden sm:block" />
+          <span className="font-bold text-white truncate max-w-[38vw] sm:max-w-none" style={{ fontFamily: 'Syne, sans-serif' }}>
             {tour?.name}
           </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-stone-800 text-stone-400">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-stone-800 text-stone-400 whitespace-nowrap">
             {scenes.length} scène{scenes.length !== 1 ? 's' : ''}
           </span>
           {published && (
-            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#052e16', color: '#4ade80' }}>
-              ● Publié
-            </span>
+            <span className="text-xs px-2 py-0.5 rounded-full hidden sm:inline" style={{ background: '#052e16', color: '#4ade80' }}>● Publié</span>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-1">
             <button onClick={() => void doUndo()} disabled={!canUndo(history) || histBusy}
               aria-label="Annuler la dernière action (Ctrl+Z)" title="Annuler (Ctrl+Z)"
@@ -1099,30 +1098,39 @@ export default function TourEditorPage() {
               aria-label="Rétablir (Ctrl+Maj+Z)" title="Rétablir (Ctrl+Maj+Z)"
               className={`px-2.5 py-2 rounded-lg text-sm transition-colors ${canRedo(history) && !histBusy ? 'bg-stone-800 hover:bg-stone-700 text-white' : 'bg-stone-900 text-stone-600 cursor-not-allowed'}`}>↷</button>
           </div>
-          <button onClick={() => setShowLevels(true)}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-stone-800 hover:bg-stone-700 text-white transition-colors">
-            🗺 Niveaux &amp; plans{levels.length > 0 ? ` (${levels.length})` : ''}
-          </button>
-          <button onClick={() => setShowShare(true)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${shareToken ? 'bg-emerald-700 hover:bg-emerald-600 text-white' : 'bg-stone-800 hover:bg-stone-700 text-white'}`}>
-            {shareToken ? '🔗 Partagé' : '🔗 Partager'}
-          </button>
-          <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${uploading ? 'opacity-60 bg-stone-700 text-stone-300' : 'bg-violet-600 hover:bg-violet-500 text-white'}`}>
+          {/* Tiroir des scènes — accès mobile (la barre latérale est cachée sous md). */}
+          <button onClick={() => setScenesOpen(true)} title="Scènes" aria-label="Scènes"
+            className="md:hidden px-3 py-2 rounded-lg text-sm font-medium bg-stone-800 hover:bg-stone-700 text-white">🎞 {scenes.length}</button>
+          {/* Actions secondaires repliées derrière un bouton (aperçu, qualité, niveaux, partage). */}
+          <div className="relative">
+            <button onClick={() => setHeaderMenu(v => !v)} aria-label="Plus d'actions" title="Plus d'actions"
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-stone-800 hover:bg-stone-700 text-white">⋯</button>
+            {headerMenu && (
+              <div className="absolute right-0 mt-1 z-50 w-60 rounded-xl border border-stone-700 shadow-xl overflow-hidden" style={{ background: '#1c1917' }}>
+                <Link href={`/projects/${id}/tours/${tourId}/view-psv`} onClick={() => setHeaderMenu(false)} className="block px-4 py-3 text-sm text-stone-200 hover:bg-stone-800">👁 Aperçu de la visite</Link>
+                <Link href={`/projects/${id}/tours/${tourId}/overview`} onClick={() => setHeaderMenu(false)} className="block px-4 py-3 text-sm text-stone-200 hover:bg-stone-800 border-t border-stone-800">✓ Contrôle qualité</Link>
+                <button onClick={() => { setHeaderMenu(false); setShowLevels(true); }} className="block w-full text-left px-4 py-3 text-sm text-stone-200 hover:bg-stone-800 border-t border-stone-800">🗺 Niveaux &amp; plans{levels.length > 0 ? ` (${levels.length})` : ''}</button>
+                <button onClick={() => { setHeaderMenu(false); setShowShare(true); }} className="block w-full text-left px-4 py-3 text-sm hover:bg-stone-800 border-t border-stone-800" style={{ color: shareToken ? '#34d399' : '#e7e5e4' }}>{shareToken ? '🔗 Partage activé' : '🔗 Partager'}</button>
+              </div>
+            )}
+          </div>
+          <label className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all ${uploading ? 'opacity-60 bg-stone-700 text-stone-300' : 'bg-violet-600 hover:bg-violet-500 text-white'}`}>
             {uploading ? (
               <span className="flex items-center gap-2">
                 <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
                 {importStatus ? `${importStatus.current}/${importStatus.total} · ${uploadProgress}%` : `${uploadProgress}%`}
               </span>
-            ) : '+ Image 360°'}
+            ) : (<><span className="sm:hidden">＋ 360°</span><span className="hidden sm:inline">+ Image 360°</span></>)}
             <input type="file" multiple className="hidden" accept="image/*"
               onChange={e => { void handleUpload360(e); }} disabled={uploading} />
           </label>
           <button onClick={() => { void handlePublish(); }}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
-            {published ? '✓ Enregistrer les modifications' : 'Publier'}
+            className="px-3 sm:px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
+            <span className="sm:hidden">{published ? '✓' : 'Publier'}</span>
+            <span className="hidden sm:inline">{published ? '✓ Enregistrer les modifications' : 'Publier'}</span>
           </button>
           {savedFlash && (
-            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#052e16', color: '#4ade80' }}>✓ Enregistré</span>
+            <span className="text-xs px-2 py-0.5 rounded-full hidden sm:inline" style={{ background: '#052e16', color: '#4ade80' }}>✓ Enregistré</span>
           )}
         </div>
       </header>
@@ -1212,29 +1220,46 @@ export default function TourEditorPage() {
                   <button onClick={cancelArrival} className="rounded-full bg-black/20 px-2 py-0.5 hover:bg-black/30">Annuler</button>
                 </div>
               )}
-              {/* §7 — type de panorama de la scène courante (mono / stéréo) */}
-              <div className="absolute top-4 left-4 z-20 flex items-center gap-1 rounded-lg bg-black/60 p-1 text-white">
-                <span className="px-1.5 text-[10px] uppercase text-stone-400">Panorama</span>
-                {([
+              {/* §7 — type de panorama (mono/stéréo) + visibilité — repliés derrière un bouton
+                  (menu compact), au lieu d'une rangée de 6 boutons qui débordait sur mobile. */}
+              {currentScene && (() => {
+                const OPTS = [
                   { pt: 'MONO', sl: null, label: 'Mono', title: 'Panorama monoscopique' },
                   { pt: 'STEREO', sl: 'TB', label: 'Stéréo ⬍ TB', title: 'Stéréo haut/bas — œil gauche en haut' },
                   { pt: 'STEREO', sl: 'BT', label: 'Stéréo ⬍ BT', title: 'Stéréo bas/haut — œil gauche en bas' },
                   { pt: 'STEREO', sl: 'LR', label: 'Stéréo ⬌ LR', title: 'Stéréo gauche/droite — œil gauche à gauche' },
                   { pt: 'STEREO', sl: 'RL', label: 'Stéréo ⬌ RL', title: 'Stéréo droite/gauche — œil gauche à droite' },
-                ] as const).map((o) => {
-                  const savedLay = (currentScene.stereoLayout ?? 'TB').toUpperCase();
-                  const normLay = savedLay === 'SBS' ? 'LR' : savedLay; // compat ancien libellé SBS
-                  const active = (currentScene.panoramaType ?? 'MONO') === o.pt && (o.pt === 'MONO' || normLay === o.sl);
-                  return (
-                    <button key={o.label} title={o.title}
-                      onClick={() => void setScenePanorama(o.pt, o.sl)}
-                      className={`rounded-md px-2 py-1 text-[11px] font-medium ${active ? 'bg-violet-600 text-white' : 'bg-stone-800 text-stone-300 hover:bg-stone-700'}`}>{o.label}</button>
-                  );
-                })}
-                <span className="mx-1 h-4 w-px bg-stone-700" />
-                <button onClick={() => void toggleSceneHidden()} title="Masquer cette scène dans les visites partagées (§22)"
-                  className={`rounded-md px-2 py-1 text-[11px] font-medium ${currentScene.hidden ? 'bg-amber-600 text-white' : 'bg-stone-800 text-stone-300 hover:bg-stone-700'}`}>{currentScene.hidden ? '🚫 Masquée' : '👁 Visible'}</button>
-              </div>
+                ] as const;
+                const savedLay = (currentScene.stereoLayout ?? 'TB').toUpperCase();
+                const normLay = savedLay === 'SBS' ? 'LR' : savedLay; // compat ancien libellé SBS
+                const cur = OPTS.find((o) => (currentScene!.panoramaType ?? 'MONO') === o.pt && (o.pt === 'MONO' || normLay === o.sl)) ?? OPTS[0];
+                return (
+                  <div className="absolute top-4 left-4 z-20">
+                    <button onClick={() => setPanoMenu((v) => !v)} title="Type de panorama et visibilité de la scène"
+                      className="flex items-center gap-2 rounded-lg bg-black/60 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-black/70">
+                      <span className="text-[10px] uppercase text-stone-400">Panorama</span>
+                      <span>{cur.label}</span>
+                      {currentScene.hidden && <span className="text-amber-400">🚫</span>}
+                      <span className="text-stone-400">▾</span>
+                    </button>
+                    {panoMenu && (
+                      <div className="absolute left-0 mt-1 w-56 rounded-xl border border-stone-700 p-1 shadow-xl" style={{ background: '#1c1917' }}>
+                        {OPTS.map((o) => {
+                          const active = cur.label === o.label;
+                          return (
+                            <button key={o.label} title={o.title}
+                              onClick={() => { setPanoMenu(false); void setScenePanorama(o.pt, o.sl); }}
+                              className={`block w-full rounded-md px-3 py-2 text-left text-[12px] font-medium ${active ? 'bg-violet-600 text-white' : 'text-stone-300 hover:bg-stone-800'}`}>{o.label}</button>
+                          );
+                        })}
+                        <div className="my-1 h-px bg-stone-700" />
+                        <button onClick={() => { setPanoMenu(false); void toggleSceneHidden(); }} title="Masquer cette scène dans les visites partagées (§22)"
+                          className={`block w-full rounded-md px-3 py-2 text-left text-[12px] font-medium ${currentScene.hidden ? 'bg-amber-600 text-white' : 'text-stone-300 hover:bg-stone-800'}`}>{currentScene.hidden ? '🚫 Scène masquée du partage' : '👁 Scène visible'}</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {hotspots.length > 0 && (
                 <div className="absolute bottom-4 left-4 z-20 max-h-40 w-56 overflow-y-auto rounded-lg bg-black/70 p-2 text-white">
@@ -1474,21 +1499,27 @@ export default function TourEditorPage() {
         </div>
 
         {/* Sidebar scènes */}
-        <aside className="w-72 border-l border-stone-800 flex flex-col flex-shrink-0"
+        {/* Fond sombre du tiroir des scènes (mobile uniquement). */}
+        {scenesOpen && <div className="fixed inset-0 z-30 bg-black/50 md:hidden" onClick={() => setScenesOpen(false)} />}
+        {/* Barre latérale des scènes : statique sur desktop, tiroir coulissant sur mobile. */}
+        <aside className={`fixed inset-y-0 right-0 z-40 w-72 max-w-[85%] border-l border-stone-800 flex flex-col flex-shrink-0 transform transition-transform md:static md:z-auto md:translate-x-0 md:max-w-none ${scenesOpen ? 'translate-x-0' : 'translate-x-full'}`}
           style={{ background: '#111' }}>
           <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
             <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider">
               Scènes ({scenes.length})
             </p>
-            <button
-              onClick={() => setReordering(!reordering)}
-              className="text-xs px-2 py-1 rounded-lg transition-colors"
-              style={{
-                background: reordering ? 'rgba(107,70,193,0.3)' : 'transparent',
-                color: reordering ? '#A78BFA' : '#6B7280',
-              }}>
-              ↕ Réordonner
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setReordering(!reordering)}
+                className="text-xs px-2 py-1 rounded-lg transition-colors"
+                style={{
+                  background: reordering ? 'rgba(107,70,193,0.3)' : 'transparent',
+                  color: reordering ? '#A78BFA' : '#6B7280',
+                }}>
+                ↕ Réordonner
+              </button>
+              <button onClick={() => setScenesOpen(false)} aria-label="Fermer" className="md:hidden text-stone-400 hover:text-white text-lg leading-none px-1">✕</button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
