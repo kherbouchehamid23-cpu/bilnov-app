@@ -84,6 +84,7 @@ export default function ProjectPage() {
   const [spacesSel, setSpacesSel] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [tours360Count, setTours360Count] = useState(0);
+  const [mobileActions, setMobileActions] = useState(false);
 
   const access = project?.access;
   const isOwner = access ? access.canManage : true;
@@ -684,11 +685,32 @@ const canShare = (access ? access.canShare : true) && !previewGuest;
         </main>
       </div>
 
-      {tab === 'files' && canUpload && (
-        <label className="md:hidden fixed z-30 flex items-center justify-center" style={{ right: 16, bottom: 76, width: 56, height: 56, borderRadius: 9999, background: 'var(--violet)', color: '#fff', boxShadow: '0 8px 24px rgba(124,58,237,.4)' }} title={uploadMsg}>
-          <Plus size={24} />
-          <input type="file" multiple accept={uploadAccept} className="hidden" onChange={e => { void handleUpload(e); }} disabled={uploading} />
-        </label>
+      {/* Menu d'actions mobile selon permissions (remplace l'ancien bouton + d'upload). */}
+      {/* Visiteur en lecture seule (aucune action autorisée) : aucun bouton flottant — seule la consultation. */}
+      {(canUpload || canShare || canManage) && (
+        <div className="md:hidden">
+          {mobileActions && (
+            <div className="fixed inset-0 z-40" onClick={() => setMobileActions(false)} style={{ background: 'rgba(0,0,0,.4)' }}>
+              <div onClick={(e) => e.stopPropagation()} className="fixed left-4 right-4 rounded-2xl p-2" style={{ bottom: 148, background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 16px 48px rgba(0,0,0,.35)' }}>
+                {canUpload && (
+                  <label className="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer" style={{ color: 'var(--text)' }}>
+                    <Plus size={18} style={{ color: 'var(--violet)' }} /> Uploader un fichier
+                    <input type="file" multiple accept={uploadAccept} className="hidden" onChange={e => { setMobileActions(false); void handleUpload(e); }} disabled={uploading} />
+                  </label>
+                )}
+                {canShare && (
+                  <Link href={`/projects/${id}/access`} onClick={() => setMobileActions(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ color: 'var(--text)' }}><Link2 size={18} style={{ color: 'var(--violet)' }} /> Partager (codes d&apos;accès)</Link>
+                )}
+                {(canManage || canShare) && (
+                  <Link href={`/projects/${id}/team`} onClick={() => setMobileActions(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ color: 'var(--text)' }}><Users size={18} style={{ color: 'var(--violet)' }} /> Inviter un intervenant</Link>
+                )}
+              </div>
+            </div>
+          )}
+          <button type="button" onClick={() => setMobileActions(v => !v)} aria-label="Actions" className="fixed z-40 flex items-center justify-center" style={{ right: 16, bottom: 76, width: 56, height: 56, borderRadius: 9999, background: 'var(--violet)', color: '#fff', boxShadow: '0 8px 24px rgba(124,58,237,.4)' }}>
+            <Plus size={24} style={{ transform: mobileActions ? 'rotate(45deg)' : 'none', transition: 'transform .15s' }} />
+          </button>
+        </div>
       )}
       {/* Bottom nav mobile */}
       <nav className="md:hidden fixed left-0 right-0 bottom-0 z-30 flex justify-around border-t"
