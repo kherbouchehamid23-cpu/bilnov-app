@@ -20,16 +20,11 @@ interface Props {
   publishedOnly?: boolean;
 }
 
-function fmtSize(b: number): string {
-  if (!b) return '';
-  const mb = b / (1024 * 1024);
-  return mb >= 1 ? `${mb.toFixed(1)} Mo` : `${(b / 1024).toFixed(0)} Ko`;
-}
-
 export default function VisitesPanel({ projectId, canManage, getToken, publishedOnly }: Props) {
   const [tours360, setTours360] = useState<Tour360[]>([]);
   const [krpano, setKrpano] = useState<KrpanoTour[]>([]);
   const [panos, setPanos] = useState<Pano[]>([]);
+  const [cardMenu, setCardMenu] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [show360Form, setShow360Form] = useState(false);
@@ -229,88 +224,79 @@ export default function VisitesPanel({ projectId, canManage, getToken, published
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Cartes 360° */}
-          {(publishedOnly ? tours360.filter(t => t.status === 'PUBLISHED') : tours360).map(t => (
-            <div key={`t360-${t.id}`} className="file-card rounded-2xl p-5">
-              {/* La carte ouvre l'éditeur (gestion des scènes) pour un gestionnaire, sinon le viewer. */}
-              <Link href={canManage ? `/projects/${projectId}/tours/${t.id}` : (t.isPublic && t.publicToken ? `/public/${t.publicToken}` : `/projects/${projectId}/tours/${t.id}/view-psv`)} className="block">
-                {t.coverUrl && (
-                  <div className="w-full rounded-xl mb-3 overflow-hidden" style={{ height: 130, background: 'var(--surface-2)' }}>
-                    <img src={t.coverUrl} alt={t.name} className="w-full h-full object-cover" />
+          {/* Cartes 360° — image large lisible, sigle 360 au-dessus, nom seul ; actions repliées. */}
+          {(publishedOnly ? tours360.filter(t => t.status === 'PUBLISHED') : tours360).map(t => {
+            const openLink = canManage ? `/projects/${projectId}/tours/${t.id}` : (t.isPublic && t.publicToken ? `/public/${t.publicToken}` : `/projects/${projectId}/tours/${t.id}/view-psv`);
+            return (
+              <div key={`t360-${t.id}`} className="file-card rounded-2xl overflow-hidden relative">
+                <Link href={openLink} className="block">
+                  <div className="relative w-full" style={{ height: 190, background: 'var(--surface-2)' }}>
+                    {t.coverUrl
+                      ? <img src={t.coverUrl} alt={t.name} className="w-full h-full object-cover" />
+                      : <div className="w-full h-full flex items-center justify-center"><Globe size={40} style={{ color: 'var(--violet)' }} /></div>}
+                    <span className="absolute top-3 left-3 text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: 'rgba(124,58,237,.95)', color: '#fff', letterSpacing: '.02em' }}>360°</span>
+                  </div>
+                  <div className="p-4"><h3 className="font-bold text-base truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{t.name}</h3></div>
+                </Link>
+                {typeof t.visibleSceneCount === 'number' && typeof t.sceneCount === 'number' && t.visibleSceneCount < t.sceneCount && (
+                  <p className="px-4 pb-3 -mt-2 text-[11px]" style={{ color: '#B45309' }}>🚫 {t.sceneCount - t.visibleSceneCount} masquée(s) · {t.visibleSceneCount}/{t.sceneCount} visibles</p>
+                )}
+                {canManage && (
+                  <div className="absolute top-2 right-2">
+                    <button type="button" aria-label="Actions" onClick={(e) => { e.preventDefault(); setCardMenu(cardMenu === `t-${t.id}` ? null : `t-${t.id}`); }} className="rounded-full flex items-center justify-center" style={{ width: 34, height: 34, background: 'rgba(0,0,0,.45)', color: '#fff' }}>⋯</button>
+                    {cardMenu === `t-${t.id}` && (
+                      <div className="absolute right-0 mt-1 z-20 rounded-xl shadow-lg overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)', minWidth: 190 }}>
+                        <Link href={`/projects/${projectId}/tours/${t.id}`} onClick={() => setCardMenu(null)} className="block px-4 py-3 text-sm hover:bg-stone-50" style={{ color: 'var(--text)' }}><Pencil size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 8, color: 'var(--violet)' }} />Gérer les scènes</Link>
+                        <Link href={`/projects/${projectId}/tours/${t.id}/view-psv`} onClick={() => setCardMenu(null)} className="block px-4 py-3 text-sm hover:bg-stone-50 border-t" style={{ color: 'var(--text)', borderColor: 'var(--border)' }}><Eye size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 8, color: 'var(--text-muted)' }} />Aperçu</Link>
+                        {t.status !== 'PUBLISHED' && (
+                          <button type="button" onClick={async (e) => { e.preventDefault(); setCardMenu(null); await fetchWithAuth(`/api/projects/${projectId}/tours/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'PUBLISHED' }) }); load(); }} className="block w-full text-left px-4 py-3 text-sm hover:bg-stone-50 border-t" style={{ color: '#10B981', borderColor: 'var(--border)' }}>✓ Publier</button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet-light)' }}><Globe size={24} style={{ color: 'var(--violet)' }} /></div>
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>360°</span>
-                </div>
-                <h3 className="font-bold text-base mb-1 truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{t.name}</h3>
-                <span className="text-xs px-2 py-0.5 rounded-full"
-                  style={{ background: t.status === 'PUBLISHED' ? '#ECFDF5' : 'var(--surface-2)', color: t.status === 'PUBLISHED' ? '#10B981' : 'var(--text-muted)' }}>
-                  {t.status === 'PUBLISHED' ? '● Publié' : '○ Brouillon'}
-                </span>
-              </Link>
-              {typeof t.visibleSceneCount === 'number' && typeof t.sceneCount === 'number' && t.visibleSceneCount < t.sceneCount && (
-                <p className="mt-2 text-[11px]" style={{ color: '#B45309' }}>🚫 {t.sceneCount - t.visibleSceneCount} scène(s) masquée(s) du partage · {t.visibleSceneCount}/{t.sceneCount} visibles</p>
-              )}
-              <div className="mt-3 flex items-center gap-4">
-                {canManage && (
-                  <Link href={`/projects/${projectId}/tours/${t.id}`} className="inline-block text-xs font-medium hover:underline" style={{ color: 'var(--violet)' }}><Pencil size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Gérer les scènes</Link>
-                )}
-                {canManage && t.status !== 'PUBLISHED' && (
-                  <button type="button" onClick={async (e) => { e.preventDefault(); await fetchWithAuth(`/api/projects/${projectId}/tours/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'PUBLISHED' }) }); load(); }} className="inline-block text-xs font-medium hover:underline" style={{ color: '#10B981' }}>✓ Finaliser</button>
-                )}
-                <Link href={`/projects/${projectId}/tours/${t.id}/view-psv`} className="inline-block text-xs hover:underline" style={{ color: 'var(--text-muted)' }}><Eye size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Voir</Link>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
-          {/* Cartes krpano */}
+          {/* Cartes krpano — même mise en page, actions repliées derrière un bouton. */}
           {(publishedOnly ? krpano.filter(t => t.status === 'READY') : krpano).map(t => (
-            <div key={`kp-${t.id}`} className="file-card rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet-light)' }}><Landmark size={24} style={{ color: 'var(--violet)' }} /></div>
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#EEF2FF', color: '#4F46E5' }}>krpano</span>
-              </div>
-              <h3 className="font-bold text-base mb-1 truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{t.name}</h3>
-              <p className="text-xs mb-3" style={{ color: 'var(--text-light)' }}>
-                {t.status === 'READY' ? `${t.sceneCount} scène(s) · ${fmtSize(t.totalSize)}`
-                  : t.status === 'PROCESSING' ? 'Traitement en cours…' : 'Échec du traitement'}
-              </p>
-              <div className="flex gap-2">
-                {t.status === 'READY' && (
-                  <button className="btn-primary text-xs flex-1" style={{ minHeight: 38 }} onClick={() => setViewing(t)}><Eye size={13} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Visualiser</button>
-                )}
-                {t.status === 'ERROR' && canManage && (
-                  <button className="btn-secondary text-xs flex-1" style={{ minHeight: 38 }} onClick={() => void retryProcess(t.id)}>↻ Reprendre</button>
-                )}
-                {canManage && (
-                  <button className="btn-secondary text-xs" style={{ minHeight: 38, color: '#EF4444' }}
-                    disabled={deletingId === t.id} onClick={() => void deleteKrpano(t)}>
-                    {deletingId === t.id ? '…' : <Trash2 size={14} />}
-                  </button>
-                )}
-              </div>
+            <div key={`kp-${t.id}`} className="file-card rounded-2xl overflow-hidden relative">
+              <button type="button" disabled={t.status !== 'READY'} onClick={() => t.status === 'READY' && setViewing(t)} className="block w-full text-left">
+                <div className="relative w-full flex items-center justify-center" style={{ height: 190, background: 'var(--surface-2)' }}>
+                  <Landmark size={40} style={{ color: 'var(--violet)' }} />
+                  <span className="absolute top-3 left-3 text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: '#4F46E5', color: '#fff' }}>360° krpano</span>
+                  {t.status !== 'READY' && <span className="absolute inset-0 flex items-center justify-center text-xs font-medium" style={{ background: 'rgba(0,0,0,.4)', color: '#fff' }}>{t.status === 'PROCESSING' ? 'Traitement…' : 'Échec du traitement'}</span>}
+                </div>
+                <div className="p-4"><h3 className="font-bold text-base truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{t.name}</h3></div>
+              </button>
+              {canManage && (
+                <div className="absolute top-2 right-2">
+                  <button type="button" aria-label="Actions" onClick={(e) => { e.preventDefault(); setCardMenu(cardMenu === `k-${t.id}` ? null : `k-${t.id}`); }} className="rounded-full flex items-center justify-center" style={{ width: 34, height: 34, background: 'rgba(0,0,0,.45)', color: '#fff' }}>⋯</button>
+                  {cardMenu === `k-${t.id}` && (
+                    <div className="absolute right-0 mt-1 z-20 rounded-xl shadow-lg overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)', minWidth: 180 }}>
+                      {t.status === 'READY' && <button type="button" onClick={() => { setCardMenu(null); setViewing(t); }} className="block w-full text-left px-4 py-3 text-sm hover:bg-stone-50" style={{ color: 'var(--text)' }}><Eye size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 8, color: 'var(--violet)' }} />Visualiser</button>}
+                      {t.status === 'ERROR' && <button type="button" onClick={() => { setCardMenu(null); void retryProcess(t.id); }} className="block w-full text-left px-4 py-3 text-sm hover:bg-stone-50" style={{ color: 'var(--text)' }}>↻ Reprendre</button>}
+                      <button type="button" disabled={deletingId === t.id} onClick={() => { setCardMenu(null); void deleteKrpano(t); }} className="block w-full text-left px-4 py-3 text-sm hover:bg-stone-50 border-t" style={{ color: '#EF4444', borderColor: 'var(--border)' }}><Trash2 size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 8 }} />{deletingId === t.id ? 'Suppression…' : 'Supprimer'}</button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
 
-          {/* Cartes panorama 360° brut (fichiers IMAGE_360 détectés à l'upload) — Anomalie 3 */}
+          {/* Cartes panorama 360° brut (fichiers IMAGE_360 détectés à l'upload). */}
           {panos.map(p => (
-            <div key={`pano-${p.id}`} className="file-card rounded-2xl p-5">
+            <div key={`pano-${p.id}`} className="file-card rounded-2xl overflow-hidden">
               <Link href={`/projects/${projectId}/files/${p.id}/pano`} className="block">
-                {p.coverUrl && (
-                  <div className="w-full rounded-xl mb-3 overflow-hidden" style={{ height: 130, background: 'var(--surface-2)' }}>
-                    <img src={p.coverUrl} alt={p.name} className="w-full h-full object-cover" />
-                  </div>
-                )}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'var(--violet-light)' }}><Globe size={24} style={{ color: 'var(--violet)' }} /></div>
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--violet-light)', color: 'var(--violet)' }}>Panorama 360°</span>
+                <div className="relative w-full" style={{ height: 190, background: 'var(--surface-2)' }}>
+                  {p.coverUrl
+                    ? <img src={p.coverUrl} alt={p.name} className="w-full h-full object-cover" />
+                    : <div className="w-full h-full flex items-center justify-center"><Globe size={40} style={{ color: 'var(--violet)' }} /></div>}
+                  <span className="absolute top-3 left-3 text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: 'rgba(124,58,237,.95)', color: '#fff' }}>360°</span>
                 </div>
-                <h3 className="font-bold text-base mb-1 truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{p.name}</h3>
+                <div className="p-4"><h3 className="font-bold text-base truncate" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{p.name}</h3></div>
               </Link>
-              <div className="mt-3">
-                <Link href={`/projects/${projectId}/files/${p.id}/pano`} className="inline-block text-xs hover:underline" style={{ color: 'var(--text-muted)' }}><Eye size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />Voir en immersif</Link>
-              </div>
             </div>
           ))}
         </div>

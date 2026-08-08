@@ -635,9 +635,6 @@ const canDownload = (access ? access.canDownload : true) && !previewGuest;
                           )}
                         </div>
                         <p className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{file.name}</p>
-                        <p className="text-xs" style={{ color: 'var(--text-light)' }}>
-                          {Math.round(Number(file.sizeBytes) / 1024)} Ko
-                        </p>
                       </button>
 
                       {/* menu ... */}

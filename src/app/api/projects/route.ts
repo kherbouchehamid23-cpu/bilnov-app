@@ -56,7 +56,10 @@ export async function POST(req: NextRequest) {
     const user = await getCurrentUser(req);
     if (!user) return apiError('Non authentifié', 'UNAUTHORIZED', 401);
 
-    const org = await prisma.organization.findUnique({ where: { id: user.organizationId }, select: { plan: true, planExpiresAt: true } });
+    const org = await prisma.organization.findUnique({ where: { id: user.organizationId }, select: { plan: true, planExpiresAt: true, ownerId: true } });
+    // §1 — seul le titulaire de l'abonnement (abonné) peut créer un projet ; les
+    // clients/intervenants (membres) en sont exclus, même si leur organisation est active.
+    if (!org || org.ownerId !== user.sub) return apiError('Seul le titulaire de l\'abonnement peut créer un projet.', 'FORBIDDEN', 403);
     if (!writeAllowed(org)) return apiError('Abonnement expiré : renouvelez pour créer un projet.', 'FORBIDDEN', 403);
 
     const { name, description, structureType, sector, location, clientName } = await req.json();

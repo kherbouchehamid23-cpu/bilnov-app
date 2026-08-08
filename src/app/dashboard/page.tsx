@@ -41,6 +41,16 @@ export default function DashboardPage() {
   const [confirmProject, setConfirmProject] = useState<Project | null>(null);
   const [confirmText, setConfirmText] = useState('');
   const [purging, setPurging] = useState(false);
+  // §1 — la création de projet est réservée au titulaire de l'abonnement (abonné).
+  // Les clients/intervenants (membres) n'ont pas cette possibilité.
+  const [isOwner, setIsOwner] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    api.get<{ data: { isOwner: boolean } }>('/api/auth/me')
+      .then(r => setIsOwner(Boolean(r.data.isOwner)))
+      .catch(() => setIsOwner(false));
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) { router.push('/login'); return; }
@@ -97,7 +107,7 @@ export default function DashboardPage() {
           </div>
           <span className="font-bold text-base" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>Bilnov</span>
           <div className="flex-1" />
-          <Link href="/projects/new" className="btn-primary text-sm" style={{ minHeight: 40 }}><Plus size={16} /><span className="hidden sm:inline"> Nouveau projet</span></Link>
+          {isOwner && <Link href="/projects/new" className="btn-primary text-sm" style={{ minHeight: 40 }}><Plus size={16} /><span className="hidden sm:inline"> Nouveau projet</span></Link>}
           <Link href="/abonnement" className="text-sm hidden sm:inline" style={{ color: 'var(--text-muted)' }}>Abonnement</Link>
           <AdminLink />
           <ThemeToggle />
@@ -156,8 +166,8 @@ export default function DashboardPage() {
               {view === 'trash' ? <Trash2 size={34} style={{ color: 'var(--violet)' }} /> : view === 'archived' ? <Archive size={34} style={{ color: 'var(--violet)' }} /> : <Building2 size={36} style={{ color: 'var(--violet)' }} />}
             </div>
             <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text)' }}>{EMPTY[view].title}</h3>
-            <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>{EMPTY[view].desc}</p>
-            {view === 'active' && <Link href="/projects/new" className="btn-primary">Créer mon premier projet</Link>}
+            <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>{view === 'active' && !isOwner ? 'Les projets partagés avec vous apparaîtront ici.' : EMPTY[view].desc}</p>
+            {view === 'active' && isOwner && <Link href="/projects/new" className="btn-primary">Créer mon premier projet</Link>}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
