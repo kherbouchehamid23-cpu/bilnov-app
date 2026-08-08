@@ -30,6 +30,16 @@ export function layoutFromScene(panoramaType?: string | null, stereoLayout?: str
   return 'TB'; // TB / OU / TOP_BOTTOM / défaut
 }
 
+// Détection robuste par ratio d'image (corrige des métadonnées erronées / distorsion) :
+// équirectangulaire mono ≈ 2:1 ; stéréo empilé (TB/BT) ≈ 1:1 ; stéréo côte-à-côte (LR/RL) ≈ 4:1.
+export function detectLayoutFromRatio(width: number, height: number, metaLayout?: StereoLayout): StereoLayout {
+  if (!width || !height) return metaLayout ?? 'MONO';
+  const r = width / height;
+  if (r >= 3) return metaLayout === 'RL' ? 'RL' : 'LR';
+  if (r <= 1.4) return metaLayout === 'BT' ? 'BT' : 'TB';
+  return 'MONO';
+}
+
 // Rectangle (en pixels) de la moitié du fichier source appartenant à un œil donné.
 // Renvoie null pour MONO (l'image entière est utilisée telle quelle).
 export function eyeRect(layout: StereoLayout, eye: Eye, w: number, h: number): { x: number; y: number; cw: number; ch: number } | null {

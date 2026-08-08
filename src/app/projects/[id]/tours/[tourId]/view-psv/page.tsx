@@ -19,7 +19,7 @@ import { iconSvg } from '@/lib/tourIcons';
 interface Scene { id: string; name: string; imageUrl: string; thumbnailUrl?: string | null; previewUrl?: string | null; isInitial: boolean; position: number; panoramaProxy?: string; panoramaType?: string | null; stereoLayout?: string | null; hidden?: boolean; }
 interface Hotspot { id: string; type: string; positionYaw: number; positionPitch: number; targetSceneId: string | null; content: Record<string, unknown>; iconId?: string | null; iconColor?: string | null; iconScale?: number | null; iconOpacity?: number | null; visible?: boolean; }
 interface ApiResponse<T> { data: T; success: boolean; }
-import { layoutFromScene, eyeRect, type StereoLayout, type Eye } from '@/lib/stereoCrop';
+import { layoutFromScene, detectLayoutFromRatio, eyeRect, type StereoLayout, type Eye } from '@/lib/stereoCrop';
 
 const V = '5.11.5';
 const D = `deps=three@0.160.0`;
@@ -259,7 +259,16 @@ export default function TourViewerPsvPage() {
   // (panoramaType/stereoLayout) ; l'utilisateur peut ensuite forcer un autre mode manuellement.
   useEffect(() => {
     const s = scenes.find((x) => x.id === currentSceneId);
-    if (s) setLayout(layoutFromScene(s.panoramaType, s.stereoLayout));
+    if (!s) return;
+    const metaLayout = layoutFromScene(s.panoramaType, s.stereoLayout);
+    setLayout(metaLayout);
+    // Auto-détection robuste : mesure le ratio réel de l'image (corrige des métadonnées erronées).
+    const src = s.previewUrl || s.imageUrl;
+    if (typeof window !== 'undefined' && src) {
+      const img = new window.Image();
+      img.onload = () => setLayout(detectLayoutFromRatio(img.naturalWidth, img.naturalHeight, metaLayout));
+      img.src = src;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSceneId, scenes]);
 
@@ -299,23 +308,15 @@ export default function TourViewerPsvPage() {
           <span className="font-bold truncate" style={{ fontFamily: 'Syne, sans-serif', color: '#f4f7fd' }}>{tourName || 'Visite 360°'}</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* §STÉRÉO — VISION : reconstruit réellement la texture (recadrage d'un œil). */}
-          <button onClick={() => setLayout('MONO')} style={chip(layout === 'MONO')} title="Monoscopique (une seule vue)">Mono</button>
-          <button onClick={() => setLayout('TB')} style={chip(layout === 'TB')} title="Stéréo haut/bas — gauche en haut">Stéréo ⬍ TB</button>
-          <button onClick={() => setLayout('BT')} style={chip(layout === 'BT')} title="Stéréo bas/haut — gauche en bas">Stéréo ⬍ BT</button>
-          <button onClick={() => setLayout('LR')} style={chip(layout === 'LR')} title="Stéréo gauche/droite — gauche à gauche">Stéréo ⬌ LR</button>
-          <button onClick={() => setLayout('RL')} style={chip(layout === 'RL')} title="Stéréo droite/gauche — gauche à droite">Stéréo ⬌ RL</button>
+          {/* Format mono/stéréo détecté automatiquement (métadonnées + ratio d'image) : boutons techniques masqués. */}
+          <span style={chip(false)} title="Format détecté automatiquement">{layout === 'MONO' ? 'Mono' : 'Stéréo'}</span>
           {layout !== 'MONO' && (
-            <>
-              <span className="mx-1 h-4 w-px" style={{ background: 'rgba(255,255,255,.2)' }} />
-              <button onClick={() => setEye('left')} style={chip(eye === 'left')} title="Aperçu de l'œil gauche">Œil G</button>
-              <button onClick={() => setEye('right')} style={chip(eye === 'right')} title="Aperçu de l'œil droit">Œil D</button>
-              <button onClick={() => setEye((e) => e === 'left' ? 'right' : 'left')} style={chip(false)} title="Inverser les yeux (permute gauche/droite sans réimporter)">⇄ Inverser</button>
-            </>
+            <button onClick={() => setEye((e) => e === 'left' ? 'right' : 'left')} style={chip(false)} title="Inverser le relief si la 3D paraît inversée">⇄ Inverser le relief</button>
           )}
           <span className="mx-1 h-4 w-px" style={{ background: 'rgba(255,255,255,.2)' }} />
           <button onClick={toggleAuto} style={chip(autorotate)} title="Rotation automatique">Auto</button>
-          <button onClick={toggleVr} style={chip(vrOn)} title="Mode casque VR / cardboard (mobile)">Entrer en VR</button>
+          <button onClick={toggleVr} style={chip(vrOn)} title="Casque carton (mobile) — écran dédoublé + gyroscope">Box VR</button>
+          <Link href={`/projects/${id}/tours/${tourId}/view-vr`} style={{ textDecoration: 'none' }}><span style={chip(false)} title="Casque WebXR / Meta Quest">VR meta</span></Link>
         </div>
       </header>
 
